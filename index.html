@@ -1081,13 +1081,17 @@ const memberRow = (emoji, name, you, isMuted, stage, relay, action) => {
     c.innerHTML = relay ? CLOUD_SVG : ARROWS_SVG
     row.append(c)
   }
-  // 行の操作ボタン（いまは「無視」/「戻す」だけ）。自分の行には出さない。
+  // 行の操作ボタン（いまは「無視」/「戻す」だけ）。**自分の行にも同じ幅の場所を空ける**
+  // ＝出さないのではなく見えなくする。行ごとに右端の要素が変わると、経路アイコン（☁️/↔）の
+  // 縦位置が行ごとにずれる。「無視」も「戻す」も2文字なので幅は揃う。
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'm-ig'
   if (action) {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'm-ig'
-    b.textContent = action.label; b.title = action.title
-    b.onclick = action.onClick
-    row.append(b)
+    b.textContent = action.label; b.title = action.title; b.onclick = action.onClick
+  } else {
+    b.textContent = '無視'; b.disabled = true; b.setAttribute('aria-hidden', 'true')
+    b.style.visibility = 'hidden'
   }
+  row.append(b)
   return row
 }
 // 経路アイコンの凡例。中身は変わらないので一度だけ組み立て、通話中かどうかで出し入れする。
