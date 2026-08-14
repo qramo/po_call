@@ -152,7 +152,12 @@
   .char-count.over{ color:#ffd24d; font-weight:700 }
   input{ width:100%; padding:12px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.12);
     background:#0d1526; color:#eef2f8; font-size:16px }
-  button{ width:100%; margin-top:12px; padding:14px; border:0; border-radius:12px; font-size:16px; font-weight:700; cursor:pointer }
+  /* touch-action:manipulation ＝ **ダブルタップによるズームだけを止める**（スクロールや
+     ピンチ操作は残る）。素早く2回押せるボタン（リアクション等）で、2回目がズームに
+     化けるのを防ぐ。ボタンは元々ズームの対象ではないので全部に効かせてよい。
+     ※ viewport の user-scalable=no は使わないこと（拡大できないと困る人がいる） */
+  button{ width:100%; margin-top:12px; padding:14px; border:0; border-radius:12px; font-size:16px;
+    font-weight:700; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent }
   #join{ background:#00e5cc; color:#063; display:flex; align-items:center; justify-content:center; gap:9px }
   #join svg{ width:22px; height:22px; flex:none }
   #unlock{ background:#ffd24d; color:#3a2c00; display:none }
@@ -279,10 +284,12 @@
   .reactions[hidden]{ display:none }
   /* 押せると分かる見た目にする：**面をカードより一段明るく**（アプリ内で押せるチップに使っている色）、
      枠を立て、上辺に細いハイライトを入れて浮かせる。押すと沈んで色が変わる＝指に返る。 */
+  /* 絵文字は文字なので、長押しで選択・コピー・「調べる」が出てしまう。連打する場所なので殺す */
   .reactions button{ flex:1; width:auto; margin:0; padding:9px 0; font-size:19px; line-height:1.15;
     border-radius:10px; background:#1d2740; border:1px solid rgba(255,255,255,.10); cursor:pointer;
     box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 1px 2px rgba(0,0,0,.25);
-    transition:transform .09s ease, background .12s ease }
+    transition:transform .09s ease, background .12s ease;
+    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none }
   .reactions button:hover{ background:#26324f }
   .reactions button:active{ transform:translateY(1px) scale(.94); background:#2f3d5f;
     box-shadow:inset 0 2px 4px rgba(0,0,0,.35) }
