@@ -259,6 +259,13 @@
   .m-mute svg{ width:13px; height:13px; color:#0d1526 }
   .member.muted .m-mute{ visibility:visible }
   .member.muted .m-emoji{ opacity:.45 }
+  /* 無視ボタン。行の右端。共通の button{width:100%} を打ち消す（ここを忘れると行が壊れる） */
+  .m-ig{ flex:none; width:auto; border:0; background:#1d2740; color:#9fb0c7; font-size:11px;
+    font-weight:700; padding:4px 9px; border-radius:999px; cursor:pointer; margin-left:4px }
+  .m-ig:hover{ background:#26324f; color:#eef2f8 }
+  /* 無視中の行。**自分にだけ見える印**（相手には何も伝わらない）。忘れて混乱しないための表示 */
+  .member.ignored{ opacity:.5 }
+  .member.ignored .m-name{ text-decoration:line-through }
   .member.muted .m-name{ color:#9fb0c7 }
   /* 接続経路アイコン＝行の右端。中継=Cloudflareオレンジ雲／直結=アプリ色ティール矢印。
      プロフィール未着（経路不明）の相手には出さない。色だけで意味を持たせる（案A）＝title で補足。 */
@@ -425,6 +432,10 @@
     </details>
     <!-- 音が届かない相手がいるときだけ出る。頼んでも直らなかった＝本人の操作が要る場合の最終手段 -->
     <div id="audioWarn" class="audio-warn" hidden></div>
+    <!-- 「退出した」のか「接続が切れた」のかを書き分けて出す。切れたときだけ表示する。
+         本物の回線障害でも出るが、**集団で無視されたときに「自分の回線のせい」と
+         思い込まされないため**でもある（HANDOFF「無視」の項の"秘密の部屋"参照） -->
+    <div id="peerNotice" class="audio-warn" hidden></div>
     <div id="eq" class="eq" hidden aria-hidden="true"></div>
     <div style="margin-top:10px" id="shareWrap" hidden>
       <div id="qrBox" class="qr-inline" hidden>
@@ -641,6 +652,7 @@ const CALL_INIT = () => ({
   profiles: new Map(),  // peerId → {name, emoji, muted, relay}（相手から届いたプロフィール）
   profileAction: null,  // 名前・絵文字・ミュート状態を配るデータチャネル（参加中だけ有効）
   nudgeAction: null,    // 「音が届いていないので送り直して」を頼むデータチャネル
+  byeAction: null,      // 「退出します」の合図（受け取れば正規の退出、来なければ接続断と書き分ける）
   audioWatch: null,     // 音声の到着を見張るタイマー（join で開始・leave で停止）
   peerSince: new Map(), // peerId → 接続を認識した時刻（音の到着を待ち始めた起点）
   nudges: new Map(),    // peerId → {n: 送った回数, at: 最後に送った時刻}（頼む側）
@@ -652,7 +664,10 @@ const CALL_INIT = () => ({
   legendTimer: null,    // 経路アイコンの凡例を畳むタイマー（参加直後だけ開いて出すため）
   iceServers: null,     // いま通話に渡してある iceServers 配列。**中身を入れ替えて使う**（refreshIce）
   iceTimer: null,       // 上を定期的に入れ替えるタイマー
-  nostrPubAt: 0         // 在室を最後に Nostr へ流した時刻（ハートビートより粗く間引くため）
+  nostrPubAt: 0,        // 在室を最後に Nostr へ流した時刻（ハートビートより粗く間引くため）
+  ignored: new Set(),   // 無視している相手の peerId。**この部屋にいる間だけ**（相手が入り直すと別IDになる）
+  byeSeen: new Set(),   // 「退出します」を送ってきた相手。来ないまま消えたら「接続が切れた」と書き分ける
+  noticeTimer: null     // 上の通知を自動で畳むタイマー
 })
 // **テンプレートに入れない2つ**。どちらも「退出しても引き継ぐ」ものなので、reset で戻すと壊れる。
 const call = Object.seal({
@@ -1044,7 +1059,7 @@ const ARROWS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 // relay: true=中継 / false=直結 / undefined=経路不明（プロフィール未着や旧クライアント）→アイコンを出さない。
 const membersEl = $('members')
 const emojiEls = new Map()  // uid('self'|peerId) → 現在の絵文字要素（描き直すたび貼り替え、VADから参照する）
-const memberRow = (emoji, name, you, isMuted, stage, relay) => {
+const memberRow = (emoji, name, you, isMuted, stage, relay, action) => {
   const row = document.createElement('div'); row.className = 'member' + (isMuted ? ' muted' : '')
   const av = document.createElement('span'); av.className = 'm-emoji'; av.textContent = emoji || '🙂'
   const nm = document.createElement('span'); nm.className = 'm-name'; nm.textContent = name || 'ゲスト'
@@ -1065,6 +1080,13 @@ const memberRow = (emoji, name, you, isMuted, stage, relay) => {
       : (relay ? '中継ごし：この人のIPアドレスは隠れています' : '直接：この人のIPアドレスが見えています')
     c.innerHTML = relay ? CLOUD_SVG : ARROWS_SVG
     row.append(c)
+  }
+  // 行の操作ボタン（いまは「無視」/「戻す」だけ）。自分の行には出さない。
+  if (action) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'm-ig'
+    b.textContent = action.label; b.title = action.title
+    b.onclick = action.onClick
+    row.append(b)
   }
   return row
 }
@@ -1106,14 +1128,23 @@ const renderMembers = () => {
   membersEl.replaceChildren(); emojiEls.clear()
   legendEl.hidden = !call.joinedId   // 凡例は通話中だけ（未参加のときはアイコン自体が出ない）
   if (!call.joinedId) return
-  const add = (uid, emoji, name, you, isMuted, stage, relay) => {
-    const row = memberRow(emoji, name, you, isMuted, stage, relay)
+  const add = (uid, emoji, name, you, isMuted, stage, relay, action) => {
+    const row = memberRow(emoji, name, you, isMuted, stage, relay, action)
     emojiEls.set(uid, row.querySelector('.m-emoji'))
     membersEl.appendChild(row)
   }
   add('self', profile.emoji, profile.name, true, call.muted, stageOf(), call.usingRelay)
   // peers（接続の事実）を軸にし、プロフィール未着の相手は仮表示にする（経路も未着なら undefined＝アイコンなし）
-  call.peers.forEach(id => { const p = call.profiles.get(id) || {}; add(id, p.emoji, p.name, false, !!p.muted, p.stage, p.relay) })
+  call.peers.forEach(id => {
+    const p = call.profiles.get(id) || {}
+    const ig = call.ignored.has(id)
+    // 無視中でも**接続は生きている**ので peers に残る。行を薄くして取り消し線を引くのは
+    // **自分にだけ見える印**（相手には何も伝わらない）。忘れて混乱しないためのもの。
+    add(id, p.emoji, p.name, false, !!p.muted, p.stage, p.relay, ig
+      ? { label: '戻す', title: 'この人の音をまた受け取ります', onClick: () => unignorePeer(id) }
+      : { label: '無視', title: 'この人の音を受け取りません（相手には伝わりません）', onClick: () => ignorePeer(id) })
+    if (ig) membersEl.lastElementChild.classList.add('ignored')
+  })
 }
 
 // アクティブスピーカー検出（VAD）：各ストリームの音量を測り、話している人の絵文字を跳ねさせる。
@@ -1359,6 +1390,9 @@ const checkAudioArrival = () => {
   const now = Date.now()
   const stuck = []
   call.peers.forEach(id => {
+    // 無視中の相手は「音が来ない」のが正常。**外すと相手に「送り直して」が飛んで無視が漏れ、
+    // こちらには偽の警告が出る**（受信側だけで完結する、という前提が崩れる）。
+    if (call.ignored.has(id)) return
     // 届いていれば覚えを捨てる（また切れたら最初から頼み直せるように）
     if ((call.audios.get(id) || []).length) { call.nudges.delete(id); return }
     if (now - (call.peerSince.get(id) || now) < AUDIO_WAIT_MS) return   // まだ待つ（相手の準備中かもしれない）
@@ -1374,6 +1408,44 @@ const checkAudioArrival = () => {
 const stopAudioWatch = () => {
   if (call.audioWatch) { clearInterval(call.audioWatch); call.audioWatch = null }
   call.peerSince.clear(); call.nudges.clear(); renderAudioWarn([])
+}
+
+// ───────── 無視（この人のものを受け取らない） ─────────
+// **受信側だけで完結する。**相手には何も送らず、接続にも触らない。ただ鳴らさない。
+//
+// **接続を切る案は実測で捨てた**（2026-08-14）。切っても Trystero が即座に張り直すうえ、
+// 「同じ相手の新しい接続が来たら古い方と差し替える」処理があるため、**相手からは途切れて見えない**。
+// 残るのは張り直しの嵐だけで、実測で18秒に13本（毎時2,600本相当）。
+// **この前提は Trystero を上げたら確かめ直すこと**（再接続の挙動が変われば選択肢が戻る）。
+//
+// **この方式の限界を、説明文で必ず伝えること**：
+//  ・**相手にはこちらの声が届き続ける**。聞こえなくなるのは自分の側だけ。
+//  ・本当に離れたいなら退出。**1対1では退出のほうが適切**。
+//  ・相手が入り直すと peerId が変わるので**無視は外れる**（持続しない）。
+const ignorePeer = id => {
+  if (call.ignored.has(id)) return
+  call.ignored.add(id)
+  dropAudios(id)        // 鳴っている音を止める（要素ごと捨てる）
+  removeAnalyser(id)    // 絵文字の跳ねも止める＝画面から気配を消す
+  call.nudges.delete(id)
+  renderMembers(); renderAudioWarn([])
+}
+const unignorePeer = id => {
+  call.ignored.delete(id)
+  // 音は捨ててあるので、相手に送り直してもらう。「音が届いていない」ときと同じ頼み方。
+  try { call.nudgeAction?.send(1, { target: id }).catch(() => {}) } catch {}
+  call.peerSince.set(id, Date.now())   // 監視の待ち時間を数え直す（すぐ警告を出さない）
+  renderMembers()
+}
+
+// 「退出した」のか「接続が切れた」のかを書き分ける。
+// 退出は**出ていく側が 'bye' を送ってから抜ける**ので、来ていれば正規の退出。来ないまま消えたら異常。
+// 本物の回線障害でも出るが、それも含めて「何かおかしい」と分かるほうがよい。
+const showPeerNotice = text => {
+  const el = $('peerNotice')
+  el.hidden = !text; el.textContent = text
+  clearTimeout(call.noticeTimer)
+  if (text) call.noticeTimer = setTimeout(() => { $('peerNotice').hidden = true }, 12000)
 }
 
 const wake = async () => { try { call.wakeLock = await navigator.wakeLock.request('screen') } catch {} }
@@ -1513,6 +1585,7 @@ const runJoin = async () => {
 
     call.room.addStream(call.stream)
     call.room.onPeerStream = (stream, id) => {
+      if (call.ignored.has(id)) return   // 切る前に届いてしまった分。鳴らさない（onPeerJoin で閉じている）
       // 同じ相手から何度もストリームが来る（再ネゴ、そして「送り直して」を頼んだ結果）。
       // 足し続けると無音の <audio> と古い MediaStream への参照が溜まるので、1人につき1本に保つ。
       const cur = call.audios.get(id) || []
@@ -1525,8 +1598,27 @@ const runJoin = async () => {
       addAnalyser(id, stream)   // 相手の音量を測って絵文字を跳ねさせる（中で古い方を外している）
       play(a)
     }
+
+    // 「退出します」の合図。**退出する側が抜ける前に送る。**受け取っていれば正規の退出、
+    // 来ないまま消えたら「接続が切れた」と書き分ける（下の onPeerLeave）。
+    // 古いクライアントは送ってこないので、その相手は常に「切れた」扱いになる＝**過剰に警告する側**へ倒す。
+    call.byeAction = call.room.makeAction('bye')
+    call.byeAction.onMessage = (_d, { peerId }) => call.byeSeen.add(peerId)
+
     call.room.onPeerJoin = id => { call.peers.add(id); call.peerSince.set(id, Date.now()); call.room.addStream(call.stream, { target: id }); sendProfile(id); call.warn = ''; setCount(); render(); renderMembers(); soundJoin() }
-    call.room.onPeerLeave = id => { call.peers.delete(id); call.profiles.delete(id); call.peerSince.delete(id); call.nudges.delete(id); call.nudgeSeen.delete(id); dropAudios(id); removeAnalyser(id); setCount(); render(); renderMembers(); renderAudioWarn([]); soundLeave() }
+    call.room.onPeerLeave = id => {
+      // 'bye' が来ていなければ異常な切断。本物の回線障害でも出るが、**理由は分からなくても
+      // 「何かおかしい」と分かる**ほうがよい（自分の回線のせいだと思い込まないため）。
+      if (!call.byeSeen.has(id)) {
+        const who = (call.profiles.get(id) || {}).name || '相手'
+        showPeerNotice('🔌 ' + who + ' との接続が切れました（退出ではありません）')
+      }
+      call.peers.delete(id); call.profiles.delete(id); call.peerSince.delete(id)
+      call.nudges.delete(id); call.nudgeSeen.delete(id); call.byeSeen.delete(id)
+      call.ignored.delete(id)   // peerId は使い捨て。入り直すと別人なので、無視も持ち越さない
+      dropAudios(id); removeAnalyser(id)
+      setCount(); render(); renderMembers(); renderAudioWarn([]); soundLeave()
+    }
   } catch (e) {
     // 部屋は掴めたが後続で失敗した場合、掴んだまま抜けると次の参加がゾンビ検出に引っかかって
     // 「再読み込みしてください」になる。ここで手放しておけば、もう一度押すだけでやり直せる。
@@ -1633,6 +1725,11 @@ $('retry').onclick = async () => {
 const leaveCall = () => {
   // ① 副作用（reset では代替できないもの）
   const leftRoom = call.room                                   // ④で使うので reset の前に控える
+  // 「退出します」を先に配る。**これを受け取った側は「退出」、受け取らないまま消えたら「接続が切れた」**
+  // と書き分ける。④の leave() は非同期に走るので、その前にここで送っておく（届かなくても実害は
+  // 「相手の画面に切断として出る」だけ＝安全側）。
+  try { call.byeAction?.send(1).catch(() => {}) } catch {}
+  clearTimeout(call.noticeTimer); showPeerNotice('')            // 前の通知を残さない
   if (call.stream) call.stream.getTracks().forEach(t => t.stop())
   ;[...call.audios.keys()].forEach(dropAudios)                 // **reset で Map ごと捨てる前に** DOM を消す
   if (call.wakeLock) call.wakeLock.release().catch(() => {})
