@@ -179,7 +179,7 @@
   /* 通知音のトグル（入室・退出音＝通話カード／新部屋音＝ロビー）。help-hide と同系の控えめな見た目 */
   .snd-opt{ display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; color:#9fb0c7; cursor:pointer; user-select:none }
   .snd-opt input{ width:auto; margin:0; padding:0; accent-color:#00e5cc; flex:none }
-  #sndPeerRow{ margin-top:4px }   /* 人数表示のすぐ下に寄せる */
+  #sndPeerRow, #sndReactRow{ margin-top:4px }   /* 人数表示のすぐ下に寄せる */
   #copy{ background:#1d2740; color:#cfe; margin-top:8px; padding:10px; font-size:14px }
   /* 版の表示。共有ボタンの右下に、目に留まらない濃さで置く（普段は意識させない） */
   .ver{ margin-top:6px; text-align:right; font-size:10.5px; color:#4a5a72; letter-spacing:.04em }
@@ -463,6 +463,7 @@
     </div>
     <div style="margin-top:8px">いま一緒にいる人：<span class="peers" id="count">0</span> 人</div>
     <label class="snd-opt" id="sndPeerRow" style="display:none"><input type="checkbox" id="sndPeer"> 🔔 入室・退出を音で知らせる</label>
+    <label class="snd-opt" id="sndReactRow" style="display:none"><input type="checkbox" id="sndReact"> 🎵 リアクションを音で鳴らす</label>
     <div id="members" class="members"></div>
     <!-- リアクション。中身は JS が REACTIONS から作る（一覧の定義を1か所に保つ） -->
     <div id="reactions" class="reactions" hidden></div>
@@ -1253,11 +1254,13 @@ const ensureAudioCtx = () => {
 // 消える事故が起きる。他の localStorage キーも同じ理由で PROFILE_KEY 等に揃えてある）
 const SND_PEER_KEY = 'pot-call-snd-peer'
 const SND_ROOM_KEY = 'pot-call-snd-room'
+const SND_REACT_KEY = 'pot-call-snd-react'
 let sndPeer = localStorage.getItem(SND_PEER_KEY) !== '0'   // 未保存＝オン
 let sndRoom = localStorage.getItem(SND_ROOM_KEY) === '1'   // 未保存＝オフ
+let sndReact = localStorage.getItem(SND_REACT_KEY) !== '0' // 未保存＝オン
 const seenRooms = new Set() // ロビーで既に鳴らした部屋名（重複防止・消えたら忘れて再通知する）
 // notes: [[周波数Hz, 開始秒, 長さ秒], …] を柔らかいエンベロープで鳴らす。ロビー音は未解錠なら resume も試みる。
-const playTones = notes => {
+const playTones = (notes, vol = 0.11) => {
   let ctx; try { ctx = ensureAudioCtx() } catch { return }
   if (!ctx) return
   const t0 = ctx.currentTime + 0.01
@@ -1266,7 +1269,7 @@ const playTones = notes => {
     o.type = 'sine'; o.frequency.value = f
     const st = t0 + s
     g.gain.setValueAtTime(0.0001, st)
-    g.gain.exponentialRampToValueAtTime(0.11, st + 0.012)      // やわらかいアタック
+    g.gain.exponentialRampToValueAtTime(vol, st + 0.012)        // やわらかいアタック
     g.gain.exponentialRampToValueAtTime(0.0001, st + d)         // 減衰
     o.connect(g); g.connect(ctx.destination)
     o.start(st); o.stop(st + d + 0.03)
@@ -1277,9 +1280,13 @@ const soundLeave = () => { if (sndPeer && call.soundsArmed) playTones([[620, 0, 
 const soundRoom  = () => { if (sndRoom) playTones([[988, 0, 0.09], [1319, 0.08, 0.14]]) }                 // 軽いピコン＝新部屋
 // トグルの初期状態を反映＋変更を保存。新部屋音を「オンにする操作」がそのまま音の解錠（ユーザー操作）になる。
 {
-  const peerBox = $('sndPeer'), roomBox = $('sndRoom')
-  peerBox.checked = sndPeer; roomBox.checked = sndRoom
+  const peerBox = $('sndPeer'), roomBox = $('sndRoom'), reactBox = $('sndReact')
+  peerBox.checked = sndPeer; roomBox.checked = sndRoom; reactBox.checked = sndReact
   peerBox.onchange = () => { sndPeer = peerBox.checked; localStorage.setItem(SND_PEER_KEY, sndPeer ? '1' : '0') }
+  reactBox.onchange = () => {
+    sndReact = reactBox.checked; localStorage.setItem(SND_REACT_KEY, sndReact ? '1' : '0')
+    if (sndReact) { ensureAudioCtx(); soundReact(0) }   // オンにした操作で解錠＋見本を1回鳴らす
+  }
   roomBox.onchange = () => {
     sndRoom = roomBox.checked; localStorage.setItem(SND_ROOM_KEY, sndRoom ? '1' : '0')
     if (sndRoom) { ensureAudioCtx(); soundRoom() }   // オンにした操作で解錠＋見本を1回鳴らす
@@ -1539,6 +1546,20 @@ const unignorePeer = id => {
 // 否定リアクションを配ることは運営が加害の道具を配ることに等しい。🍵 はこのアプリの枠。
 // ❤️ は入れない：参加者リストの「無視」が赤いハートなので、意味が正反対のものが同じ画面に並ぶ。
 const REACTIONS = ['👏', '😂', '✨', '👍', '🤔', '😮', '🎉', '🍵']
+// リアクションの音。**全部ペンタトニック（五音音階）から取る**ので、
+// 何人が同時に押しても濁らない。通話中に鳴るものなので**短く・小さく**
+// （長さは最大0.22秒、音量は通知音の半分強）。絵文字の気分に合わせて高さを割り当てる。
+const REACT_TONES = [
+  [[784, 0, 0.10], [1046, 0.06, 0.13]],   // 👏 軽い二連
+  [[880, 0, 0.09], [1174, 0.05, 0.12]],   // 😂 跳ねる
+  [[1318, 0, 0.07], [1568, 0.05, 0.10]],  // ✨ 細かく高い
+  [[659, 0, 0.14]],                       // 👍 短い一発
+  [[523, 0, 0.20]],                       // 🤔 低く長め
+  [[587, 0, 0.08], [880, 0.06, 0.14]],    // 😮 立ち上がる
+  [[784, 0, 0.07], [1046, 0.05, 0.08], [1318, 0.10, 0.14]], // 🎉 上昇三音
+  [[440, 0, 0.10], [659, 0.07, 0.16]]     // 🍵 やわらかい
+]
+const soundReact = idx => { if (sndReact && REACT_TONES[idx]) playTones(REACT_TONES[idx], 0.06) }
 // 送る側の下限。**長くすると「押しても何も起きない」＝壊れているように感じる。**
 // 800ms だと素早く2回押した2回目が完全に無反応だったので 400ms に縮めた（2026-08-15）。
 // 連打の害は、受け取る側の下限と、同時に浮かぶ数の上限で抑える。
@@ -1560,6 +1581,9 @@ const flyReaction = (uid, idx) => {
   el.style.top = (r.top - 4) + 'px'
   document.body.appendChild(el)
   setTimeout(() => el.remove(), 1400)
+  // 音は**上の門番を通ったものだけ**鳴らす（同時上限も連打の下限もここまでで効いている）。
+  // 先に鳴らすと、絵文字が出ないのに音だけ鳴る＝うるさいだけの状態になる。
+  soundReact(idx)
 }
 const sendReaction = idx => {
   if (!call.joinedId || !call.reactAction) return
@@ -1808,6 +1832,7 @@ const runJoin = async () => {
   // という「効かないボタン」になっていた（join と leave の非対称）。
   $('unlock').style.display = 'none'
   $('sndPeerRow').style.display = 'flex'   // 入室・退出音のトグルは通話中だけ表示（ミュート/退出と同じ）
+  $('sndReactRow').style.display = 'flex'
   $('retry').hidden = false
   roomInput.disabled = true; lockProfile(true)
   // 通話中は名前も部屋名も変えられないので、入力欄ごと畳む（名前は参加者リスト、部屋名は状態表示に出ている）
@@ -1840,6 +1865,7 @@ $('mute').onclick = toggleMute
 const resetJoinedUI = () => {
   $('join').style.display = 'flex'; $('mute').style.display = 'none'; $('leave').style.display = 'none'; $('unlock').style.display = 'none'
   $('sndPeerRow').style.display = 'none'
+  $('sndReactRow').style.display = 'none'
   $('retry').hidden = true
   roomInput.disabled = false; lockProfile(false)
   $('setupFields').classList.remove('collapsed')   // join で畳んだ入力欄を戻す
