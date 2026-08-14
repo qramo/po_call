@@ -263,12 +263,13 @@
      塗りハート＝受け取っている（目立たない色で静かに置く）／割れたハート＝受け取っていない */
   /* ★箱の寸法は .m-conn と完全に揃えること。片方だけ大きいと、隣り合った
      経路アイコンと縦位置がずれて見える（2026-08-14 に実際にずれた） */
-  .m-ig{ flex:none; width:18px; height:18px; padding:0; border:0; background:transparent;
-    cursor:pointer; color:#ef5a3c; display:inline-flex; align-items:center;
-    justify-content:center; margin-left:8px }
-  /* ハートは上が広く下がとがるので、箱の中央に置くと**下がって見える**。1px 持ち上げて視覚的に揃える
-     （幾何学的な中心と、目が感じる中心がずれる。☁️ と並べたときに効く） */
-  .m-ig svg{ width:16px; height:16px; display:block; transform:translateY(-1px) }
+  /* ★共通の button{} は width だけでなく **margin-top:12px** も持っている。ここを打ち消さないと
+     ボタンだけ 6px 下がって、隣の経路アイコン（☁️/↔）と中心が揃わない（2026-08-14 に実測）。
+     行の中で他と並べるボタンを足すときは、必ず margin も殺すこと。 */
+  .m-ig{ flex:none; width:18px; height:18px; padding:0; margin:0; border:0;
+    background:transparent; cursor:pointer; color:#ef5a3c; display:inline-flex;
+    align-items:center; justify-content:center }
+  .m-ig svg{ width:16px; height:16px; display:block }
   .m-ig:hover{ color:#ff8266 }
   /* 無視中の行。**自分にだけ見える印**（相手には何も伝わらない）。忘れて混乱しないための表示 */
   .member.ignored{ opacity:.5 }
