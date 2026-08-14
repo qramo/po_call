@@ -259,10 +259,15 @@
   .m-mute svg{ width:13px; height:13px; color:#0d1526 }
   .member.muted .m-mute{ visibility:visible }
   .member.muted .m-emoji{ opacity:.45 }
-  /* 無視ボタン。行の右端。共通の button{width:100%} を打ち消す（ここを忘れると行が壊れる） */
-  .m-ig{ flex:none; width:auto; border:0; background:#1d2740; color:#9fb0c7; font-size:11px;
-    font-weight:700; padding:4px 9px; border-radius:999px; cursor:pointer; margin-left:4px }
-  .m-ig:hover{ background:#26324f; color:#eef2f8 }
+  /* 無視の切替。行の右端。共通の button{width:100%} を打ち消す（忘れると行が壊れる）。
+     塗りハート＝受け取っている（目立たない色で静かに置く）／割れたハート＝受け取っていない */
+  .m-ig{ flex:none; width:26px; height:26px; padding:0; border:0; background:transparent;
+    border-radius:50%; cursor:pointer; color:#3d4d66; display:flex; align-items:center;
+    justify-content:center; margin-left:2px }
+  .m-ig svg{ width:16px; height:16px }
+  .m-ig:hover{ background:#1d2740; color:#7a90ad }
+  .m-ig.off{ color:#ff8f88 }            /* 無視中。行が薄くなるぶん、ここだけは見える色にする */
+  .m-ig.off:hover{ color:#ffb3ae }
   /* 無視中の行。**自分にだけ見える印**（相手には何も伝わらない）。忘れて混乱しないための表示 */
   .member.ignored{ opacity:.5 }
   .member.ignored .m-name{ text-decoration:line-through }
@@ -1053,6 +1058,11 @@ const setCount = () => { $('count').textContent = call.peers.size }
 const MIC_OFF_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/><line x1="4" y1="3" x2="20" y2="21"/></svg>'
 // 接続経路アイコン。中継＝Cloudflareの雲（オレンジ）／直結＝双方向矢印（ティール）。色だけで意味を持たせる（案A）。
 const CLOUD_SVG  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.2 9.4 4 4 0 0 0 6.5 19z"/></svg>'
+// 無視の切替アイコン。**塗り＝受け取っている／割れた輪郭＝受け取っていない**。
+// 経路アイコン（☁️/↔）と同じく「いまの状態」を表す絵で、押すと入れ替わる。
+// ※絵だけでは意味が伝わらないので、**初めて押したときは必ず説明を出す**（下の ignorePeer 参照）。
+const HEART_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>'
+const HEART_BROKEN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/><path d="M12.6 5.6 10.4 10l3 1.8-2.2 3.3 1.5 2.6"/></svg>'
 const ARROWS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7 4 11l4 4"/><path d="M16 7l4 4-4 4"/><path d="M4 11h16"/></svg>'
 
 // 参加者リスト（自分＋接続中の相手）を描く。名前・絵文字は textContent で入れる（受信データは信用しない）。
@@ -1081,14 +1091,17 @@ const memberRow = (emoji, name, you, isMuted, stage, relay, action) => {
     c.innerHTML = relay ? CLOUD_SVG : ARROWS_SVG
     row.append(c)
   }
-  // 行の操作ボタン（いまは「無視」/「戻す」だけ）。**自分の行にも同じ幅の場所を空ける**
-  // ＝出さないのではなく見えなくする。行ごとに右端の要素が変わると、経路アイコン（☁️/↔）の
-  // 縦位置が行ごとにずれる。「無視」も「戻す」も2文字なので幅は揃う。
+  // 無視の切替（行の右端）。**自分の行にも同じ場所を空ける**＝出さないのではなく見えなくする。
+  // 行ごとに右端の要素が変わると、経路アイコン（☁️/↔）の縦位置がずれる。
   const b = document.createElement('button'); b.type = 'button'; b.className = 'm-ig'
   if (action) {
-    b.textContent = action.label; b.title = action.title; b.onclick = action.onClick
+    b.innerHTML = action.off ? HEART_BROKEN_SVG : HEART_SVG   // SVGは定数なので innerHTML で安全
+    if (action.off) b.classList.add('off')
+    b.title = action.title
+    b.setAttribute('aria-label', action.title)   // 絵だけなので読み上げ用の名前を付ける
+    b.onclick = action.onClick
   } else {
-    b.textContent = '無視'; b.disabled = true; b.setAttribute('aria-hidden', 'true')
+    b.innerHTML = HEART_SVG; b.disabled = true; b.setAttribute('aria-hidden', 'true')
     b.style.visibility = 'hidden'
   }
   row.append(b)
@@ -1145,8 +1158,8 @@ const renderMembers = () => {
     // 無視中でも**接続は生きている**ので peers に残る。行を薄くして取り消し線を引くのは
     // **自分にだけ見える印**（相手には何も伝わらない）。忘れて混乱しないためのもの。
     add(id, p.emoji, p.name, false, !!p.muted, p.stage, p.relay, ig
-      ? { label: '戻す', title: 'この人の音をまた受け取ります', onClick: () => unignorePeer(id) }
-      : { label: '無視', title: 'この人の音を受け取りません（相手には伝わりません）', onClick: () => ignorePeer(id) })
+      ? { off: true, title: 'この人の音をまた受け取る', onClick: () => unignorePeer(id) }
+      : { off: false, title: 'この人の音を受け取らない（無視。相手には伝わりません）', onClick: () => ignorePeer(id) })
     if (ig) membersEl.lastElementChild.classList.add('ignored')
   })
 }
@@ -1426,8 +1439,28 @@ const stopAudioWatch = () => {
 //  ・**相手にはこちらの声が届き続ける**。聞こえなくなるのは自分の側だけ。
 //  ・本当に離れたいなら退出。**1対1では退出のほうが適切**。
 //  ・相手が入り直すと peerId が変わるので**無視は外れる**（持続しない）。
+// **初めて押したときだけ**、何が起きるかを出して確かめる。
+// 理由が2つある。①アイコンだけでは意味が伝わらない（ハートは「お気に入り」と読まれうるので、
+// 誤って押した人をここで止める）。②**できないことを必ず伝える**必要がある——
+// 相手にはこちらの声が届き続ける。守りの道具が嘘の安心を与えるのが一番まずい。
+// 2回目からは出さない（毎回だと、嫌な思いをしている最中に手間が増える）。
+const IGNORE_SEEN_KEY = 'pot-call-ignore-seen'
+const confirmIgnore = name => {
+  try { if (localStorage.getItem(IGNORE_SEEN_KEY) === '1') return true } catch {}
+  const ok = confirm(
+    (name || 'この人') + ' の音を受け取らないようにします。\n\n' +
+    '・相手には伝わりません（通知も出ません）\n' +
+    '・ただし相手からは、あなたの声が聞こえたままです\n' +
+    '　本当に離れたいときは退出してください\n' +
+    '・相手が入り直すと無視は外れます\n\n' +
+    'いつでも戻せます。')
+  if (ok) { try { localStorage.setItem(IGNORE_SEEN_KEY, '1') } catch {} }
+  return ok
+}
+
 const ignorePeer = id => {
   if (call.ignored.has(id)) return
+  if (!confirmIgnore((call.profiles.get(id) || {}).name)) return
   call.ignored.add(id)
   dropAudios(id)        // 鳴っている音を止める（要素ごと捨てる）
   removeAnalyser(id)    // 絵文字の跳ねも止める＝画面から気配を消す
