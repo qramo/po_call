@@ -40,7 +40,7 @@
   script-src 'self' 'unsafe-inline' https://esm.sh https://static.cloudflareinsights.com;
   style-src 'self' 'unsafe-inline';
   img-src 'self' data:;
-  connect-src 'self' https://esm.sh https://pot-turn.itsuma-kuramoto.workers.dev https://cloudflareinsights.com wss://relay.primal.net wss://relay02.lnfi.network wss://purplerelay.com wss://bucket.coracle.social wss://yabu.me/v2 wss://x.kojira.io wss://relay.notoshi.win wss://relay.mostr.pub;
+  connect-src 'self' https://esm.sh https://pot-turn.itsuma-kuramoto.workers.dev https://cloudflareinsights.com wss://relay.primal.net wss://purplerelay.com wss://bucket.coracle.social wss://yabu.me/v2 wss://x.kojira.io wss://relay.notoshi.win wss://relay.mostr.pub;
   manifest-src 'self';
   base-uri 'self';
   form-action 'none';
@@ -640,14 +640,19 @@
 // 数はデバッグ用に window.__potPc() で読める（UIには出さない）。原因不明の不調が出たら
 // 開発者コンソールで叩いてもらうと、溜まっているのかどうかが一発で分かる。
 const PC_SWEEP_MS = 60 * 1000
+const PC_FAILED_WAIT_MS = 5000   // 'failed' を見てから閉じるまでの猶予（上の理由）
 let pcMade = 0, pcOpen = 0, pcSwept = 0
 {
   const Base = window.RTCPeerConnection
   window.RTCPeerConnection = class extends Base {
     constructor(...a) {
       super(...a); pcMade++; pcOpen++
+      // 'failed' はすぐ閉じない。**Trystero がその失敗を処理している最中に閉じると競合して**
+      // `OperationError: User-Initiated Abort, reason=Close called` がコンソールに出る
+      // （実害は無いが、コンソールを診断の道具として使いたいので黙らせる。2026-08-15）。
+      // 数秒待てば向こうの後始末が済んでいるので、そのあとで閉じる。
       this.addEventListener('connectionstatechange', () => {
-        if (this.connectionState === 'failed') this.__sweep()
+        if (this.connectionState === 'failed') setTimeout(() => this.__sweep(), PC_FAILED_WAIT_MS)
       })
       setTimeout(() => { if (this.connectionState !== 'connected') this.__sweep() }, PC_SWEEP_MS)
     }
@@ -1030,7 +1035,7 @@ const TRYSTERO_BASE = {
   appId: 'kuramo-webrtc-call',
   // 相手発見を速く・確実に：信頼できるnostrリレーを明示＋多重接続（デフォルトの当たり外れ対策）
   relayConfig: {
-    urls: ['wss://relay.primal.net', 'wss://relay02.lnfi.network', 'wss://purplerelay.com', 'wss://bucket.coracle.social', 'wss://yabu.me/v2', 'wss://x.kojira.io', 'wss://relay.notoshi.win', 'wss://relay.mostr.pub'],
+    urls: ['wss://relay.primal.net', 'wss://purplerelay.com', 'wss://bucket.coracle.social', 'wss://yabu.me/v2', 'wss://x.kojira.io', 'wss://relay.notoshi.win', 'wss://relay.mostr.pub'],
     redundancy: 5
   }
 }
