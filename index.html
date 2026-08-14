@@ -264,12 +264,12 @@
   /* ★箱の寸法は .m-conn と完全に揃えること。片方だけ大きいと、隣り合った
      経路アイコンと縦位置がずれて見える（2026-08-14 に実際にずれた） */
   .m-ig{ flex:none; width:18px; height:18px; padding:0; border:0; background:transparent;
-    cursor:pointer; color:#3d4d66; display:inline-flex; align-items:center;
+    cursor:pointer; color:#ef5a3c; display:inline-flex; align-items:center;
     justify-content:center; margin-left:8px }
-  .m-ig svg{ width:16px; height:16px; display:block }
-  .m-ig:hover{ color:#7a90ad }
-  .m-ig.off{ color:#ef5a3c }            /* 無視中。ミュート印と同じ赤（行が薄くなるので色で拾う） */
-  .m-ig.off:hover{ color:#ff8266 }
+  /* ハートは上が広く下がとがるので、箱の中央に置くと**下がって見える**。1px 持ち上げて視覚的に揃える
+     （幾何学的な中心と、目が感じる中心がずれる。☁️ と並べたときに効く） */
+  .m-ig svg{ width:16px; height:16px; display:block; transform:translateY(-1px) }
+  .m-ig:hover{ color:#ff8266 }
   /* 無視中の行。**自分にだけ見える印**（相手には何も伝わらない）。忘れて混乱しないための表示 */
   .member.ignored{ opacity:.5 }
   .member.ignored .m-name{ text-decoration:line-through }
@@ -1063,8 +1063,11 @@ const CLOUD_SVG  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 // 無視の切替アイコン。**塗り＝受け取っている／割れた輪郭＝受け取っていない**。
 // 経路アイコン（☁️/↔）と同じく「いまの状態」を表す絵で、押すと入れ替わる。
 // ※絵だけでは意味が伝わらないので、**初めて押したときは必ず説明を出す**（下の ignorePeer 参照）。
-const HEART_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>'
-const HEART_BROKEN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/><path d="M12.6 5.6 10.4 10l3 1.8-2.2 3.3 1.5 2.6"/></svg>'
+// 形は文字の ❤︎ に寄せてある（下がとがり、上の切れ込みが深い古典的な輪郭）。
+// 丸みの強いハートは「お気に入り」に見えやすいので、あえてこちらにしている。
+const HEART_PATH = 'M12 21C6.5 16.5 3 13.2 3 9.4 3 6.5 5.2 4.4 7.9 4.4c1.8 0 3.3 1.1 4.1 2.6.8-1.5 2.3-2.6 4.1-2.6C18.8 4.4 21 6.5 21 9.4c0 3.8-3.5 7.1-9 11.6z'
+const HEART_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="' + HEART_PATH + '"/></svg>'
+const HEART_BROKEN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + HEART_PATH + '"/><path d="M12 7 10.2 11.2l3.2 1.6-2.4 3.6 1.4 2.4"/></svg>'
 const ARROWS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7 4 11l4 4"/><path d="M16 7l4 4-4 4"/><path d="M4 11h16"/></svg>'
 
 // 参加者リスト（自分＋接続中の相手）を描く。名前・絵文字は textContent で入れる（受信データは信用しない）。
