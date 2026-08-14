@@ -271,6 +271,31 @@
     align-items:center; justify-content:center }
   .m-ig svg{ width:16px; height:16px; display:block }
   .m-ig:hover{ color:#ff8266 }
+  /* リアクション。参加者リストの真下＝**飛び出す先のすぐ下**に置く（視線がつながる）。
+     共通の button{} の width と margin をどちらも打ち消すこと（.m-ig と同じ罠） */
+  .reactions{ margin-top:8px; display:flex; gap:5px }
+  /* ★display を書いたら [hidden] も書くこと。ブラウザ既定の [hidden]{display:none} より
+     クラス指定のほうが強いので、hidden を付けても消えない（2026-08-15 に踏んだ） */
+  .reactions[hidden]{ display:none }
+  /* 押せると分かる見た目にする：**面をカードより一段明るく**（アプリ内で押せるチップに使っている色）、
+     枠を立て、上辺に細いハイライトを入れて浮かせる。押すと沈んで色が変わる＝指に返る。 */
+  .reactions button{ flex:1; width:auto; margin:0; padding:9px 0; font-size:19px; line-height:1.15;
+    border-radius:10px; background:#1d2740; border:1px solid rgba(255,255,255,.10); cursor:pointer;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 1px 2px rgba(0,0,0,.25);
+    transition:transform .09s ease, background .12s ease }
+  .reactions button:hover{ background:#26324f }
+  .reactions button:active{ transform:translateY(1px) scale(.94); background:#2f3d5f;
+    box-shadow:inset 0 2px 4px rgba(0,0,0,.35) }
+  /* 押した人のアバターから浮かぶ。**誰が押したか見えることが抑止力**であり、
+     ミュート（無視）の対象を特定できる唯一の手がかりでもある＝匿名にしないこと。
+     位置は実測して body に置く（#members の中だと親の overflow で切れる） */
+  .react-fly{ position:fixed; z-index:60; pointer-events:none; font-size:22px; line-height:1;
+    animation:react-fly 1.3s ease-out forwards }
+  @keyframes react-fly{
+    0%   { opacity:0; transform:translate(-50%,0) scale(.6) }
+    18%  { opacity:1; transform:translate(-50%,-14px) scale(1.15) }
+    100% { opacity:0; transform:translate(-50%,-58px) scale(1) }
+  }
   /* 無視中の行。**自分にだけ見える印**（相手には何も伝わらない）。忘れて混乱しないための表示 */
   .member.ignored{ opacity:.5 }
   .member.ignored .m-name{ text-decoration:line-through }
@@ -432,6 +457,8 @@
     <div style="margin-top:8px">いま一緒にいる人：<span class="peers" id="count">0</span> 人</div>
     <label class="snd-opt" id="sndPeerRow" style="display:none"><input type="checkbox" id="sndPeer"> 🔔 入室・退出を音で知らせる</label>
     <div id="members" class="members"></div>
+    <!-- リアクション。中身は JS が REACTIONS から作る（一覧の定義を1か所に保つ） -->
+    <div id="reactions" class="reactions" hidden></div>
     <!-- 経路アイコンの凡例。参加した直後だけ開いて出し、数秒で畳んで1行のボタンに戻る。
          中身は JS が入れる（行内アイコンと同じSVG定数を使い、見た目を必ず一致させるため） -->
     <details id="connLegend" class="conn-legend" hidden>
@@ -661,6 +688,9 @@ const CALL_INIT = () => ({
   profileAction: null,  // 名前・絵文字・ミュート状態を配るデータチャネル（参加中だけ有効）
   nudgeAction: null,    // 「音が届いていないので送り直して」を頼むデータチャネル
   byeAction: null,      // 「退出します」の合図（受け取れば正規の退出、来なければ接続断と書き分ける）
+  reactAction: null,    // リアクション（送るのは絵文字そのものではなく**一覧の添字**）
+  reactAt: 0,           // 自分が最後に送った時刻（連打の自衛）
+  reactSeen: new Map(), // peerId → 最後に受け入れた時刻（相手の連打への自衛）
   audioWatch: null,     // 音声の到着を見張るタイマー（join で開始・leave で停止）
   peerSince: new Map(), // peerId → 接続を認識した時刻（音の到着を待ち始めた起点）
   nudges: new Map(),    // peerId → {n: 送った回数, at: 最後に送った時刻}（頼む側）
@@ -1118,6 +1148,9 @@ const memberRow = (emoji, name, you, isMuted, stage, relay, action) => {
 // 読み手が立場を切り替えなくてよい（行ごとの正確な向きは title で補う）。
 const LEGEND_OPEN_MS = 8000   // 参加直後に開いておく時間。2行を読み切れて、居座らない長さ
 const legendEl = $('connLegend')
+// リアクションの置き場。**renderMembers から参照するので、ここで先に取る**
+// （実体のボタンは下の REACTIONS のところで作る）
+const reactionsEl = $('reactions')
 const connIcon = relay => {
   const ic = document.createElement('span')
   ic.className = 'm-conn ' + (relay ? 'relay' : 'direct')
@@ -1150,6 +1183,7 @@ $('connLegendSum').addEventListener('click', () => { clearTimeout(call.legendTim
 const renderMembers = () => {
   membersEl.replaceChildren(); emojiEls.clear()
   legendEl.hidden = !call.joinedId   // 凡例は通話中だけ（未参加のときはアイコン自体が出ない）
+  reactionsEl.hidden = !call.joinedId
   if (!call.joinedId) return
   const add = (uid, emoji, name, you, isMuted, stage, relay, action) => {
     const row = memberRow(emoji, name, you, isMuted, stage, relay, action)
@@ -1481,6 +1515,55 @@ const unignorePeer = id => {
   renderMembers()
 }
 
+// ───────── リアクション ─────────
+// **ワイヤに流すのは絵文字そのものではなく、この一覧の添字**。受け取った側は
+// **添字として扱い、自分が持っている一覧からしか描かない**。
+// こうしないと「改造クライアントが任意の文字（＝任意の絵）を他人の画面に出せる」穴になる
+// ＝画像共有を保留にした理由と同じ問題が裏口から入る。
+// **段階的に増やすときは、この配列を伸ばすだけ**。ワイヤ形式は変わらない。
+// 代償として**古いクライアントには新しい絵文字が出ない**（範囲外の添字は黙って捨てる）。
+//
+// 並びの意図：**否定的な絵文字（👎 😡）は入れない**。一発目は必ず届く（無視は常に事後）ので、
+// 否定リアクションを配ることは運営が加害の道具を配ることに等しい。🍵 はこのアプリの枠。
+// ❤️ は入れない：参加者リストの「無視」が赤いハートなので、意味が正反対のものが同じ画面に並ぶ。
+const REACTIONS = ['👏', '😂', '✨', '👍', '🤔', '😮', '🎉', '🍵']
+// 送る側の下限。**長くすると「押しても何も起きない」＝壊れているように感じる。**
+// 800ms だと素早く2回押した2回目が完全に無反応だったので 400ms に縮めた（2026-08-15）。
+// 連打の害は、受け取る側の下限と、同時に浮かぶ数の上限で抑える。
+const REACT_EVERY_MS  = 400
+const REACT_ACCEPT_MS = 300   // 受け取る側の下限。**送る側より必ず短くすること**
+                              // （nudge で踏んだ罠：長くすると正規のクライアントを弾く）
+const REACT_MAX_FLY   = 14    // 同時に浮かべる上限（DOM を溢れさせない）
+
+// 押した人のアバターから浮かべる。uid は参加者リストの行キー（自分は 'self'）。
+const flyReaction = (uid, idx) => {
+  const av = emojiEls.get(uid)
+  if (!av || document.querySelectorAll('.react-fly').length >= REACT_MAX_FLY) return
+  const r = av.getBoundingClientRect()
+  if (!r.width) return                     // 画面に出ていない（畳まれている等）
+  const el = document.createElement('div')
+  el.className = 'react-fly'
+  el.textContent = REACTIONS[idx]
+  el.style.left = (r.left + r.width / 2 + (Math.random() * 18 - 9)) + 'px'
+  el.style.top = (r.top - 4) + 'px'
+  document.body.appendChild(el)
+  setTimeout(() => el.remove(), 1400)
+}
+const sendReaction = idx => {
+  if (!call.joinedId || !call.reactAction) return
+  const now = Date.now()
+  if (now - call.reactAt < REACT_EVERY_MS) return
+  call.reactAt = now
+  call.reactAction.send(idx).catch(() => {})
+  flyReaction('self', idx)                 // 自分の分は自分で出す（送信は自分に返らない）
+}
+REACTIONS.forEach((e, i) => {
+  const b = document.createElement('button')
+  b.type = 'button'; b.textContent = e; b.title = 'リアクションを送る'
+  b.onclick = () => sendReaction(i)
+  reactionsEl.appendChild(b)
+})
+
 // 「退出した」のか「接続が切れた」のかを書き分ける。
 // 退出は**出ていく側が 'bye' を送ってから抜ける**ので、来ていれば正規の退出。来ないまま消えたら異常。
 // 本物の回線障害でも出るが、それも含めて「何かおかしい」と分かるほうがよい。
@@ -1647,6 +1730,17 @@ const runJoin = async () => {
     // 古いクライアントは送ってこないので、その相手は常に「切れた」扱いになる＝**過剰に警告する側**へ倒す。
     call.byeAction = call.room.makeAction('bye')
     call.byeAction.onMessage = (_d, { peerId }) => call.byeSeen.add(peerId)
+
+    call.reactAction = call.room.makeAction('react')
+    call.reactAction.onMessage = (data, { peerId }) => {
+      // ★受け取った値をそのまま描かない。**添字として検査**し、一覧の中のものだけを出す。
+      if (!Number.isInteger(data) || data < 0 || data >= REACTIONS.length) return
+      if (call.ignored.has(peerId)) return          // 無視した相手のリアクションは出さない
+      const now = Date.now()
+      if (now - (call.reactSeen.get(peerId) || 0) < REACT_ACCEPT_MS) return   // 連打への自衛
+      call.reactSeen.set(peerId, now)
+      flyReaction(peerId, data)
+    }
 
     call.room.onPeerJoin = id => { call.peers.add(id); call.peerSince.set(id, Date.now()); call.room.addStream(call.stream, { target: id }); sendProfile(id); call.warn = ''; setCount(); render(); renderMembers(); soundJoin() }
     call.room.onPeerLeave = id => {
