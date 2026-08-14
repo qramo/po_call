@@ -417,7 +417,9 @@
 <div class="wrap">
 <div class="card">
   <div class="head-row">
-    <h1><span>🫖 ぽっと通話</span><span>〈実験版〉</span></h1>
+    <!-- 見出しの絵文字だけ、旧URL（ベータ路）では 🦞 に戻す。あちらの顔だったので。
+         中身は JS が入れる（hostname 判定なので beta ブランチに差分を持たずに済む） -->
+    <h1><span><span id="brandMark">🫖</span> ぽっと通話</span><span>〈実験版〉</span></h1>
     <button id="help" class="help-btn" type="button" aria-haspopup="dialog">これはなに？</button>
   </div>
   <p class="sub">同じ部屋を開いた人どうし、声でつながります。</p>
@@ -737,7 +739,10 @@ $('ver').textContent = APP_VERSION
 // 「差し替えたつもりが古いままだった」を実際に踏んでいる。
 // **hostname から自動で決めるので、beta ブランチ側に差分を持たなくてよい**
 // （差分にすると main を取り込むたびに衝突する。持たせる差分は CNAME と Analytics トークンだけ）。
-if (location.hostname !== 'potalk.app') $('chan').textContent = ' β'
+if (location.hostname !== 'potalk.app') {
+  $('chan').textContent = ' β'
+  $('brandMark').textContent = '🦞'   // 旧URLの顔（tools/banner.html にも同じ 🦞 が残っている）
+}
 
 // ホーム追加（PWA）判定。display-mode が使えない古いiOS向けに navigator.standalone も見て
 // html.pwa を付ける（CSS側で上部の余白＝ステータスバー回避に使う）。
