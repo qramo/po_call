@@ -261,13 +261,15 @@
   .member.muted .m-emoji{ opacity:.45 }
   /* 無視の切替。行の右端。共通の button{width:100%} を打ち消す（忘れると行が壊れる）。
      塗りハート＝受け取っている（目立たない色で静かに置く）／割れたハート＝受け取っていない */
-  .m-ig{ flex:none; width:26px; height:26px; padding:0; border:0; background:transparent;
-    border-radius:50%; cursor:pointer; color:#3d4d66; display:flex; align-items:center;
-    justify-content:center; margin-left:2px }
-  .m-ig svg{ width:16px; height:16px }
-  .m-ig:hover{ background:#1d2740; color:#7a90ad }
-  .m-ig.off{ color:#ff8f88 }            /* 無視中。行が薄くなるぶん、ここだけは見える色にする */
-  .m-ig.off:hover{ color:#ffb3ae }
+  /* ★箱の寸法は .m-conn と完全に揃えること。片方だけ大きいと、隣り合った
+     経路アイコンと縦位置がずれて見える（2026-08-14 に実際にずれた） */
+  .m-ig{ flex:none; width:18px; height:18px; padding:0; border:0; background:transparent;
+    cursor:pointer; color:#3d4d66; display:inline-flex; align-items:center;
+    justify-content:center; margin-left:8px }
+  .m-ig svg{ width:16px; height:16px; display:block }
+  .m-ig:hover{ color:#7a90ad }
+  .m-ig.off{ color:#ef5a3c }            /* 無視中。ミュート印と同じ赤（行が薄くなるので色で拾う） */
+  .m-ig.off:hover{ color:#ff8266 }
   /* 無視中の行。**自分にだけ見える印**（相手には何も伝わらない）。忘れて混乱しないための表示 */
   .member.ignored{ opacity:.5 }
   .member.ignored .m-name{ text-decoration:line-through }
