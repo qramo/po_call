@@ -706,6 +706,8 @@ const CALL_INIT = () => ({
   reactAction: null,    // リアクション（送るのは絵文字そのものではなく**一覧の添字**）
   reactAt: 0,           // 自分が最後に送った時刻（連打の自衛）
   reactSeen: new Map(), // peerId → 最後に受け入れた時刻（相手の連打への自衛）
+  lostPeer: false,      // 予告なく（'bye' 無しで）相手を失ったか。自動復帰の判定に使う
+  lostAt: 0,            // 壊れた状態が続き始めた時刻（0＝壊れていない）
   audioWatch: null,     // 音声の到着を見張るタイマー（join で開始・leave で停止）
   peerSince: new Map(), // peerId → 接続を認識した時刻（音の到着を待ち始めた起点）
   nudges: new Map(),    // peerId → {n: 送った回数, at: 最後に送った時刻}（頼む側）
@@ -1485,6 +1487,7 @@ const checkAudioArrival = () => {
     call.nudges.set(id, { n: st.n + 1, at: now })
   })
   renderAudioWarn(stuck)
+  checkRecover(now, stuck)
 }
 const stopAudioWatch = () => {
   if (call.audioWatch) { clearInterval(call.audioWatch); call.audioWatch = null }
@@ -1783,13 +1786,14 @@ const runJoin = async () => {
       flyReaction(peerId, data)
     }
 
-    call.room.onPeerJoin = id => { call.peers.add(id); call.peerSince.set(id, Date.now()); call.room.addStream(call.stream, { target: id }); sendProfile(id); call.warn = ''; setCount(); render(); renderMembers(); soundJoin() }
+    call.room.onPeerJoin = id => { call.peers.add(id); call.peerSince.set(id, Date.now()); call.room.addStream(call.stream, { target: id }); sendProfile(id); call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin() }
     call.room.onPeerLeave = id => {
       // 'bye' が来ていなければ異常な切断。本物の回線障害でも出るが、**理由は分からなくても
       // 「何かおかしい」と分かる**ほうがよい（自分の回線のせいだと思い込まないため）。
       if (!call.byeSeen.has(id)) {
         const who = (call.profiles.get(id) || {}).name || '相手'
         showPeerNotice('🔌 ' + who + ' との接続が切れました（退出ではありません）')
+        call.lostPeer = true        // 自動復帰の判定材料（普通の退出と区別する）
       }
       call.peers.delete(id); call.profiles.delete(id); call.peerSince.delete(id)
       call.nudges.delete(id); call.nudgeSeen.delete(id); call.byeSeen.delete(id)
@@ -1884,17 +1888,67 @@ const resetJoinedUI = () => {
 // 相手から見て正真正銘の新規参加になる。TURN資格情報とライブラリも取り直される。
 // ＝もともと目指していた「リロードで直るのと同じ状態」に、これで実際になる。
 let retrying = false
-$('retry').onclick = async () => {
+// ボタンからも自動復帰からも呼ぶ。**中身は同じ**（＝自動復帰は「利用者が押すはずだったものを
+// 代わりに押す」だけ。新しい直し方を発明しない）。
+const doReconnect = async ({ auto = false } = {}) => {
   if (retrying || !call.joinedId) return
   retrying = true
   $('retry').disabled = true
-  setState('つなぎ直しています…', 'busy')
+  setState(auto ? 'つながりが切れたので、つなぎ直しています…' : 'つなぎ直しています…', 'busy')
   try { sessionStorage.setItem(REJOIN_KEY, JSON.stringify({ room: call.joinedId, muted: call.muted, at: Date.now() })) } catch {}
   // 先に退出を伝えてからリロードする。相手がこちらの離脱を早く知るほど、戻ったときに
   // すんなり繋ぎ直してもらえる。ただし完了を待ち続けない（届かなくてもリロードは進める）。
   leaveCall()
   try { await Promise.race([call.leaving, new Promise(r => setTimeout(r, 1200))]) } catch {}
   location.reload()
+}
+$('retry').onclick = () => doReconnect()
+
+// ───────── 自動復帰 ─────────
+// **足りないのは検知でも直し方でもなく、「提示している対処を自分で実行すること」だけ**だった。
+// 2026-08-13 に2回踏んだ：①通話が30分で切れて入退室では戻らなかった ②常駐の張り直しで
+// 音だけ死んで戻らなかった。どちらもアプリは正しく検知して「つなぎ直す」を勧めていて、
+// その対処で実際に直った。だから**同じ処理を、条件を絞って自分で呼ぶ**。
+//
+// ★いちばん怖いのはリロードの無限ループ。壊れたまま直らない状況で回り続けると、
+//   数十秒ごとに画面が再読み込みされ続けて**手動で操作する隙すら無くなる**。
+//   なので回数を数えて必ず打ち止めにし、そのあとは人に委ねる。
+const AUTO_KEY = 'pot-call-auto-recover'   // sessionStorage（リロードを跨いで数えるため）
+const AUTO_MAX = 2                          // この窓の中で自動復帰を許す回数
+const AUTO_WINDOW_MS = 10 * 60 * 1000
+const RECOVER_AFTER_MS = 25000              // 壊れた状態がこれだけ続いたら動く（瞬断は自然に治る）
+const autoLeft = () => {
+  try {
+    const r = JSON.parse(sessionStorage.getItem(AUTO_KEY) || '{}')
+    if (!r.at || Date.now() - r.at > AUTO_WINDOW_MS) return AUTO_MAX   // 窓を過ぎたら忘れる
+    return Math.max(0, AUTO_MAX - (r.n || 0))
+  } catch { return AUTO_MAX }
+}
+const spendAuto = () => {
+  try {
+    const r = JSON.parse(sessionStorage.getItem(AUTO_KEY) || '{}')
+    const fresh = !r.at || Date.now() - r.at > AUTO_WINDOW_MS
+    sessionStorage.setItem(AUTO_KEY, JSON.stringify({ n: (fresh ? 0 : r.n || 0) + 1, at: Date.now() }))
+  } catch {}
+}
+// 「壊れている」の判定。**誤爆すると通話中に勝手にリロードされる**ので、条件は狭く取る。
+//  ・cut … 予告なく（'bye' 無しで）相手を失って、いま誰もいない
+//          ＝相手が普通に退出しただけの「一人になった」とは区別される
+//  ・deaf … 繋がってはいるが、**催促を使い切ってなお誰の音も来ない**
+const isBroken = stuck =>
+  (call.lostPeer && call.peers.size === 0) ||
+  (call.peers.size > 0 && stuck.length === call.peers.size)
+const checkRecover = (now, stuck) => {
+  if (!call.joinedId || retrying || !isBroken(stuck)) { call.lostAt = 0; return }
+  if (!call.lostAt) { call.lostAt = now; return }              // 壊れ始めた時刻を覚える
+  if (now - call.lostAt < RECOVER_AFTER_MS) return             // まだ待つ（瞬断かもしれない）
+  if (!autoLeft()) {                                           // 打ち止め。ここから先は人に委ねる
+    showPeerNotice('🔌 自動でつなぎ直しましたが直りませんでした。「つなぎ直す」を押すか、時間をおいて入り直してください')
+    call.lostAt = now                                          // 通知を出し続けないよう数え直す
+    return
+  }
+  spendAuto()
+  doReconnect({ auto: true })
 }
 
 // 退出：join が確保したもの（マイク・room・audio要素・解析・画面ロック・タイマー類）を全て解放する。
