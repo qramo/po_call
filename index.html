@@ -1571,8 +1571,8 @@ const REACTIONS = ['👏', '😂', '✨', '👍', '🤔', '😮', '🎉', '🍵'
 // 通話中に鳴るので**短く（最大0.3秒）・小さく**。鳴らす条件と同時上限は flyReaction 側で見る。
 // リアクション音の全体倍率。**ここだけで大小を調整する**（1粒ずつ直さない）。
 // 当初 0.03〜0.06 で作ったが**小さすぎて気づかない**と分かったので上げた（2026-08-15）。
-// 既存の通知音（入退室）が 0.11 なので、いちばん強い粒がそれと同等になる倍率にしてある。
-const REACT_VOL = 2.0
+// 2.0 でもまだ弱いと言われて 3.0 にした（2026-08-15）。通知音より前に出る大きさ。
+const REACT_VOL = 3.0
 let noiseBuf = null
 const getNoise = ctx => {
   if (!noiseBuf || noiseBuf.sampleRate !== ctx.sampleRate) {
@@ -1583,9 +1583,10 @@ const getNoise = ctx => {
   return noiseBuf
 }
 // 帯域を絞ったノイズの粒。拍手・ポンに使う（q を上げるほど「コン」に寄る）
-const noiseHit = (ctx, { at, dur, freq, q = 1, gain = 0.05 }) => {
+const noiseHit = (ctx, { at, dur, freq, q = 1, gain = 0.05, type = 'bandpass' }) => {
   const s = ctx.createBufferSource(); s.buffer = getNoise(ctx)
-  const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q
+  // **乾いた音にしたいときは highpass**。bandpass で Q を上げるほど響き（胴鳴り）が付く。
+  const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q
   const g = ctx.createGain()
   g.gain.setValueAtTime(gain * REACT_VOL, at)
   g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
@@ -1611,16 +1612,20 @@ const REACT_SOUND = [
   //    ・粒ごとに帯域・長さ・音量を振る＝同じ音の繰り返しに聞こえないようにする
   //    ・音量は後半へ向けて落とす。重なっても膨れないよう1粒は小さく取る
   (c, t) => {
-    ;[0, 0.013, 0.027].forEach(d => noiseHit(c, { at: t + d, dur: 0.03, freq: 1400, q: 5, gain: 0.045 }))
-    const n = 26
+    // 頭の3連打。**高く・短く・帯域を広く**（highpass）＝乾いた「パンッ」になる。
+    // 低い bandpass ＋ 長い減衰にすると、こもって「ボッ」に寄る（最初これで弱く聞こえた）
+    ;[0, 0.012, 0.025].forEach(d =>
+      noiseHit(c, { at: t + d, dur: 0.016, freq: 2600, q: 0.8, gain: 0.05, type: 'highpass' }))
+    const n = 30
     for (let i = 0; i < n; i++) {
       const p = i / n
       const at = t + 0.04 + Math.pow(p, 1.7) * 0.85 + Math.random() * 0.035
-      const fade = 1 - p * 0.6
+      const fade = 1 - p * 0.55
       noiseHit(c, {
-        at, dur: 0.025 + Math.random() * 0.02,
-        freq: 1050 + Math.random() * 950, q: 4 + Math.random() * 3,
-        gain: 0.026 * fade * (0.55 + Math.random() * 0.7)
+        at, dur: 0.010 + Math.random() * 0.012,          // 短い＝乾く
+        freq: 1900 + Math.random() * 1700, q: 0.7,        // 高い＋帯域広め＝乾く
+        gain: 0.03 * fade * (0.55 + Math.random() * 0.7),
+        type: 'highpass'
       })
     }
   },
