@@ -251,7 +251,7 @@
   .eq{ margin-top:12px; font-family:'Courier New',ui-monospace,monospace; font-size:20px;
     line-height:1; letter-spacing:3px; color:#00e5cc; text-shadow:0 0 7px rgba(0,229,204,.45);
     white-space:nowrap; overflow:hidden; user-select:none; text-align:center }
-  .member{ display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:10px; background:#0d1526;
+  .member{ position:relative; display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:10px; background:#0d1526;
     transition:background .12s, box-shadow .12s }
   .member.speaking{ background:#0c2b2a; box-shadow:0 0 0 1px #00e5cc inset }
   /* transform は VAD が毎フレーム直接書き換える。中心基準で拡大し、GPUに乗せる */
@@ -318,8 +318,13 @@
     background:#1d2740; color:#cfe }
   .chat-row button:hover{ background:#26324f }
   .chat-row button:disabled{ opacity:.45 }
-  /* 吹き出し。**中身は必ず textContent で入れる**（他人が決めた文字がここに出る） */
-  .chat-bubble{ position:fixed; z-index:60; pointer-events:none; max-width:min(62vw, 260px);
+  /* 吹き出し。**中身は必ず textContent で入れる**（他人が決めた文字がここに出る）。
+     ★position:fixed で座標を計算して置いてはいけない。**一度置いたら動かない**ので、
+     キーボードの開閉やスクロールでレイアウトが動くと、行から離れた場所に取り残される
+     （2026-08-15 に踏んだ。リアクションは1.3秒で消えるので目立たないが、こちらは4.6秒残る）。
+     行（.member）を基準にした absolute にすれば、行と一緒に動くので計算そのものが要らない。 */
+  .chat-bubble{ position:absolute; left:0; bottom:calc(100% + 4px); z-index:5;
+    pointer-events:none; max-width:min(88%, 260px);
     padding:7px 10px; border-radius:12px; border-bottom-left-radius:3px;
     background:#26324f; color:#eef2f8; font-size:13px; line-height:1.5;
     box-shadow:0 4px 14px rgba(0,0,0,.35); word-break:break-word;
@@ -1778,30 +1783,15 @@ const CHAT_MAX_BUBBLE = 6     // 同時に出す上限
 chatText.maxLength = CHAT_MAX
 
 const showBubble = (uid, text) => {
-  const av = emojiEls.get(uid)
-  if (!av || !text) return
+  // **行そのものに入れる。**座標を計算して body に置くと、あとでレイアウトが動いたときに
+  // 取り残される（上の CSS のコメント参照）。行に入れておけば一緒に動く。
+  const row = emojiEls.get(uid)?.parentElement
+  if (!row || !text) return
   if (document.querySelectorAll('.chat-bubble').length >= CHAT_MAX_BUBBLE) return
-  const r = av.getBoundingClientRect()
-  if (!r.width) return
   const el = document.createElement('div')
   el.className = 'chat-bubble'
   el.textContent = text                    // ★ここを innerHTML にしないこと
-  el.style.left = r.left + 'px'
-  el.style.top = '0px'
-  document.body.appendChild(el)
-  // **アバターの真上に置く。**右横に置くと名前に重なって、どちらも読めなくなる。
-  // 高さは中身（文の長さ）で変わるので、**置いてから測って**上へ持ち上げる。
-  // 左端をアバターに揃えると「この人のもの」が見て分かる（角の丸みも左下だけ落としてある）。
-  el.style.top = (r.top - el.getBoundingClientRect().height - 6) + 'px'
-  // 画面の内側へ収め直す。**上も見ること**＝スマホでキーボードが出ると相手（や自分）の行が
-  // 画面の外へ押し出され、そのままだと吹き出しが画面外に描かれて見えない。
-  // 位置の基準は visualViewport（キーボードで狭くなった実際の見える範囲）を優先する。
-  const vv = window.visualViewport
-  const L = vv ? vv.offsetLeft : 0, T = vv ? vv.offsetTop : 0
-  const W = vv ? vv.width : innerWidth, H = vv ? vv.height : innerHeight
-  const b = el.getBoundingClientRect()
-  el.style.left = Math.min(Math.max(L + 8, b.left), L + W - 8 - b.width) + 'px'
-  el.style.top = Math.min(Math.max(T + 8, b.top), T + H - 8 - b.height) + 'px'
+  row.appendChild(el)
   setTimeout(() => el.remove(), 4700)
 }
 const sendChat = () => {
