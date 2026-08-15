@@ -256,8 +256,13 @@
   .member.speaking{ background:#0c2b2a; box-shadow:0 0 0 1px #00e5cc inset }
   /* transform は VAD が毎フレーム直接書き換える。中心基準で拡大し、GPUに乗せる */
   .m-emoji{ font-size:22px; line-height:1; transform-origin:center; will-change:transform }
-  .m-name{ font-size:14px; color:#eef2f8; word-break:break-all }
-  .m-name .you{ color:#9fb0c7; font-size:12px }
+  /* 名前の箱。**縮んでよいのは名前だけ**で、成長絵文字と（あなた）は縮ませない。
+     min-width:0 が要点＝これが無いと flex の子は中身より小さくならず、行からはみ出す。 */
+  .m-id{ display:flex; align-items:baseline; gap:4px; min-width:0; flex:1 }
+  .m-name{ font-size:14px; color:#eef2f8; min-width:0; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap }
+  .m-stage{ flex:none; font-size:14px }
+  .m-id .you{ flex:none; color:#9fb0c7; font-size:12px; white-space:nowrap }
   /* ミュート印＝朱色の丸い土台に暗いマイク斜線（退出ボタンと同系）。常に置いて visibility だけ切替 */
   .m-mute{ margin-left:auto; flex:none; width:22px; height:22px; border-radius:50%;
     background:#ef5a3c; display:inline-flex; align-items:center; justify-content:center; visibility:hidden }
@@ -1128,13 +1133,19 @@ const emojiEls = new Map()  // uid('self'|peerId) → 現在の絵文字要素�
 const memberRow = (emoji, name, you, isMuted, stage, relay, action) => {
   const row = document.createElement('div'); row.className = 'member' + (isMuted ? ' muted' : '')
   const av = document.createElement('span'); av.className = 'm-emoji'; av.textContent = emoji || '🙂'
-  const nm = document.createElement('span'); nm.className = 'm-name'; nm.textContent = name || 'ゲスト'
-  if (stage) nm.append(' ' + stage)   // 成長段階の絵文字（名前の後ろ）
-  if (you) { const t = document.createElement('span'); t.className = 'you'; t.textContent = '（あなた）'; nm.append(' ', t) }
+  // 名前・成長・（あなた）は1つの箱にまとめる。**縮んでよいのは名前だけ**で、
+  // 🌿 と（あなた）は必ず残す。以前は全部を .m-name に入れていたので、
+  // 名前が長いと「（あな／た）」のように**折り返しの途中で割れていた**（狭い画面で発生）。
+  const id = document.createElement('span'); id.className = 'm-id'
+  const nm = document.createElement('span'); nm.className = 'm-name'
+  nm.textContent = name || 'ゲスト'; nm.title = name || 'ゲスト'   // 詰められた分は title で読める
+  id.append(nm)
+  if (stage) { const st = document.createElement('span'); st.className = 'm-stage'; st.textContent = stage; id.append(st) }
+  if (you) { const t = document.createElement('span'); t.className = 'you'; t.textContent = '（あなた）'; id.append(t) }
   // ミュート印はボタンと同じマイク斜線SVG（絵文字ではなく揃える）。常に置いて visibility だけ切替
   // ＝追加/削除で行の高さが変わり枠がピクつくのを防ぐ。margin-left:auto で右クラスタを右端へ寄せる。
   const m = document.createElement('span'); m.className = 'm-mute'; m.title = 'ミュート中'; m.innerHTML = MIC_OFF_SVG
-  row.append(av, nm, m)
+  row.append(av, id, m)
   // 接続経路アイコン（行の右端）。経路が分かるときだけ足す（不明なら出さない）。SVGは定数なので innerHTML で安全。
   if (relay !== undefined) {
     const c = document.createElement('span'); c.className = 'm-conn ' + (relay ? 'relay' : 'direct')
