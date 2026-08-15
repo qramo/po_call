@@ -304,7 +304,10 @@
   /* ひとこと。共通の button{} の width と margin をここでも打ち消す（行に並べるので） */
   .chat-row{ margin-top:6px; display:flex; gap:6px }
   .chat-row[hidden]{ display:none }
-  .chat-row input{ flex:1; min-width:0; padding:9px 11px; border-radius:10px; font-size:14px;
+  /* ★font-size は 16px を下回らせないこと。**iOS は 16px 未満の入力欄にフォーカスすると
+     勝手に拡大する**（左右のズレはその副作用）。共通の input{} が 16px なのはそのため。
+     `user-scalable=no` で殺す手は使わない（拡大できないと困る人がいる）。 */
+  .chat-row input{ flex:1; min-width:0; padding:9px 11px; border-radius:10px; font-size:16px;
     background:#0d1526; color:#eef2f8; border:1px solid rgba(255,255,255,.10) }
   .chat-row input::placeholder{ color:#5a6b83 }
   .chat-row button{ flex:none; width:auto; margin:0; padding:9px 14px; font-size:13px;
