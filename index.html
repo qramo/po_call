@@ -1604,29 +1604,42 @@ const toneHit = (ctx, { at, dur, freq, to, gain = 0.05, type = 'sine' }) => {
   o.connect(g); g.connect(ctx.destination)
   o.start(at); o.stop(at + dur + 0.03)
 }
+// FM の粒。**キャリアを非整数比のモジュレータで深く変調する**と、倍音が整数列から外れて
+// 金属的でノイズに近い音になる＝FM音源のドラムの作り方。ノイズ＋フィルタとは質感が違い、
+// 「乾いているのに芯がある」音になる。変調の深さも減衰させると、頭は金属的・尻は素直になる。
+const fmHit = (ctx, { at, dur, carrier, ratio, index, gain = 0.05 }) => {
+  const c = ctx.createOscillator(); c.frequency.value = carrier
+  const m = ctx.createOscillator(); m.frequency.value = carrier * ratio
+  const mg = ctx.createGain()
+  mg.gain.setValueAtTime(carrier * index, at)
+  mg.gain.exponentialRampToValueAtTime(carrier * index * 0.04, at + dur)
+  m.connect(mg); mg.connect(c.frequency)
+  const g = ctx.createGain()
+  g.gain.setValueAtTime(gain * REACT_VOL, at)
+  g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
+  c.connect(g); g.connect(ctx.destination)
+  m.start(at); c.start(at); m.stop(at + dur + 0.02); c.stop(at + dur + 0.02)
+}
 // REACTIONS と**同じ並び**であること（添字で引いている）
 const REACT_SOUND = [
-  // 👏 拍手：1回のクラップではなく**沸いてから、ばらけて終わる**1秒弱。
-  //    ・頭は 808 風に十数ms差で3連打して、はっきり始まらせる
-  //    ・そのあと粒を撒く。時刻を p^1.7 で歪めて**密度を前半に寄せる**（等間隔だと機械になる）
-  //    ・粒ごとに帯域・長さ・音量を振る＝同じ音の繰り返しに聞こえないようにする
-  //    ・音量は後半へ向けて落とす。重なっても膨れないよう1粒は小さく取る
+  // 👏 拍手：**FM音源のクラップ**。ノイズではなく非整数比の変調で作る（上の fmHit 参照）。
+  //    頭は4連打の flam ではっきり始め、そのあと粒を1秒弱ばらまく。
+  //    時刻を p^1.7 で歪めて密度を前半に寄せる（等間隔だと機械になる）。
+  //    粒ごとにキャリアと比を振る＝同じ音の繰り返しに聞こえないようにする。
   (c, t) => {
-    // 頭の3連打。**高く・短く・帯域を広く**（highpass）＝乾いた「パンッ」になる。
-    // 低い bandpass ＋ 長い減衰にすると、こもって「ボッ」に寄る（最初これで弱く聞こえた）
-    ;[0, 0.012, 0.025].forEach(d =>
-      noiseHit(c, { at: t + d, dur: 0.016, freq: 2600, q: 0.8, gain: 0.05, type: 'highpass' }))
+    const grain = (at, gain, big) => fmHit(c, {
+      at, dur: big ? 0.026 : 0.014 + Math.random() * 0.010,
+      carrier: 1500 + Math.random() * 800,
+      ratio: 3.3 + Math.random() * 1.4,     // 非整数＝倍音が整数列から外れる＝金属的
+      index: 9 + Math.random() * 7,          // 深く変調するほどノイズに近づく
+      gain
+    })
+    ;[0, 0.011, 0.023, 0.036].forEach((d, i) => grain(t + d, 0.055 - i * 0.006, true))
     const n = 30
     for (let i = 0; i < n; i++) {
       const p = i / n
-      const at = t + 0.04 + Math.pow(p, 1.7) * 0.85 + Math.random() * 0.035
-      const fade = 1 - p * 0.55
-      noiseHit(c, {
-        at, dur: 0.010 + Math.random() * 0.012,          // 短い＝乾く
-        freq: 1900 + Math.random() * 1700, q: 0.7,        // 高い＋帯域広め＝乾く
-        gain: 0.03 * fade * (0.55 + Math.random() * 0.7),
-        type: 'highpass'
-      })
+      grain(t + 0.05 + Math.pow(p, 1.7) * 0.85 + Math.random() * 0.035,
+            0.03 * (1 - p * 0.55) * (0.55 + Math.random() * 0.7))
     }
   },
   // 😂 跳ねながら下がる3音
