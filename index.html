@@ -1569,6 +1569,10 @@ const REACTIONS = ['👏', '😂', '✨', '👍', '🤔', '😮', '🎉', '🍵'
 // 音程のあるものは**すべて C のペンタトニックから取る**ので、何人が同時に押しても濁らない。
 // ノイズで作るもの（拍手・ポン）はそもそも音程が無いのでぶつからない。
 // 通話中に鳴るので**短く（最大0.3秒）・小さく**。鳴らす条件と同時上限は flyReaction 側で見る。
+// リアクション音の全体倍率。**ここだけで大小を調整する**（1粒ずつ直さない）。
+// 当初 0.03〜0.06 で作ったが**小さすぎて気づかない**と分かったので上げた（2026-08-15）。
+// 既存の通知音（入退室）が 0.11 なので、いちばん強い粒がそれと同等になる倍率にしてある。
+const REACT_VOL = 2.0
 let noiseBuf = null
 const getNoise = ctx => {
   if (!noiseBuf || noiseBuf.sampleRate !== ctx.sampleRate) {
@@ -1583,7 +1587,7 @@ const noiseHit = (ctx, { at, dur, freq, q = 1, gain = 0.05 }) => {
   const s = ctx.createBufferSource(); s.buffer = getNoise(ctx)
   const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q
   const g = ctx.createGain()
-  g.gain.setValueAtTime(gain, at)
+  g.gain.setValueAtTime(gain * REACT_VOL, at)
   g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
   s.connect(f); f.connect(g); g.connect(ctx.destination)
   s.start(at); s.stop(at + dur + 0.02)
@@ -1594,17 +1598,31 @@ const toneHit = (ctx, { at, dur, freq, to, gain = 0.05, type = 'sine' }) => {
   o.type = type; o.frequency.setValueAtTime(freq, at)
   if (to) o.frequency.exponentialRampToValueAtTime(to, at + dur * 0.9)
   g.gain.setValueAtTime(0.0001, at)
-  g.gain.exponentialRampToValueAtTime(gain, at + 0.008)
+  g.gain.exponentialRampToValueAtTime(gain * REACT_VOL, at + 0.008)
   g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
   o.connect(g); g.connect(ctx.destination)
   o.start(at); o.stop(at + dur + 0.03)
 }
 // REACTIONS と**同じ並び**であること（添字で引いている）
 const REACT_SOUND = [
-  // 👏 TR-808 風のクラップ：帯域を絞ったノイズを十数ms差で3連打し、短い余韻を足す
+  // 👏 拍手：1回のクラップではなく**沸いてから、ばらけて終わる**1秒弱。
+  //    ・頭は 808 風に十数ms差で3連打して、はっきり始まらせる
+  //    ・そのあと粒を撒く。時刻を p^1.7 で歪めて**密度を前半に寄せる**（等間隔だと機械になる）
+  //    ・粒ごとに帯域・長さ・音量を振る＝同じ音の繰り返しに聞こえないようにする
+  //    ・音量は後半へ向けて落とす。重なっても膨れないよう1粒は小さく取る
   (c, t) => {
-    ;[0, 0.012, 0.026].forEach(d => noiseHit(c, { at: t + d, dur: 0.03, freq: 1400, q: 5, gain: 0.05 }))
-    noiseHit(c, { at: t + 0.032, dur: 0.14, freq: 1100, q: 3, gain: 0.028 })
+    ;[0, 0.013, 0.027].forEach(d => noiseHit(c, { at: t + d, dur: 0.03, freq: 1400, q: 5, gain: 0.045 }))
+    const n = 26
+    for (let i = 0; i < n; i++) {
+      const p = i / n
+      const at = t + 0.04 + Math.pow(p, 1.7) * 0.85 + Math.random() * 0.035
+      const fade = 1 - p * 0.6
+      noiseHit(c, {
+        at, dur: 0.025 + Math.random() * 0.02,
+        freq: 1050 + Math.random() * 950, q: 4 + Math.random() * 3,
+        gain: 0.026 * fade * (0.55 + Math.random() * 0.7)
+      })
+    }
   },
   // 😂 跳ねながら下がる3音
   (c, t) => [880, 784, 659].forEach((f, i) =>
