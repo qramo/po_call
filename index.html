@@ -302,16 +302,20 @@
      ミュート（無視）の対象を特定できる唯一の手がかりでもある＝匿名にしないこと。
      位置は実測して body に置く（#members の中だと親の overflow で切れる） */
   /* ひとこと。共通の button{} の width と margin をここでも打ち消す（行に並べるので） */
-  .chat-row{ margin-top:6px; display:flex; gap:6px }
+  /* ★入力欄は**画面いっぱいの幅**にして、送信ボタンはその中に重ねること。
+     iOS はフォーカスした入力欄を**画面幅に合わせて拡大**するので、ボタンと横に
+     並べて半端な幅にすると、タップのたびにズームして左右がずれる（2026-08-15 に踏んだ）。
+     部屋名の欄（共通の input{width:100%}）でこれが起きないのは全幅だから。
+     ★font-size も 16px を下回らせないこと（16px 未満でも iOS は拡大する）。
+     どちらも `user-scalable=no` では解決しない（拡大できないと困る人がいるので使わない）。 */
+  .chat-row{ margin-top:6px; position:relative }
   .chat-row[hidden]{ display:none }
-  /* ★font-size は 16px を下回らせないこと。**iOS は 16px 未満の入力欄にフォーカスすると
-     勝手に拡大する**（左右のズレはその副作用）。共通の input{} が 16px なのはそのため。
-     `user-scalable=no` で殺す手は使わない（拡大できないと困る人がいる）。 */
-  .chat-row input{ flex:1; min-width:0; padding:9px 11px; border-radius:10px; font-size:16px;
+  .chat-row input{ width:100%; padding:9px 76px 9px 11px; border-radius:10px; font-size:16px;
     background:#0d1526; color:#eef2f8; border:1px solid rgba(255,255,255,.10) }
   .chat-row input::placeholder{ color:#5a6b83 }
-  .chat-row button{ flex:none; width:auto; margin:0; padding:9px 14px; font-size:13px;
-    border-radius:10px; background:#1d2740; color:#cfe }
+  .chat-row button{ position:absolute; right:5px; top:50%; transform:translateY(-50%);
+    width:auto; margin:0; padding:6px 13px; font-size:13px; border-radius:8px;
+    background:#1d2740; color:#cfe }
   .chat-row button:hover{ background:#26324f }
   .chat-row button:disabled{ opacity:.45 }
   /* 吹き出し。**中身は必ず textContent で入れる**（他人が決めた文字がここに出る） */
@@ -501,7 +505,13 @@
     <div id="reactions" class="reactions" hidden></div>
     <!-- ひとこと。履歴は持たない（後から来た人には出ない）＝その場だけのもの -->
     <div id="chatRow" class="chat-row" hidden>
-      <input id="chatText" type="text" placeholder="ひとこと…" autocomplete="off" maxlength="60">
+      <!-- ★入力の候補に「カード番号」等が出ないようにする属性一式（Android で報告あり）。
+           name を messsage と明示するのは、名前が無いと自動入力側が位置や形から
+           推測して支払い欄と誤判定することがあるため。inputmode/enterkeyhint は
+           キーボードを文章向きにする。 -->
+      <input id="chatText" name="message" type="text" placeholder="ひとこと…" maxlength="60"
+             inputmode="text" enterkeyhint="send" autocomplete="off" autocorrect="off"
+             autocapitalize="sentences" spellcheck="false">
       <button id="chatSend" type="button">送信</button>
     </div>
     <!-- 経路アイコンの凡例。参加した直後だけ開いて出し、数秒で畳んで1行のボタンに戻る。
