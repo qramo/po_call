@@ -301,6 +301,28 @@
   /* 押した人のアバターから浮かぶ。**誰が押したか見えることが抑止力**であり、
      ミュート（無視）の対象を特定できる唯一の手がかりでもある＝匿名にしないこと。
      位置は実測して body に置く（#members の中だと親の overflow で切れる） */
+  /* ひとこと。共通の button{} の width と margin をここでも打ち消す（行に並べるので） */
+  .chat-row{ margin-top:6px; display:flex; gap:6px }
+  .chat-row[hidden]{ display:none }
+  .chat-row input{ flex:1; min-width:0; padding:9px 11px; border-radius:10px; font-size:14px;
+    background:#0d1526; color:#eef2f8; border:1px solid rgba(255,255,255,.10) }
+  .chat-row input::placeholder{ color:#5a6b83 }
+  .chat-row button{ flex:none; width:auto; margin:0; padding:9px 14px; font-size:13px;
+    border-radius:10px; background:#1d2740; color:#cfe }
+  .chat-row button:hover{ background:#26324f }
+  .chat-row button:disabled{ opacity:.45 }
+  /* 吹き出し。**中身は必ず textContent で入れる**（他人が決めた文字がここに出る） */
+  .chat-bubble{ position:fixed; z-index:60; pointer-events:none; max-width:min(62vw, 260px);
+    padding:7px 10px; border-radius:12px; border-bottom-left-radius:3px;
+    background:#26324f; color:#eef2f8; font-size:13px; line-height:1.5;
+    box-shadow:0 4px 14px rgba(0,0,0,.35); word-break:break-word;
+    animation:chat-pop 4.6s ease-out forwards }
+  @keyframes chat-pop{
+    0%   { opacity:0; transform:translateY(6px) scale(.85) }
+    6%   { opacity:1; transform:translateY(0) scale(1) }
+    82%  { opacity:1; transform:translateY(-6px) }
+    100% { opacity:0; transform:translateY(-14px) }
+  }
   .react-fly{ position:fixed; z-index:60; pointer-events:none; font-size:22px; line-height:1;
     animation:react-fly 1.3s ease-out forwards }
   @keyframes react-fly{
@@ -474,6 +496,11 @@
     <div id="members" class="members"></div>
     <!-- リアクション。中身は JS が REACTIONS から作る（一覧の定義を1か所に保つ） -->
     <div id="reactions" class="reactions" hidden></div>
+    <!-- ひとこと。履歴は持たない（後から来た人には出ない）＝その場だけのもの -->
+    <div id="chatRow" class="chat-row" hidden>
+      <input id="chatText" type="text" placeholder="ひとこと…" autocomplete="off" maxlength="60">
+      <button id="chatSend" type="button">送信</button>
+    </div>
     <!-- 経路アイコンの凡例。参加した直後だけ開いて出し、数秒で畳んで1行のボタンに戻る。
          中身は JS が入れる（行内アイコンと同じSVG定数を使い、見た目を必ず一致させるため） -->
     <details id="connLegend" class="conn-legend" hidden>
@@ -711,6 +738,9 @@ const CALL_INIT = () => ({
   reactAction: null,    // リアクション（送るのは絵文字そのものではなく**一覧の添字**）
   reactAt: 0,           // 自分が最後に送った時刻（連打の自衛）
   reactSeen: new Map(), // peerId → 最後に受け入れた時刻（相手の連打への自衛）
+  chatAction: null,     // ひとこと（テキスト）
+  chatAt: 0,            // 自分が最後に送った時刻（連打の自衛）
+  chatSeen: new Map(),  // peerId → 最後に受け入れた時刻（相手の連打への自衛）
   lostPeer: false,      // 予告なく（'bye' 無しで）相手を失ったか。自動復帰の判定に使う
   lostAt: 0,            // 壊れた状態が続き始めた時刻（0＝壊れていない）
   audioWatch: null,     // 音声の到着を見張るタイマー（join で開始・leave で停止）
@@ -1182,6 +1212,8 @@ const legendEl = $('connLegend')
 // リアクションの置き場。**renderMembers から参照するので、ここで先に取る**
 // （実体のボタンは下の REACTIONS のところで作る）
 const reactionsEl = $('reactions')
+// ひとことの入力欄。**renderMembers から参照するので、ここで先に取る**
+const chatRow = $('chatRow'), chatText = $('chatText'), chatSend = $('chatSend')
 const connIcon = relay => {
   const ic = document.createElement('span')
   ic.className = 'm-conn ' + (relay ? 'relay' : 'direct')
@@ -1215,6 +1247,7 @@ const renderMembers = () => {
   membersEl.replaceChildren(); emojiEls.clear()
   legendEl.hidden = !call.joinedId   // 凡例は通話中だけ（未参加のときはアイコン自体が出ない）
   reactionsEl.hidden = !call.joinedId
+  chatRow.hidden = !call.joinedId
   if (!call.joinedId) return
   const add = (uid, emoji, name, you, isMuted, stage, relay, action) => {
     const row = memberRow(emoji, name, you, isMuted, stage, relay, action)
@@ -1718,6 +1751,54 @@ REACTIONS.forEach((e, i) => {
   reactionsEl.appendChild(b)
 })
 
+// ───────── ひとこと（テキスト） ─────────
+// **他人が決めた中身が自分の画面に出る、最初の経路。**守るべきことが3つある。
+//  ① 受け取った文字は必ず `capText` を通す（制御文字と双方向制御を落とし、長さで切る）。
+//     ここを抜くと、見えない文字で表示を壊されたり、右横書き制御で文面を偽装される。
+//  ② **`textContent` でしか入れない**。`innerHTML` にすると、そこがそのまま穴になる。
+//  ③ **無視した相手のものは出さない**（リアクションと同じ）。
+// 履歴は持たない＝後から来た人には見えない。その場だけのもの。
+const CHAT_MAX = 60           // 1回の長さ（入力欄の maxlength と揃える）
+const CHAT_EVERY_MS = 1200    // 送る側の下限
+const CHAT_ACCEPT_MS = 900    // 受け取る側の下限。**送る側より短く**（nudge で踏んだ罠）
+const CHAT_MAX_BUBBLE = 6     // 同時に出す上限
+chatText.maxLength = CHAT_MAX
+
+const showBubble = (uid, text) => {
+  const av = emojiEls.get(uid)
+  if (!av || !text) return
+  if (document.querySelectorAll('.chat-bubble').length >= CHAT_MAX_BUBBLE) return
+  const r = av.getBoundingClientRect()
+  if (!r.width) return
+  const el = document.createElement('div')
+  el.className = 'chat-bubble'
+  el.textContent = text                    // ★ここを innerHTML にしないこと
+  el.style.left = (r.right + 6) + 'px'
+  el.style.top = (r.top - 4) + 'px'
+  document.body.appendChild(el)
+  // 画面からはみ出したら右端に寄せ直す（長い文や狭い画面で切れないように）
+  const b = el.getBoundingClientRect()
+  if (b.right > innerWidth - 8) el.style.left = Math.max(8, innerWidth - 8 - b.width) + 'px'
+  if (b.bottom > innerHeight - 8) el.style.top = Math.max(8, innerHeight - 8 - b.height) + 'px'
+  setTimeout(() => el.remove(), 4700)
+}
+const sendChat = () => {
+  if (!call.joinedId || !call.chatAction) return
+  const text = capText(chatText.value.trim(), CHAT_MAX)
+  if (!text) return
+  const now = Date.now()
+  if (now - call.chatAt < CHAT_EVERY_MS) return
+  call.chatAt = now
+  call.chatAction.send(text).catch(() => {})
+  showBubble('self', text)                 // 送信は自分に返らないので自分の分は自分で出す
+  chatText.value = ''
+}
+chatSend.onclick = sendChat
+chatText.addEventListener('keydown', e => {
+  // 変換中の Enter で送らない（日本語入力では確定にも Enter を使う）
+  if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); sendChat() }
+})
+
 // 「退出した」のか「接続が切れた」のかを書き分ける。
 // 退出は**出ていく側が 'bye' を送ってから抜ける**ので、来ていれば正規の退出。来ないまま消えたら異常。
 // 本物の回線障害でも出るが、それも含めて「何かおかしい」と分かるほうがよい。
@@ -1884,6 +1965,17 @@ const runJoin = async () => {
     // 古いクライアントは送ってこないので、その相手は常に「切れた」扱いになる＝**過剰に警告する側**へ倒す。
     call.byeAction = call.room.makeAction('bye')
     call.byeAction.onMessage = (_d, { peerId }) => call.byeSeen.add(peerId)
+
+    call.chatAction = call.room.makeAction('chat')
+    call.chatAction.onMessage = (data, { peerId }) => {
+      if (call.ignored.has(peerId)) return               // 無視した相手のものは出さない
+      const text = capText(data, CHAT_MAX)               // ★受け取った文字は必ずここを通す
+      if (!text) return
+      const now = Date.now()
+      if (now - (call.chatSeen.get(peerId) || 0) < CHAT_ACCEPT_MS) return
+      call.chatSeen.set(peerId, now)
+      showBubble(peerId, text)
+    }
 
     call.reactAction = call.room.makeAction('react')
     call.reactAction.onMessage = (data, { peerId }) => {
