@@ -1565,20 +1565,76 @@ const unignorePeer = id => {
 // 否定リアクションを配ることは運営が加害の道具を配ることに等しい。🍵 はこのアプリの枠。
 // ❤️ は入れない：参加者リストの「無視」が赤いハートなので、意味が正反対のものが同じ画面に並ぶ。
 const REACTIONS = ['👏', '😂', '✨', '👍', '🤔', '😮', '🎉', '🍵']
-// リアクションの音。**全部ペンタトニック（五音音階）から取る**ので、
-// 何人が同時に押しても濁らない。通話中に鳴るものなので**短く・小さく**
-// （長さは最大0.22秒、音量は通知音の半分強）。絵文字の気分に合わせて高さを割り当てる。
-const REACT_TONES = [
-  [[784, 0, 0.10], [1046, 0.06, 0.13]],   // 👏 軽い二連
-  [[880, 0, 0.09], [1174, 0.05, 0.12]],   // 😂 跳ねる
-  [[1318, 0, 0.07], [1568, 0.05, 0.10]],  // ✨ 細かく高い
-  [[659, 0, 0.14]],                       // 👍 短い一発
-  [[523, 0, 0.20]],                       // 🤔 低く長め
-  [[587, 0, 0.08], [880, 0.06, 0.14]],    // 😮 立ち上がる
-  [[784, 0, 0.07], [1046, 0.05, 0.08], [1318, 0.10, 0.14]], // 🎉 上昇三音
-  [[440, 0, 0.10], [659, 0.07, 0.16]]     // 🍵 やわらかい
+// リアクションの音。**絵文字ごとに作り方を変える**（同じ正弦波の高さ違いでは記号に合わない）。
+// 音程のあるものは**すべて C のペンタトニックから取る**ので、何人が同時に押しても濁らない。
+// ノイズで作るもの（拍手・ポン）はそもそも音程が無いのでぶつからない。
+// 通話中に鳴るので**短く（最大0.3秒）・小さく**。鳴らす条件と同時上限は flyReaction 側で見る。
+let noiseBuf = null
+const getNoise = ctx => {
+  if (!noiseBuf || noiseBuf.sampleRate !== ctx.sampleRate) {
+    noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.3), ctx.sampleRate)
+    const d = noiseBuf.getChannelData(0)
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1
+  }
+  return noiseBuf
+}
+// 帯域を絞ったノイズの粒。拍手・ポンに使う（q を上げるほど「コン」に寄る）
+const noiseHit = (ctx, { at, dur, freq, q = 1, gain = 0.05 }) => {
+  const s = ctx.createBufferSource(); s.buffer = getNoise(ctx)
+  const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q
+  const g = ctx.createGain()
+  g.gain.setValueAtTime(gain, at)
+  g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
+  s.connect(f); f.connect(g); g.connect(ctx.destination)
+  s.start(at); s.stop(at + dur + 0.02)
+}
+// 音程のある粒。to を渡すと滑らせる（驚き・上昇・下降に使う）
+const toneHit = (ctx, { at, dur, freq, to, gain = 0.05, type = 'sine' }) => {
+  const o = ctx.createOscillator(), g = ctx.createGain()
+  o.type = type; o.frequency.setValueAtTime(freq, at)
+  if (to) o.frequency.exponentialRampToValueAtTime(to, at + dur * 0.9)
+  g.gain.setValueAtTime(0.0001, at)
+  g.gain.exponentialRampToValueAtTime(gain, at + 0.008)
+  g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
+  o.connect(g); g.connect(ctx.destination)
+  o.start(at); o.stop(at + dur + 0.03)
+}
+// REACTIONS と**同じ並び**であること（添字で引いている）
+const REACT_SOUND = [
+  // 👏 TR-808 風のクラップ：帯域を絞ったノイズを十数ms差で3連打し、短い余韻を足す
+  (c, t) => {
+    ;[0, 0.012, 0.026].forEach(d => noiseHit(c, { at: t + d, dur: 0.03, freq: 1400, q: 5, gain: 0.05 }))
+    noiseHit(c, { at: t + 0.032, dur: 0.14, freq: 1100, q: 3, gain: 0.028 })
+  },
+  // 😂 跳ねながら下がる3音
+  (c, t) => [880, 784, 659].forEach((f, i) =>
+    toneHit(c, { at: t + i * 0.055, dur: 0.09, freq: f, gain: 0.045, type: 'triangle' })),
+  // ✨ キラキラ：高いところを細かく散らす。**毎回わずかにずらして**同じ形に聞こえないようにする
+  (c, t) => [1568, 2093, 2637, 2093].forEach((f, i) =>
+    toneHit(c, { at: t + i * 0.035 + Math.random() * 0.012, dur: 0.13, freq: f, gain: 0.03 })),
+  // 👍 短く持ち上げて言い切る
+  (c, t) => toneHit(c, { at: t, dur: 0.14, freq: 523, to: 659, gain: 0.055 }),
+  // 🤔 低くゆっくり下がる（迷い）
+  (c, t) => toneHit(c, { at: t, dur: 0.3, freq: 392, to: 330, gain: 0.05, type: 'triangle' }),
+  // 😮 一気に駆け上がる
+  (c, t) => toneHit(c, { at: t, dur: 0.17, freq: 440, to: 1046, gain: 0.05 }),
+  // 🎉 ポン（クラッカー）＋上昇3音
+  (c, t) => {
+    noiseHit(c, { at: t, dur: 0.05, freq: 900, q: 1.2, gain: 0.06 })
+    ;[784, 1046, 1318].forEach((f, i) =>
+      toneHit(c, { at: t + 0.04 + i * 0.045, dur: 0.1, freq: f, gain: 0.035, type: 'triangle' }))
+  },
+  // 🍵 やわらかく重ねる2音
+  (c, t) => {
+    toneHit(c, { at: t, dur: 0.22, freq: 440, gain: 0.045 })
+    toneHit(c, { at: t + 0.07, dur: 0.2, freq: 659, gain: 0.03 })
+  }
 ]
-const soundReact = idx => { if (sndReact && REACT_TONES[idx]) playTones(REACT_TONES[idx], 0.06) }
+const soundReact = idx => {
+  if (!sndReact || !REACT_SOUND[idx]) return
+  let ctx; try { ctx = ensureAudioCtx() } catch { return }
+  if (ctx) REACT_SOUND[idx](ctx, ctx.currentTime + 0.01)
+}
 // 送る側の下限。**長くすると「押しても何も起きない」＝壊れているように感じる。**
 // 800ms だと素早く2回押した2回目が完全に無反応だったので 400ms に縮めた（2026-08-15）。
 // 連打の害は、受け取る側の下限と、同時に浮かぶ数の上限で抑える。
