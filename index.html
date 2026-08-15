@@ -1786,9 +1786,13 @@ const showBubble = (uid, text) => {
   const el = document.createElement('div')
   el.className = 'chat-bubble'
   el.textContent = text                    // ★ここを innerHTML にしないこと
-  el.style.left = (r.right + 6) + 'px'
-  el.style.top = (r.top - 4) + 'px'
+  el.style.left = r.left + 'px'
+  el.style.top = '0px'
   document.body.appendChild(el)
+  // **アバターの真上に置く。**右横に置くと名前に重なって、どちらも読めなくなる。
+  // 高さは中身（文の長さ）で変わるので、**置いてから測って**上へ持ち上げる。
+  // 左端をアバターに揃えると「この人のもの」が見て分かる（角の丸みも左下だけ落としてある）。
+  el.style.top = (r.top - el.getBoundingClientRect().height - 6) + 'px'
   // 画面の内側へ収め直す。**上も見ること**＝スマホでキーボードが出ると相手（や自分）の行が
   // 画面の外へ押し出され、そのままだと吹き出しが画面外に描かれて見えない。
   // 位置の基準は visualViewport（キーボードで狭くなった実際の見える範囲）を優先する。
