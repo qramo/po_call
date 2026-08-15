@@ -1654,11 +1654,18 @@ const REACT_SOUND = [
   (c, t) => toneHit(c, { at: t, dur: 0.3, freq: 392, to: 330, gain: 0.05, type: 'triangle' }),
   // 😮 一気に駆け上がる
   (c, t) => toneHit(c, { at: t, dur: 0.17, freq: 440, to: 1046, gain: 0.05 }),
-  // 🎉 ポン（クラッカー）＋上昇3音
+  // 🎉 クラッカー：**破裂音（パン！）＋ TADA のファンファーレ**
+  //    ・破裂＝急降下する胴（パン）と、高く広い空気（紙吹雪）の2つを重ねる。
+  //      胴だけだと「ボッ」、空気だけだと「シュッ」で、両方いる。
+  //    ・ファンファーレ＝短い「タ」→ 少し置いて 1オクターブ上の長い「ダー」。
+  //      和音は C の長三和音（ドミソ）。ペンタトニックの中に収まるので他と濁らない。
   (c, t) => {
-    noiseHit(c, { at: t, dur: 0.05, freq: 900, q: 1.2, gain: 0.06 })
-    ;[784, 1046, 1318].forEach((f, i) =>
-      toneHit(c, { at: t + 0.04 + i * 0.045, dur: 0.1, freq: f, gain: 0.035, type: 'triangle' }))
+    toneHit(c, { at: t, dur: 0.06, freq: 420, to: 90, gain: 0.06 })
+    noiseHit(c, { at: t, dur: 0.05, freq: 2400, q: 0.7, gain: 0.045, type: 'highpass' })
+    const chord = (at, base, dur, gain) => [0, 4, 7].forEach(semi =>
+      toneHit(c, { at, dur, freq: base * Math.pow(2, semi / 12), gain, type: 'triangle' }))
+    chord(t + 0.07, 523.25, 0.11, 0.022)   // タ
+    chord(t + 0.20, 1046.5, 0.45, 0.024)   // ダー（1オクターブ上・長く伸ばす）
   },
   // 🍵 やわらかく重ねる2音
   (c, t) => {
