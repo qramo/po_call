@@ -1776,10 +1776,15 @@ const showBubble = (uid, text) => {
   el.style.left = (r.right + 6) + 'px'
   el.style.top = (r.top - 4) + 'px'
   document.body.appendChild(el)
-  // 画面からはみ出したら右端に寄せ直す（長い文や狭い画面で切れないように）
+  // 画面の内側へ収め直す。**上も見ること**＝スマホでキーボードが出ると相手（や自分）の行が
+  // 画面の外へ押し出され、そのままだと吹き出しが画面外に描かれて見えない。
+  // 位置の基準は visualViewport（キーボードで狭くなった実際の見える範囲）を優先する。
+  const vv = window.visualViewport
+  const L = vv ? vv.offsetLeft : 0, T = vv ? vv.offsetTop : 0
+  const W = vv ? vv.width : innerWidth, H = vv ? vv.height : innerHeight
   const b = el.getBoundingClientRect()
-  if (b.right > innerWidth - 8) el.style.left = Math.max(8, innerWidth - 8 - b.width) + 'px'
-  if (b.bottom > innerHeight - 8) el.style.top = Math.max(8, innerHeight - 8 - b.height) + 'px'
+  el.style.left = Math.min(Math.max(L + 8, b.left), L + W - 8 - b.width) + 'px'
+  el.style.top = Math.min(Math.max(T + 8, b.top), T + H - 8 - b.height) + 'px'
   setTimeout(() => el.remove(), 4700)
 }
 const sendChat = () => {
@@ -1794,6 +1799,28 @@ const sendChat = () => {
   chatText.value = ''
 }
 chatSend.onclick = sendChat
+// スマホでキーボードが出ると、ブラウザが入力欄を見える位置へ持ち上げる。その結果
+// **参加者リストの頭（＝自分の行）が画面の外へ出て、自分の吹き出しが見えなくなる**。
+// キーボードが落ち着いてから、頭が見える位置まで戻す。
+// ただし**戻しすぎて入力欄がキーボードに隠れては本末転倒**なので、入力欄の下に残っている
+// 余白の分までしか動かさない（人数が多くてリストが長い時は途中までになる）。
+const keepTopVisible = () => {
+  const first = membersEl.firstElementChild
+  if (!first || chatRow.hidden) return
+  const vv = window.visualViewport
+  const top = (vv ? vv.offsetTop : 0) + 8
+  const bottom = (vv ? vv.offsetTop + vv.height : innerHeight) - 8
+  const r = first.getBoundingClientRect()
+  if (r.top >= top) return
+  const need = top - r.top
+  const room = bottom - chatRow.getBoundingClientRect().bottom
+  const move = Math.min(need, Math.max(0, room))
+  if (move > 4) window.scrollBy({ top: -move, behavior: 'smooth' })
+}
+chatText.addEventListener('focus', () => setTimeout(keepTopVisible, 350))
+window.visualViewport?.addEventListener('resize', () => {
+  if (document.activeElement === chatText) setTimeout(keepTopVisible, 120)
+})
 chatText.addEventListener('keydown', e => {
   // 変換中の Enter で送らない（日本語入力では確定にも Enter を使う）
   if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); sendChat() }
