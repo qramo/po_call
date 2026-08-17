@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.8.1
+  ぽっと通話〈実験版〉 v0.8.2
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -256,14 +256,35 @@
   .tabs{ display:flex; align-items:flex-end; gap:4px; margin-top:14px;
     border-bottom:1px solid rgba(255,255,255,.10) }
   .tabs[hidden]{ display:none }
+  /* ★ラベルは**絶対に折り返さない**。実機（CSS幅390px）で4タブのとき「メンバ／ー」と
+     割れた（2026-08-17）。折り返す代わりに、狭い画面では詰めて、最後に設定の文字を落とす。 */
   .tab{ width:auto; margin:0; padding:8px 11px; font-size:13px; font-weight:700; line-height:1.2;
+    white-space:nowrap; display:inline-flex; align-items:center; gap:5px;
     background:transparent; color:#8fa0b8; border-radius:10px 10px 0 0; position:relative }
+  .t-em{ font-size:13px; line-height:1 }
   .tab:hover{ color:#cfe }
   .tab[aria-selected="true"]{ color:#eef2f8; background:#131d30 }
   /* 選択中の下線。border ではなく擬似要素にして、タブの枠線と1px重ねる */
   .tab[aria-selected="true"]::after{ content:''; position:absolute; left:8px; right:8px; bottom:-1px;
     height:2px; background:#00e5cc; border-radius:2px }
   .tab-right{ margin-left:auto }
+  /* 狭い画面：まず詰める → それでも足りないので**設定はアイコンだけ**にする
+     （歯車は単体で意味が通る記号。読み上げ用に aria-label を付けてある）。
+     おたよりが増えるのは配信部屋のときだけなので、4つ並ぶのはその場合に限られる。 */
+  @media (max-width:440px){
+    .tabs{ gap:2px }
+    .tab{ padding:8px 7px; font-size:12.5px; gap:4px }
+    .tab-right .t-label{ display:none }
+    .tab-right{ padding-left:10px; padding-right:10px }
+  }
+  /* ごく狭い画面（初代SE相当）では**全部アイコンだけ**にする。ここを塞がないと、
+     はみ出した設定タブが**画面の外に出て押せなくなる**（実測：320pxで29pxはみ出す）。
+     選択中はどれかは下線と面の色で分かる。 */
+  @media (max-width:360px){
+    .tab .t-label{ display:none }
+    .tab{ padding:8px 11px }
+    .t-em{ font-size:15px }
+  }
   .panel[hidden]{ display:none }
   /* パネル先頭の余白は中身が持っているので、タブ直下は詰める */
   .panel > .members{ margin-top:10px }
@@ -672,11 +693,11 @@
          （消すと吹き出し・VAD・リアクションの座標など、行に紐づいた仕掛けが全部作り直しになる）。
          既定は「メンバー」。参加していない間はタブごと出さない。 -->
     <div id="tabs" class="tabs" role="tablist" aria-label="通話中の表示" hidden>
-      <button id="tabMembers" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panMembers">👥 メンバー</button>
-      <button id="tabChat" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panChat">💬 ひとこと</button>
+      <button id="tabMembers" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panMembers"><span class="t-em">👥</span><span class="t-label">メンバー</span></button>
+      <button id="tabChat" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panChat"><span class="t-em">💬</span><span class="t-label">ひとこと</span></button>
       <!-- おたよりは**配信部屋のときだけ**出す（枠主がはっきりしている部屋でしか成立しないため） -->
-      <button id="tabMail" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panMail" hidden>📮 おたより</button>
-      <button id="tabSettings" class="tab tab-right" type="button" role="tab" aria-selected="false" aria-controls="panSettings">⚙️ 設定</button>
+      <button id="tabMail" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panMail" hidden><span class="t-em">📮</span><span class="t-label">おたより</span></button>
+      <button id="tabSettings" class="tab tab-right" type="button" role="tab" aria-selected="false" aria-controls="panSettings" aria-label="設定"><span class="t-em">⚙️</span><span class="t-label">設定</span></button>
     </div>
     <div id="panMembers" class="panel" role="tabpanel" aria-labelledby="tabMembers" hidden>
       <div id="members" class="members"></div>
@@ -961,7 +982,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.8.1'
+const APP_VERSION = 'v0.8.2'
 
 const $ = id => document.getElementById(id)
 
