@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.8.0
+  ぽっと通話〈実験版〉 v0.8.1
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -292,6 +292,64 @@
      溢れた古い行が上へ抜ける。 */
   #panChat{ display:flex; flex-direction:column; justify-content:flex-end; height:var(--panel-min) }
   #panChat[hidden]{ display:none }
+  /* おたより。**高さは他のパネルと同じ固定**（理由は上と同じ）。
+     枠主のときは集まった投稿が伸びるので、本文だけ内部スクロールにする（吹き出しは無いので切れて困らない）。 */
+  #panMail{ display:flex; flex-direction:column; height:var(--panel-min) }
+  #panMail[hidden]{ display:none }
+  .mail-head{ margin-top:10px; font-size:13px; line-height:1.6; color:#9fb0c7 }
+  .mail-head b{ color:#eef2f8 }
+  .mail-body{ flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:8px;
+    display:flex; flex-direction:column; gap:6px }
+  .mail-empty{ color:#6f7f96; font-size:12.5px; line-height:1.6 }
+  /* 集まった投稿（枠主だけに見える）。行の右端に「公開」 */
+  .mail-item{ display:flex; align-items:flex-start; gap:8px; padding:8px 10px; border-radius:10px;
+    background:#0d1526; font-size:12.5px; line-height:1.5 }
+  .mail-item.shown{ box-shadow:0 0 0 1px #00e5cc inset }
+  .mail-em{ flex:none; font-size:15px; line-height:1.2 }
+  .mail-who{ flex:none; max-width:6em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#9fb0c7 }
+  .mail-text{ flex:1; min-width:0; color:#eef2f8; word-break:break-word }
+  /* 共通 button{} の width と margin を打ち消す（行に並べるボタンの定番の罠） */
+  .mail-pick{ flex:none; width:auto; margin:0; padding:4px 9px; font-size:11.5px; font-weight:700;
+    background:#1d2740; color:#cfe; border:1px solid rgba(255,255,255,.12); border-radius:999px; white-space:nowrap }
+  .mail-pick.on{ background:#0c2b2a; color:#00e5cc; border-color:#00e5cc }
+  /* 募集を立てる欄／お便りを書く欄。入力は全幅にしてボタンを中に重ねる
+     （**iOS は半端な幅の入力欄にフォーカスすると勝手に拡大する**。2026-08-15 に踏んだ） */
+  .mail-form{ position:relative; margin-top:8px }
+  .mail-form[hidden]{ display:none }
+  .mail-form input{ padding-right:74px }
+  .mail-form button{ position:absolute; right:5px; top:50%; transform:translateY(-50%);
+    width:auto; margin:0; padding:7px 12px; font-size:13px; background:#2a3550; color:#eef2f8; border-radius:9px }
+  /* いま読まれているお便り（タブの外・常時表示）。配信部屋の説明と同じ枠だが、
+     こちらは「中身」なので少し明るく、送り主が分かる形にする */
+  .mail-now{ margin-top:10px; padding:9px 11px; border-radius:10px; font-size:13px; line-height:1.6;
+    background:rgba(0,229,204,.07); border:1px solid rgba(0,229,204,.22); color:#eef2f8 }
+  .mail-now[hidden]{ display:none }
+  .mail-now .mn-cap{ display:block; font-size:11.5px; color:#8fe9de; margin-bottom:2px }
+  .mail-now .mn-who{ color:#9fb0c7 }
+  .mail-now{ cursor:pointer }   /* 押すと下の紙を開き直せる */
+  /* ── 公開されたお便りを大きく出す紙 ──
+     ★**モーダルにしない。**背面を塞ぐと読み上げ中にミュート・退出が押せなくなる。
+       だから覆う層は pointer-events:none にして、**紙の上だけ**操作を受ける。
+       画面はうっすら暗くするが、後ろのボタンはそのまま押せる。
+     ★display を書いたので [hidden] も書くこと（この罠はこのファイルで何度も出ている） */
+  .mail-pop{ position:fixed; inset:0; z-index:70; display:flex; align-items:center; justify-content:center;
+    padding:20px; background:rgba(3,8,18,.42); pointer-events:none;
+    animation:mail-in .22s ease-out }
+  .mail-pop[hidden]{ display:none }
+  @keyframes mail-in{ from{ opacity:0 } to{ opacity:1 } }
+  @media (prefers-reduced-motion:reduce){ .mail-pop{ animation:none } }
+  .mp-card{ pointer-events:auto; width:min(100%, 460px); max-height:72vh; overflow-y:auto;
+    background:#f4f7fb; color:#16202f; border-radius:18px; padding:16px 18px 20px;
+    box-shadow:0 18px 50px rgba(0,0,0,.55) }
+  .mp-head{ display:flex; align-items:center; gap:8px; margin-bottom:10px }
+  .mp-em{ font-size:22px; line-height:1 }
+  .mp-who{ font-weight:700; font-size:15px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  /* 共通 button{} の width と margin を打ち消す（毎度の罠） */
+  .mp-x{ margin:0 0 0 auto; width:auto; padding:4px 10px; font-size:15px; line-height:1;
+    background:#e3e9f2; color:#4a5a72; border-radius:999px }
+  .mp-topic{ font-size:12px; color:#5b6b80; margin-bottom:8px }
+  /* お便りは**読ませるもの**なので、アプリの他のどこよりも大きく組む */
+  .mp-body{ font-size:17px; line-height:1.75; word-break:break-word; white-space:pre-wrap }
   /* 参加者リスト（絵文字＋名前） */
   .members{ margin-top:12px; display:flex; flex-direction:column; gap:6px }
   /* 音が届いていない相手のお知らせ。不具合ではなく「試せることがある」の温度で（黄色＝注意止まり） */
@@ -607,12 +665,17 @@
     <div id="crowdNote" class="audio-warn" hidden></div>
     <!-- 配信部屋のときだけ出る説明（自分がいま話せるのかを一言で言う） -->
     <div id="bcNote" class="bc-note" hidden></div>
+    <!-- いま枠主が読んでいるお便り。**タブの外**に置く＝どのタブを見ていても、
+         いま何が読まれているかが分かる（ラジオで読み上げられているハガキ） -->
+    <div id="mailNow" class="mail-now" hidden></div>
     <!-- 通話中のタブ。**要素はどれもDOMから消さず、表示/非表示だけをここが握る**
          （消すと吹き出し・VAD・リアクションの座標など、行に紐づいた仕掛けが全部作り直しになる）。
          既定は「メンバー」。参加していない間はタブごと出さない。 -->
     <div id="tabs" class="tabs" role="tablist" aria-label="通話中の表示" hidden>
       <button id="tabMembers" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panMembers">👥 メンバー</button>
       <button id="tabChat" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panChat">💬 ひとこと</button>
+      <!-- おたよりは**配信部屋のときだけ**出す（枠主がはっきりしている部屋でしか成立しないため） -->
+      <button id="tabMail" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panMail" hidden>📮 おたより</button>
       <button id="tabSettings" class="tab tab-right" type="button" role="tab" aria-selected="false" aria-controls="panSettings">⚙️ 設定</button>
     </div>
     <div id="panMembers" class="panel" role="tabpanel" aria-labelledby="tabMembers" hidden>
@@ -641,6 +704,19 @@
                inputmode="text" enterkeyhint="send" autocomplete="off" autocorrect="off"
                autocapitalize="sentences" spellcheck="false">
         <button id="chatSend" type="button">送信</button>
+      </div>
+    </div>
+    <!-- おたより（配信部屋のみ）。**枠主とリスナーで中身が入れ替わる**：
+         枠主＝募集を立てる欄＋集まった投稿＋公開ボタン／リスナー＝募集の見出し＋投稿欄。
+         **投稿は枠主にしか届かない**ので、枠主が選んだものしか部屋に出ない（＝枠主が検閲者）。 -->
+    <div id="panMail" class="panel" role="tabpanel" aria-labelledby="tabMail" hidden>
+      <div id="mailHead" class="mail-head"></div>
+      <div id="mailBody" class="mail-body"></div>
+      <div id="mailForm" class="mail-form" hidden>
+        <input id="mailText" name="mail" type="text" maxlength="120" placeholder="お便りを書く…"
+               inputmode="text" enterkeyhint="send" autocomplete="off" autocorrect="off"
+               autocapitalize="sentences" spellcheck="false">
+        <button id="mailSend" type="button">送る</button>
       </div>
     </div>
     <div id="panSettings" class="panel" role="tabpanel" aria-labelledby="tabSettings" hidden>
@@ -688,6 +764,21 @@
   このサイトはアクセス測定に <a href="https://www.cloudflare.com/web-analytics/" target="_blank" rel="noopener">Cloudflare Web Analytics</a> を利用しています（Cookie不使用・個人を特定する情報は取得しません）。
 </footer>
 
+<!-- 公開されたお便りを大きく出す紙。**モーダルにしない**のが要点で、後ろの通話操作
+     （ミュート・退出・つなぎ直す）は塞がない＝読み上げ中でも必ず操作できる。
+     閉じても、状態カードの「📮 いま読まれているお便り」の行は残る（そこを押すと開き直せる）。 -->
+<div id="mailPop" class="mail-pop" hidden aria-live="polite">
+  <div class="mp-card" role="status">
+    <div class="mp-head">
+      <span class="mp-em" id="mailPopEmoji"></span>
+      <span class="mp-who" id="mailPopWho"></span>
+      <button id="mailPopClose" class="mp-x" type="button" aria-label="閉じる">✕</button>
+    </div>
+    <div class="mp-topic" id="mailPopTopic"></div>
+    <div class="mp-body" id="mailPopText"></div>
+  </div>
+</div>
+
 <dialog id="helpDialog" class="help-dialog">
   <button id="helpX" class="help-x" type="button" aria-label="閉じる">✕</button>
   <h2>🫖 これはなに？</h2>
@@ -714,6 +805,17 @@
     </ul>
     <p class="help-tip">💡 配信者かどうかは URL ではなく <b>部屋を作った端末</b>で決まります（鍵をブラウザに保存しています）。別の端末やデータを消したあとでは、同じ部屋の配信者に戻れません。</p>
     <p class="help-tip">💡 「話してよい人」の一覧は配信者が署名して配っており、各自のブラウザが確かめてから音を鳴らします。<b>名乗るだけでは配信者になれません。</b></p>
+  </details>
+
+  <details class="help-sec"><summary>📮 おたより（配信部屋）</summary>
+    <p>ラジオの投稿コーナーです。配信者がお題を出して募集し、聞いている人が書いて送り、<b>配信者が選んだお便りだけ</b>が部屋に出ます。</p>
+    <ol>
+      <li>配信者：<b>📮 おたより</b>タブでお題を書いて「募集する」（例：最近食べて美味しかったもの）</li>
+      <li>聞いている人：同じタブにお題が出るので、お便りを書いて「送る」（<b>送り直せます</b>。1人1通）</li>
+      <li>配信者：集まったお便りから選んで「公開」。全員の画面に出ます</li>
+    </ol>
+    <p class="help-tip">💡 <b>送ったお便りは配信者にしか届きません</b>（ほかの人の画面には出ません）。公開されたものだけが部屋に出ます。</p>
+    <p class="help-tip">💡 公開されるのは<b>いつも1通だけ</b>。次を公開すると入れ替わります。読み終えたら「公開をやめる」で下げられます。</p>
   </details>
 
   <details class="help-sec"><summary>できること</summary>
@@ -859,7 +961,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.8.0'
+const APP_VERSION = 'v0.8.1'
 
 const $ = id => document.getElementById(id)
 
@@ -921,6 +1023,16 @@ const CALL_INIT = () => ({
   bcTimer: null,        // オーナーが名簿を定期的に配り直すタイマー（取りこぼしの自己修復）
   ignored: new Set(),   // 無視している相手の peerId。**この部屋にいる間だけ**（相手が入り直すと別IDになる）
   byeSeen: new Set(),   // 「退出します」を送ってきた相手。来ないまま消えたら「接続が切れた」と書き分ける
+  mailAction: null,     // おたより（募集・投稿・公開）のデータチャネル
+  mailTitle: '',        // いまの募集の見出し。**枠主から届いたものだけ**が入る
+  mailOpen: false,      // 募集中か
+  mailInbox: new Map(), // **枠主だけが持つ**：peerId → {name, emoji, text}。1人1通（送り直しは差し替え）
+  mailShown: null,      // いま公開されているお便り {name, emoji, text}。全員が持つ
+  mailPop: false,       // その紙を大きく開いているか（**見る人ごと**。閉じても行は残る）
+  mailSent: '',         // 自分が送った投稿（書き直しのために覚えておく）
+  mailAt: 0,            // 自分が最後に送った時刻（連打の自衛）
+  mailSeen: new Map(),  // peerId → 最後に受け入れた時刻（相手の連打への自衛）
+  mailAskAt: new Map(), // peerId → 最後に「いまの募集を教えて」に応じた時刻（同上）
   tab: 'members',       // 通話中に開いているタブ。通話ごとに既定へ戻す（だからここに置く）
   capTimer: null,       // 満室判定を少し待つタイマー（相手のプロフィールが届いてから数えるため）
   noticeTimer: null     // 上の通知を自動で畳むタイマー
@@ -1569,18 +1681,30 @@ $('connLegendSum').addEventListener('click', () => { clearTimeout(call.legendTim
 // hidden を切り替えており（renderMembers 参照）、ここはその上に重なる2枚目の条件になる。
 // ＝**参加していなければ、どのタブを選んでいても中身は出ない**（未参加の画面に通話中のUIを
 // 混ぜない、という決まりを1か所で壊さないため）。
-const TAB_PANELS = [['members', 'tabMembers', 'panMembers'], ['chat', 'tabChat', 'panChat'], ['settings', 'tabSettings', 'panSettings']]
+// 4つ目の要素は「そのタブを出す条件」。おたよりは**配信部屋のときだけ**出す
+// （枠主がはっきりしている部屋でしか成立しない機能なので、普通の部屋には置かない）。
+const TAB_PANELS = [
+  ['members', 'tabMembers', 'panMembers', () => true],
+  ['chat', 'tabChat', 'panChat', () => true],
+  ['mail', 'tabMail', 'panMail', () => call.bcast],
+  ['settings', 'tabSettings', 'panSettings', () => true]
+]
+const tabLive = () => TAB_PANELS.filter(t => t[3]())
 const renderTabs = () => {
   $('tabs').hidden = !call.joinedId
-  TAB_PANELS.forEach(([key, tabId, panId]) => {
-    const on = !!call.joinedId && call.tab === key
+  // 出せないタブを選んだまま（配信部屋から普通の部屋へ移った等）にならないよう、既定へ戻す
+  if (!tabLive().some(t => t[0] === call.tab)) call.tab = 'members'
+  TAB_PANELS.forEach(([key, tabId, panId, when]) => {
+    const live = when()
+    const on = !!call.joinedId && live && call.tab === key
+    $(tabId).hidden = !live
     $(tabId).setAttribute('aria-selected', String(on))
     $(tabId).tabIndex = on ? 0 : -1        // 矢印キーで移る（Tab キーはタブ列を1つとして扱う）
     $(panId).hidden = !on
   })
 }
 const selectTab = key => {
-  if (!TAB_PANELS.some(t => t[0] === key)) return
+  if (!tabLive().some(t => t[0] === key)) return
   call.tab = key
   renderTabs()
 }
@@ -1589,8 +1713,9 @@ $('tabs').addEventListener('keydown', e => {
   const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
   if (!d) return
   e.preventDefault()
-  const i = TAB_PANELS.findIndex(t => t[0] === call.tab)
-  const next = TAB_PANELS[(i + d + TAB_PANELS.length) % TAB_PANELS.length]
+  const live = tabLive()
+  const i = live.findIndex(t => t[0] === call.tab)
+  const next = live[(i + d + live.length) % live.length]
   selectTab(next[0]); $(next[1]).focus()
 })
 
@@ -1601,6 +1726,7 @@ const renderMembers = () => {
   membersEl.replaceChildren(); emojiEls.clear()
   membersEl.classList.toggle('scroll', call.peers.size + 1 > MEMBERS_VIEW)
   renderTabs()                       // タブの出し入れ。**未参加でも通るよう、下の早期 return より前に**
+  renderMail(); renderMailNow()      // おたより（配信部屋のみ。未参加なら中で空にする）
   renderCrowd()                      // 人数の注意。**未参加でも通るよう、下の早期 return より前に置く**
   legendEl.hidden = !call.joinedId   // 凡例は通話中だけ（未参加のときはアイコン自体が出ない）
   reactionsEl.hidden = !call.joinedId
@@ -2401,9 +2527,15 @@ const acceptRoster = async d => {
   const ok = await crypto.subtle.verify(SIGN_ALG, key, unb64u(sig), enc(rosterMsg(id, t, own, ids))).catch(() => false)
   // 非同期の間に退出・部屋移動・より新しい名簿の採用が起きていないか、最後にもう一度見る
   if (!ok || id !== call.joinedId || t <= call.rosterSeen) return
+  const ownerChanged = call.ownerPeer !== own
   call.rosterSeen = t; call.ownerPeer = own
   call.roster = { pk: pub, t, o: own, ids, sig }
   setSpeakers(ids)
+  // ★「枠主が誰か」が分かった**その瞬間**に、いまの募集と公開中のお便りを取りに行く。
+  // 枠主からの push（mailSync）は**名簿より先に着くことがある**（名簿の送信は署名の計算を挟むので
+  // 非同期）。先に着いた分は ownerPeer が未確定なので捨てられる＝**後から入った人に募集が出ない**
+  // （2026-08-17 に利用者が発見）。順番に依存しないよう、こちら側から引きにいく形にした。
+  if (ownerChanged && own && !call.ownerKey) sendMail({ k: 'ask' }, own)
 }
 
 // 登壇の切り替え（オーナーの画面にだけ出るボタン）。原本を書き換えて配り直すだけ。
@@ -2468,6 +2600,158 @@ const stopSpeaking = () => {
   sendHeartbeat()
 }
 $('speak').onclick = startSpeaking
+
+// ───────── おたより（配信部屋の「ハガキ募集」） ─────────
+// ラジオの投稿コーナー。枠主がお題を出して募集し、リスナーが投稿し、**枠主が選んだものだけ**が
+// 部屋に出る。配信部屋だけの機能なのは、**枠主が署名で確定している部屋でしか成立しない**から。
+//
+// ★安全性は「文面を検査する」のではなく **経路の形**で担保している。
+//   ・**投稿は枠主にしか届かない**（target 指定の一方向）。他の人の画面には出ない。
+//   ・**部屋に出せるのは枠主だけ**。受け取る側は `peerId === call.ownerPeer` を確かめる。
+//     ownerPeer は**署名済みの名簿**から来た値なので、名乗るだけでは偽れない（配信部屋の項を参照）。
+//   ＝**自由テキストが素通しで全員の画面に出る経路が存在しない。**ひとこと（誰の発言も直接
+//     全員に出る）より構造的に安全で、枠主が検閲者になる。
+// もちろん文字は capText を通して textContent で入れる（受信口の決まりは全部同じ）。
+const MAIL_TITLE_MAX = 40     // お題の見出し
+const MAIL_TEXT_MAX = 120     // お便り本文（ひとことより長め。読み上げる前提なので）
+const MAIL_INBOX_MAX = 50     // 枠主が抱える上限（暴走ガード。1人1通なので普通は当たらない）
+const MAIL_EVERY_MS = 2000    // 送る側の下限
+const MAIL_ACCEPT_MS = 1500   // 受け取る側の下限。**送る側より短く**（nudge で踏んだ罠）
+const mailText = $('mailText'), mailSend = $('mailSend'), mailForm = $('mailForm')
+const sendMail = (payload, target) => {
+  try { call.mailAction?.send(payload, target ? { target } : undefined).catch(() => {}) } catch {}
+}
+
+// いま読まれているお便り。**行（タブの外・常時表示）と、大きく出す紙**の両方をここで描く。
+const renderMailNow = () => {
+  const el = $('mailNow'), pop = $('mailPop')
+  const m = call.joinedId && call.bcast ? call.mailShown : null
+  el.hidden = !m
+  pop.hidden = !m || !call.mailPop
+  if (m && call.mailPop) {
+    $('mailPopEmoji').textContent = m.emoji
+    $('mailPopWho').textContent = m.name
+    $('mailPopTopic').textContent = call.mailTitle ? '📮 ' + call.mailTitle : '📮 おたより'
+    $('mailPopText').textContent = m.text        // ★textContent（受け取った文字をそのまま描かない）
+  }
+  if (!m) return
+  el.replaceChildren()
+  const cap = document.createElement('span'); cap.className = 'mn-cap'
+  cap.textContent = '📮 ' + (call.mailTitle ? call.mailTitle : 'おたより')
+  const who = document.createElement('span'); who.className = 'mn-who'
+  who.textContent = m.emoji + ' ' + m.name + '：'
+  const tx = document.createElement('span'); tx.textContent = m.text   // ★textContent
+  el.append(cap, who, tx)
+}
+
+// おたよりタブの中身。**枠主とリスナーで丸ごと入れ替わる**（同じ場所で役割が違う）
+const renderMail = () => {
+  const head = $('mailHead'), body = $('mailBody')
+  head.replaceChildren(); body.replaceChildren()
+  if (!call.joinedId || !call.bcast) { mailForm.hidden = true; return }
+  const line = (t, cls) => { const d = document.createElement('div'); if (cls) d.className = cls; d.textContent = t; return d }
+  const chip = (t, cls, fn) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = t; b.onclick = fn
+    return b
+  }
+  if (call.ownerKey) {                       // ── 枠主 ──
+    if (!call.mailOpen) {
+      head.append(line('お題を出して、リスナーからお便りを募集できます。'))
+      body.append(line('例：「最近食べて美味しかったもの」。集まったお便りはあなたにだけ並び、選んだものだけが部屋に出ます。', 'mail-empty'))
+      mailForm.hidden = false
+      mailText.maxLength = MAIL_TITLE_MAX
+      mailText.placeholder = 'お題を書く…'
+      mailSend.textContent = '募集する'
+    } else {
+      const h = line('📮 募集中：' + call.mailTitle)
+      h.append(document.createTextNode(' '), chip('締め切る', 'mail-pick', mailCloseCall))
+      head.append(h)
+      if (call.mailShown) head.append(line('（いま公開中のお便りがあります）', 'mail-empty'),
+        chip('公開をやめる', 'mail-pick', mailHide))
+      if (!call.mailInbox.size) body.append(line('まだ届いていません。', 'mail-empty'))
+      call.mailInbox.forEach((m, id) => {
+        const shown = !!call.mailShown && call.mailShown.text === m.text && call.mailShown.name === m.name
+        const row = document.createElement('div'); row.className = 'mail-item' + (shown ? ' shown' : '')
+        const em = document.createElement('span'); em.className = 'mail-em'; em.textContent = m.emoji
+        const who = document.createElement('span'); who.className = 'mail-who'; who.textContent = m.name; who.title = m.name
+        const tx = document.createElement('span'); tx.className = 'mail-text'; tx.textContent = m.text   // ★textContent
+        row.append(em, who, tx, chip(shown ? '公開中' : '公開', 'mail-pick' + (shown ? ' on' : ''), () => mailPick(id)))
+        body.append(row)
+      })
+      mailForm.hidden = true
+    }
+  } else {                                   // ── リスナー ──
+    if (!call.mailOpen) {
+      head.append(line('いまはお便りを募集していません。'))
+      body.append(line('枠主がお題を出すと、ここに書けるようになります。', 'mail-empty'))
+      mailForm.hidden = true
+    } else {
+      head.append(line('📮 ' + call.mailTitle))
+      body.append(call.mailSent
+        ? line('送ったお便り：' + call.mailSent, 'mail-item')
+        : line('お便りは枠主にだけ届きます。読まれると部屋のみんなに出ます。', 'mail-empty'))
+      mailForm.hidden = false
+      mailText.maxLength = MAIL_TEXT_MAX
+      mailText.placeholder = 'お便りを書く…'
+      mailSend.textContent = call.mailSent ? '書き直す' : '送る'
+    }
+  }
+}
+
+// 枠主の操作。**自分には自分の送信が返ってこない**ので、送るのと同時に自分にも反映する。
+function mailOpenCall() {
+  const t = capText(mailText.value.trim(), MAIL_TITLE_MAX)
+  if (!t || !call.ownerKey) return
+  call.mailOpen = true; call.mailTitle = t
+  call.mailInbox.clear(); call.mailShown = null; call.mailSeen.clear()
+  mailText.value = ''
+  sendMail({ k: 'open', t })
+  renderMail(); renderMailNow()
+}
+function mailCloseCall() {
+  if (!call.ownerKey) return
+  call.mailOpen = false; call.mailShown = null; call.mailPop = false; call.mailInbox.clear()
+  sendMail({ k: 'close' })
+  renderMail(); renderMailNow()
+}
+function mailPick(id) {
+  const m = call.ownerKey && call.mailInbox.get(id)
+  if (!m) return
+  call.mailShown = { name: m.name, emoji: m.emoji, text: m.text }
+  call.mailPop = true                            // 枠主の画面にも同じ紙を出す（何が出ているか分かる）
+  sendMail({ k: 'show', n: m.name, e: m.emoji, x: m.text })
+  renderMail(); renderMailNow()
+}
+function mailHide() {
+  if (!call.ownerKey) return
+  call.mailShown = null; call.mailPop = false
+  sendMail({ k: 'hide' })
+  renderMail(); renderMailNow()
+}
+// リスナーの操作。**枠主にだけ送る**（target 指定）。送り直すと前のものが差し替わる。
+function mailPost() {
+  if (!call.mailOpen || call.ownerKey || !call.ownerPeer) return
+  const text = capText(mailText.value.trim(), MAIL_TEXT_MAX)
+  if (!text) return
+  const now = Date.now()
+  if (now - call.mailAt < MAIL_EVERY_MS) return
+  call.mailAt = now; call.mailSent = text; mailText.value = ''
+  sendMail({ k: 'post', x: text }, call.ownerPeer)
+  renderMail()
+}
+mailSend.onclick = () => { if (call.ownerKey) mailOpenCall(); else mailPost() }
+mailText.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); mailSend.click() }   // 変換中の Enter で送らない
+})
+// 新しく来た人に、いまの募集と公開中のお便りを渡す（枠主だけが持っている情報なので枠主が配る）
+// 紙を閉じる／開き直す。**自分の画面だけ**の話で、相手には何も送らない。
+$('mailPopClose').onclick = () => { call.mailPop = false; renderMailNow() }
+$('mailNow').onclick = () => { if (call.mailShown) { call.mailPop = true; renderMailNow() } }
+const mailSync = id => {
+  if (!call.ownerKey) return
+  if (call.mailOpen) sendMail({ k: 'open', t: call.mailTitle }, id)
+  if (call.mailShown) sendMail({ k: 'show', n: call.mailShown.name, e: call.mailShown.emoji, x: call.mailShown.text }, id)
+}
 
 const wake = async () => { try { call.wakeLock = await navigator.wakeLock.request('screen') } catch {} }
 document.addEventListener('visibilitychange', () => {
@@ -2683,6 +2967,54 @@ const runJoin = async () => {
     call.bcAction = call.room.makeAction('bc')
     call.bcAction.onMessage = d => { acceptRoster(d) }
 
+    // おたより。**受け取る条件が向きで違う**のが要点（上の「おたより」の項を参照）：
+    //   ・投稿（post）を受け取れるのは**枠主だけ**
+    //   ・募集/公開（open/close/show/hide）を受け取るのは**枠主が出したものだけ**
+    //     ＝ peerId が署名済み名簿の配信者と一致するときに限る（名乗るだけでは偽れない）
+    call.mailAction = call.room.makeAction('mail')
+    call.mailAction.onMessage = (d, { peerId }) => {
+      if (!call.bcast || !d || typeof d !== 'object') return
+      if (d.k === 'ask') {
+        // 「いまの募集を教えて」。枠主だけが答えられる。連打には応じない
+        if (!call.ownerKey) return
+        const now = Date.now()
+        if (now - (call.mailAskAt.get(peerId) || 0) < MAIL_ACCEPT_MS) return
+        call.mailAskAt.set(peerId, now)
+        mailSync(peerId)
+        return
+      }
+      if (d.k === 'post') {
+        if (!call.ownerKey || !call.mailOpen) return       // 枠主以外は投稿を受け取らない
+        if (call.ignored.has(peerId)) return               // 無視した相手のものは並べない
+        const now = Date.now()
+        if (now - (call.mailSeen.get(peerId) || 0) < MAIL_ACCEPT_MS) return
+        call.mailSeen.set(peerId, now)
+        const text = capText(d.x, MAIL_TEXT_MAX)
+        if (!text) { call.mailInbox.delete(peerId); renderMail(); return }   // 空＝取り下げ
+        if (!call.mailInbox.has(peerId) && call.mailInbox.size >= MAIL_INBOX_MAX) return
+        const p = call.profiles.get(peerId) || {}
+        // 1人1通。**送り直しは差し替え**（Map のキーが peerId なので自然にそうなる）
+        call.mailInbox.set(peerId, {
+          name: capText(p.name, 20) || 'ゲスト', emoji: capText(p.emoji, 8, '🙂'), text
+        })
+        renderMail()
+        return
+      }
+      // ★ここから下は枠主が出したものだけ。この1行がこの機能の要。
+      if (!call.ownerPeer || peerId !== call.ownerPeer) return
+      if (d.k === 'open') { call.mailOpen = true; call.mailTitle = capText(d.t, MAIL_TITLE_MAX); call.mailSent = '' }
+      else if (d.k === 'close') { call.mailOpen = false; call.mailSent = ''; call.mailShown = null }
+      else if (d.k === 'show') {
+        call.mailShown = {
+          name: capText(d.n, 20) || 'ゲスト', emoji: capText(d.e, 8, '🙂'), text: capText(d.x, MAIL_TEXT_MAX)
+        }
+        if (!call.mailShown.text) call.mailShown = null
+        call.mailPop = !!call.mailShown          // 新しいお便りが来たら紙を開く（閉じていても開き直る）
+      } else if (d.k === 'hide') { call.mailShown = null; call.mailPop = false }
+      else return
+      renderMail(); renderMailNow(); renderTabs()
+    }
+
     call.reactAction = call.room.makeAction('react')
     call.reactAction.onMessage = (data, { peerId }) => {
       // ★受け取った値をそのまま描かない。**添字として検査**し、一覧の中のものだけを出す。
@@ -2694,7 +3026,7 @@ const runJoin = async () => {
       flyReaction(peerId, data)
     }
 
-    call.room.onPeerJoin = id => { call.peers.add(id); call.peerSince.set(id, Date.now()); if (call.stream) call.room.addStream(call.stream, { target: id }); sendProfile(id); if (call.bcast) forwardRoster(id); call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin(); scheduleCapacityCheck() }
+    call.room.onPeerJoin = id => { call.peers.add(id); call.peerSince.set(id, Date.now()); if (call.stream) call.room.addStream(call.stream, { target: id }); sendProfile(id); if (call.bcast) { forwardRoster(id); mailSync(id) }; call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin(); scheduleCapacityCheck() }
     call.room.onPeerLeave = id => {
       // 'bye' が来ていなければ異常な切断。本物の回線障害でも出るが、**理由は分からなくても
       // 「何かおかしい」と分かる**ほうがよい（自分の回線のせいだと思い込まないため）。
@@ -2912,7 +3244,7 @@ const leaveCall = () => {
   resetCall()
 
   // ③ 画面を「未参加」に戻す
-  setCount(); renderGrow(); renderMembers(); renderLobby(); renderMute(); renderSpeak(); renderBcNote()
+  setCount(); renderGrow(); renderMembers(); renderLobby(); renderMute(); renderSpeak(); renderBcNote(); renderMailNow()
   syncKindRow()   // 参加中は隠していた「配信部屋／雑談部屋」の2択を戻す
   resetQr()   // QRトグルを畳んでおく（次の参加で古いリンクを残さない）
   syncShare() // 「共有リンク」→「招待リンク（まだ参加していません）」に戻す
