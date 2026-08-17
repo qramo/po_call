@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.7.0
+  ぽっと通話〈実験版〉 v0.8.0
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -162,6 +162,10 @@
   #join svg{ width:22px; height:22px; flex:none }
   #unlock{ background:#ffd24d; color:#3a2c00; display:none }
   #mute{ background:#2a3550; color:#eef2f8; display:none }
+  /* 配信部屋で登壇を許されたときだけ出る「マイクを使う」。ここで初めて getUserMedia を呼ぶので、
+     参加ボタンと同じ色（＝これから許可ダイアログが出る操作）にしてある */
+  #speak{ background:#00e5cc; color:#063; display:none; align-items:center; justify-content:center; gap:9px }
+  #speak svg{ width:22px; height:22px; flex:none }
   /* 退出＝朱色（ティールの補色寄りで相性がよい）。少しだけ発光させる */
   #leave{ background:#ef5a3c; color:#fff; display:none; box-shadow:0 2px 14px rgba(239,90,60,.30) }
   /* アイコン＋文字を中央寄せ。参加時に JS が display:flex にする（未参加は none のまま） */
@@ -179,6 +183,10 @@
   /* 通知音のトグル（入室・退出音＝通話カード／新部屋音＝ロビー）。help-hide と同系の控えめな見た目 */
   .snd-opt{ display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; color:#9fb0c7; cursor:pointer; user-select:none }
   .snd-opt input{ width:auto; margin:0; padding:0; accent-color:#00e5cc; flex:none }
+  /* ★display を書いたら [hidden] も書くこと。ブラウザ既定の [hidden]{display:none} より
+     クラス指定のほうが強いので、hidden を付けても消えない（2026-08-15 に踏んだ）。
+     部屋の種類の2択は hidden で出し入れするので、これが無いと隠れない */
+  .snd-opt[hidden]{ display:none }
   #sndPeerRow, #sndReactRow{ margin-top:4px }   /* 人数表示のすぐ下に寄せる */
   #copy{ background:#1d2740; color:#cfe; margin-top:8px; padding:10px; font-size:14px }
   /* 版の表示。共有ボタンの右下に、目に留まらない濃さで置く（普段は意識させない） */
@@ -241,11 +249,64 @@
   @media (prefers-reduced-motion:reduce){ .profile .pf-body{ transition:none } }
   /* 通話中はプロフィール変更不可：summary をグレーアウトして開閉も止める */
   .profile.locked > summary{ opacity:.5; pointer-events:none }
+  /* 通話中のタブ（👥メンバー／💬ひとこと／⚙️設定）。
+     ★共通の button{} は width:100% と margin-top:12px を持っているので、**両方**打ち消すこと
+       （行に並べるボタンを足すたびに踏んでいる罠。2026-08-14 / 08-15 に既出）。
+     ★display を書いた要素には [hidden] も書くこと（参加前はタブごと出さない）。 */
+  .tabs{ display:flex; align-items:flex-end; gap:4px; margin-top:14px;
+    border-bottom:1px solid rgba(255,255,255,.10) }
+  .tabs[hidden]{ display:none }
+  .tab{ width:auto; margin:0; padding:8px 11px; font-size:13px; font-weight:700; line-height:1.2;
+    background:transparent; color:#8fa0b8; border-radius:10px 10px 0 0; position:relative }
+  .tab:hover{ color:#cfe }
+  .tab[aria-selected="true"]{ color:#eef2f8; background:#131d30 }
+  /* 選択中の下線。border ではなく擬似要素にして、タブの枠線と1px重ねる */
+  .tab[aria-selected="true"]::after{ content:''; position:absolute; left:8px; right:8px; bottom:-1px;
+    height:2px; background:#00e5cc; border-radius:2px }
+  .tab-right{ margin-left:auto }
+  .panel[hidden]{ display:none }
+  /* パネル先頭の余白は中身が持っているので、タブ直下は詰める */
+  .panel > .members{ margin-top:10px }
+  /* ★高さは「5人ぶん」で決め打ちにする（可変にしない）。
+     人が出入りするたび・タブを切り替えるたびにカードの高さが動くと、下にある共有リンクや
+     ロビーまで一緒に動いて落ち着かない。リアクションのパレットの位置も固定されるので、
+     連打するときに指の位置が変わらない。6〜8人（上限8）のときだけ素直に伸びる。
+     ★**スクロールは6人以上のときだけ**にしてある。.members を常に overflow:auto にすると、
+       行の上に absolute で出る**吹き出しが先頭の行で切れる**（2026-08-15 に吹き出しを行の中へ
+       入れたのはレイアウト追従のため）。5人までは溢れないので、切る必要が無いなら切らない。
+       6人以上では **5.5人ぶん**だけ見せる＝**半端に切れている行が「まだ下にいる」印**になる
+       （そのぶん先頭行の吹き出しは切れるが、上限8人なので出るのは賑わっている時だけ）。
+     数字は幅430pxの実測（1行40px＋行間6px／リアクション42＋余白8／凡例チップ約30＋余白8）。 */
+  :root{ --members-min:calc(40px * 5 + 6px * 4);      /* 5人ぶん＝既定で確保する高さ */
+         --members-max:calc(40px * 5.5 + 6px * 5);    /* 5.5人ぶん＝はみ出しが見える高さ */
+         --panel-min:calc(var(--members-min) + 98px) }
+  .panel{ min-height:var(--panel-min) }
+  .members{ min-height:var(--members-min) }
+  .members.scroll{ height:var(--members-max); overflow-y:auto; overscroll-behavior:contain }
+  /* ひとことは**入力欄を下端に置く**（上に向かって流れが伸びる、見慣れた形）。
+     ★display を書いたので [hidden] も id で書き直すこと。**.panel[hidden] より id のほうが強い**ので、
+       ここを忘れるとタブを切り替えてもひとことが消えない（優先度の罠） */
+  /* ★ここは min-height ではなく **height（固定）**。min-height だと中身が増えたぶんパネルごと
+     伸びてしまい、`flex:1`（余った高さを埋める）が働かない＝**ログが下へ伸び続ける**
+     （2026-08-16 に実際にそうなった）。高さを固定して初めて「入力欄を引いた残り」が決まり、
+     溢れた古い行が上へ抜ける。 */
+  #panChat{ display:flex; flex-direction:column; justify-content:flex-end; height:var(--panel-min) }
+  #panChat[hidden]{ display:none }
   /* 参加者リスト（絵文字＋名前） */
   .members{ margin-top:12px; display:flex; flex-direction:column; gap:6px }
   /* 音が届いていない相手のお知らせ。不具合ではなく「試せることがある」の温度で（黄色＝注意止まり） */
   .audio-warn{ margin-top:10px; padding:9px 11px; border-radius:10px; font-size:13px; line-height:1.5;
     background:rgba(255,210,77,.10); border:1px solid rgba(255,210,77,.35); color:#ffd24d }
+  /* 配信部屋の説明。注意ではなく状態なので、警告の黄ではなくティール（＝通話中の色）で置く。
+     「いま自分は話せるのか」が一番の関心なので、参加者リストより上に出す */
+  .bc-note{ margin-top:10px; padding:9px 11px; border-radius:10px; font-size:13px; line-height:1.5;
+    background:rgba(0,229,204,.09); border:1px solid rgba(0,229,204,.30); color:#8fe9de }
+  /* 部屋の種類（部屋名の下の2択）。通知音トグルと同じ控えめな見た目に揃え、行間だけ詰める。
+     ★display を書いたので [hidden] も書くこと（他人の配信部屋を開いている間は丸ごと隠す） */
+  .kind{ display:grid; gap:2px; margin-top:8px }
+  .kind[hidden]{ display:none }
+  .kind .snd-opt{ margin-top:0 }
+  .kind .sel{ color:#8fe9de }   /* 選ばれているほうを少しだけ明るく（点だけでは目が滑るため） */
   /* 点字ブロック（U+2800〜）で作るオーディオEQ風の飾り。各セルが2×3ドットなので
      空・下・中・上の4段階がそのまま出せる（⠀⠤⠶⠿）。通話中だけ表示、装飾なので aria-hidden。 */
   .eq{ margin-top:12px; font-family:'Courier New',ui-monospace,monospace; font-size:20px;
@@ -281,6 +342,18 @@
     align-items:center; justify-content:center }
   .m-ig svg{ width:16px; height:16px; display:block }
   .m-ig:hover{ color:#ff8266 }
+  /* 登壇の切替（配信部屋のオーナーにだけ出る）。寸法は .m-ig／.m-conn と完全に同じにすること
+     （右端に並ぶので、片方だけ大きいと縦位置がずれる）。共通 button{} の width と margin も殺す。
+     消灯＝聞き役／点灯（ティール）＝話してよい、と色だけで状態を表す */
+  .m-mic{ flex:none; width:18px; height:18px; padding:0; margin:0; border:0;
+    background:transparent; cursor:pointer; color:#4a5a72; display:inline-flex;
+    align-items:center; justify-content:center }
+  .m-mic svg{ width:16px; height:16px; display:block }
+  .m-mic.on{ color:#00e5cc }
+  .m-mic:hover{ color:#9fb0c7 }
+  .m-mic.on:hover{ color:#7cffee }
+  /* 配信部屋の印（📢＝配信者／🎙＝話してよい人）。名前のとなりに小さく置く */
+  .m-bc{ flex:none; font-size:12px }
   /* リアクション。参加者リストの真下＝**飛び出す先のすぐ下**に置く（視線がつながる）。
      共通の button{} の width と margin をどちらも打ち消すこと（.m-ig と同じ罠） */
   .reactions{ margin-top:8px; display:flex; gap:5px }
@@ -335,6 +408,21 @@
     82%  { opacity:1; transform:translateY(-6px) }
     100% { opacity:0; transform:translateY(-14px) }
   }
+  /* ひとことのタイムライン（入力欄の真上）。**高さを固定して中でスクロール**させる＝
+     行が増えてもページ全体が伸びず、下の共有リンクやロビーが押し出されない。
+     ★display を書いたので [hidden] も書くこと（1件も無いうちは出さない） */
+  /* **パネルの高さを目一杯使い、下から上へ流す。**スクロールはしない＝古い行は上へ抜けて消える
+     （読み返すためのものではなく「見逃した直後の受け皿」なので、追える範囲だけ残ればよい）。
+     justify-content:flex-end ＋ overflow:hidden で、新しい行が下に積まれ、溢れた分は上で切れる。 */
+  .chat-log{ flex:1; min-height:0; display:flex; flex-direction:column; justify-content:flex-end;
+    gap:3px; margin-top:8px; overflow:hidden;
+    padding:6px 8px; border-radius:10px; background:#0a121f; font-size:12.5px; line-height:1.5 }
+  .chat-log[hidden]{ display:none }
+  .cl-row{ display:flex; align-items:baseline; gap:5px }
+  .cl-em{ flex:none; font-size:13px; line-height:1 }
+  /* 名前は詰めてよい（誰かはアバター絵文字でも分かる）。本文は折り返して全部見せる */
+  .cl-who{ flex:none; max-width:6.5em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#9fb0c7 }
+  .cl-text{ flex:1; min-width:0; color:#eef2f8; word-break:break-word }
   .react-fly{ position:fixed; z-index:60; pointer-events:none; font-size:22px; line-height:1;
     animation:react-fly 1.3s ease-out forwards }
   @keyframes react-fly{
@@ -404,6 +492,8 @@
   .room-name{ font-weight:700; font-size:15px; min-width:0;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
   .room-count{ margin-left:auto; flex:none; white-space:nowrap; color:#00e5cc; font-weight:700; font-size:13px }
+  /* 満室は**目安**なので、押せなくはしない（色だけ落として「たぶん入れない」と伝える） */
+  .room-count.full{ color:#ffd24d }
   .room-dur{ margin-top:4px; font-size:12px; color:#9fb0c7; display:flex; align-items:center; gap:8px }
   .room-eq{ margin-left:auto; font-family:'Courier New',ui-monospace,monospace; font-size:15px;
     line-height:1; letter-spacing:1px; color:#00e5cc; text-shadow:0 0 6px rgba(0,229,204,.4) }
@@ -484,6 +574,13 @@
   <div id="roomField">
     <label for="room" class="label-row">部屋名<span id="roomCount" class="char-count"></span></label>
     <input id="room" placeholder="◯◯の部屋" autocomplete="off">
+    <!-- 部屋の種類。**既定は雑談部屋**（今までの部屋と同じ）。配信部屋を選んだ瞬間に鍵を作って
+         共有リンクを確定させる（＝先に配ってから入れる）。
+         他人の配信部屋のリンクを開いている間は JS がこの2つごと隠す（部屋の正体はURLで決まっているため） -->
+    <div id="kindRow" class="kind" role="radiogroup" aria-label="部屋の種類">
+      <label class="snd-opt"><input type="radio" name="kind" id="kindBc"> 📣 配信部屋にする（あなたの声だけ流れます）</label>
+      <label class="snd-opt"><input type="radio" name="kind" id="kindChat" checked> 🏠 雑談部屋にする（全員で話せます）</label>
+    </div>
   </div>
   </div></div>
 
@@ -493,6 +590,9 @@
   <button id="unlock">🔊 音声を有効化（タップ）</button>
   <button id="join"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg><span>参加する</span></button>
   <div class="actions">
+    <!-- 配信部屋で登壇を許されたときだけ出る。**押すまでマイクは取らない**（許可ダイアログが
+         何の脈絡もなく出るのを避ける＝聞き役でいるつもりの人を驚かせない） -->
+    <button id="speak"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/></svg><span>マイクを使う</span></button>
     <button id="mute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/><line class="mic-slash" x1="4" y1="3" x2="20" y2="21"/></svg><span class="lbl">ミュート</span></button>
     <button id="leave"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8"/><path d="M14 3v18"/><path d="M18 12h4"/><path d="m19 9 3 3-3 3"/></svg><span>退出</span></button>
   </div>
@@ -503,28 +603,50 @@
       <button id="retry" class="retry-btn" type="button" hidden>🔄 つなぎ直す</button>
     </div>
     <div style="margin-top:8px">いま一緒にいる人：<span class="peers" id="count">0</span> 人</div>
-    <label class="snd-opt" id="sndPeerRow" style="display:none"><input type="checkbox" id="sndPeer"> 🔔 入室・退出を音で知らせる</label>
-    <label class="snd-opt" id="sndReactRow" style="display:none"><input type="checkbox" id="sndReact"> 🎵 リアクションを音で鳴らす</label>
-    <div id="members" class="members"></div>
-    <!-- リアクション。中身は JS が REACTIONS から作る（一覧の定義を1か所に保つ） -->
-    <div id="reactions" class="reactions" hidden></div>
-    <!-- ひとこと。履歴は持たない（後から来た人には出ない）＝その場だけのもの -->
-    <div id="chatRow" class="chat-row" hidden>
-      <!-- ★入力の候補に「カード番号」等が出ないようにする属性一式（Android で報告あり）。
-           name を messsage と明示するのは、名前が無いと自動入力側が位置や形から
-           推測して支払い欄と誤判定することがあるため。inputmode/enterkeyhint は
-           キーボードを文章向きにする。 -->
-      <input id="chatText" name="message" type="text" placeholder="ひとこと…" maxlength="60"
-             inputmode="text" enterkeyhint="send" autocomplete="off" autocorrect="off"
-             autocapitalize="sentences" spellcheck="false">
-      <button id="chatSend" type="button">送信</button>
+    <!-- 人数が多くなってきたときだけ出る注意（上限に達したら言い方が変わる） -->
+    <div id="crowdNote" class="audio-warn" hidden></div>
+    <!-- 配信部屋のときだけ出る説明（自分がいま話せるのかを一言で言う） -->
+    <div id="bcNote" class="bc-note" hidden></div>
+    <!-- 通話中のタブ。**要素はどれもDOMから消さず、表示/非表示だけをここが握る**
+         （消すと吹き出し・VAD・リアクションの座標など、行に紐づいた仕掛けが全部作り直しになる）。
+         既定は「メンバー」。参加していない間はタブごと出さない。 -->
+    <div id="tabs" class="tabs" role="tablist" aria-label="通話中の表示" hidden>
+      <button id="tabMembers" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panMembers">👥 メンバー</button>
+      <button id="tabChat" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panChat">💬 ひとこと</button>
+      <button id="tabSettings" class="tab tab-right" type="button" role="tab" aria-selected="false" aria-controls="panSettings">⚙️ 設定</button>
     </div>
-    <!-- 経路アイコンの凡例。参加した直後だけ開いて出し、数秒で畳んで1行のボタンに戻る。
-         中身は JS が入れる（行内アイコンと同じSVG定数を使い、見た目を必ず一致させるため） -->
-    <details id="connLegend" class="conn-legend" hidden>
-      <summary id="connLegendSum"></summary>
-      <div id="connLegendBody"></div>
-    </details>
+    <div id="panMembers" class="panel" role="tabpanel" aria-labelledby="tabMembers" hidden>
+      <div id="members" class="members"></div>
+      <!-- リアクション。中身は JS が REACTIONS から作る（一覧の定義を1か所に保つ） -->
+      <div id="reactions" class="reactions" hidden></div>
+      <!-- 経路アイコンの凡例。参加した直後だけ開いて出し、数秒で畳んで1行のボタンに戻る。
+           中身は JS が入れる（行内アイコンと同じSVG定数を使い、見た目を必ず一致させるため） -->
+      <details id="connLegend" class="conn-legend" hidden>
+        <summary id="connLegendSum"></summary>
+        <div id="connLegendBody"></div>
+      </details>
+    </div>
+    <div id="panChat" class="panel" role="tabpanel" aria-labelledby="tabChat" hidden>
+      <!-- ひとことのタイムライン。**自分が受け取った分だけ**を自分の画面に貯める。
+           後から来た人には送らない（＝その場だけのものという性質は変えない）。
+           入力欄の真上に置くのは「読む→打つ」で視線が繋がるため。1件も無いうちは出さない。 -->
+      <div id="chatLog" class="chat-log" hidden></div>
+      <!-- ひとこと。履歴は持たない（後から来た人には出ない）＝その場だけのもの -->
+      <div id="chatRow" class="chat-row" hidden>
+        <!-- ★入力の候補に「カード番号」等が出ないようにする属性一式（Android で報告あり）。
+             name を messsage と明示するのは、名前が無いと自動入力側が位置や形から
+             推測して支払い欄と誤判定することがあるため。inputmode/enterkeyhint は
+             キーボードを文章向きにする。 -->
+        <input id="chatText" name="message" type="text" placeholder="ひとこと…" maxlength="60"
+               inputmode="text" enterkeyhint="send" autocomplete="off" autocorrect="off"
+               autocapitalize="sentences" spellcheck="false">
+        <button id="chatSend" type="button">送信</button>
+      </div>
+    </div>
+    <div id="panSettings" class="panel" role="tabpanel" aria-labelledby="tabSettings" hidden>
+      <label class="snd-opt" id="sndPeerRow" style="display:none"><input type="checkbox" id="sndPeer"> 🔔 入室・退出を音で知らせる</label>
+      <label class="snd-opt" id="sndReactRow" style="display:none"><input type="checkbox" id="sndReact"> 🎵 リアクションを音で鳴らす</label>
+    </div>
     <!-- 音が届かない相手がいるときだけ出る。頼んでも直らなかった＝本人の操作が要る場合の最終手段 -->
     <div id="audioWarn" class="audio-warn" hidden></div>
     <!-- 「退出した」のか「接続が切れた」のかを書き分けて出す。切れたときだけ表示する。
@@ -583,12 +705,24 @@
     <p class="help-tip">💡 部屋名はURLの一部（末尾の <code>#◯◯</code>）。共有リンク＝その部屋のURLなので、開けば同じ部屋に入れます。</p>
   </details>
 
+  <details class="help-sec"><summary>📢 配信部屋</summary>
+    <p>「あなたが話し、ほかの人は聞く」形の部屋です。部屋名の下で <b>📣 配信部屋にする</b> を選んで参加すると作れます（既定は <b>🏠 雑談部屋</b>＝全員で話せる、これまでどおりの部屋）。共有リンクは <b>1種類だけ</b>（配信者用の秘密のリンクはありません）。</p>
+    <ul>
+      <li>聞き役で入った人は <b>マイクを使いません</b>（許可を求められません）</li>
+      <li>誰かに話してもらいたくなったら、参加者リストの 🎙 を押すと <b>その人も話せます</b>（もう一度押すと戻ります）</li>
+      <li>許された人の画面には「マイクを使う」が出ます。<b>押すまでマイクは入りません</b></li>
+    </ul>
+    <p class="help-tip">💡 配信者かどうかは URL ではなく <b>部屋を作った端末</b>で決まります（鍵をブラウザに保存しています）。別の端末やデータを消したあとでは、同じ部屋の配信者に戻れません。</p>
+    <p class="help-tip">💡 「話してよい人」の一覧は配信者が署名して配っており、各自のブラウザが確かめてから音を鳴らします。<b>名乗るだけでは配信者になれません。</b></p>
+  </details>
+
   <details class="help-sec"><summary>できること</summary>
     <ul>
       <li>☎️ ロビー：いま通話中の部屋が一覧で見える（続いている時間も）</li>
       <li>👥 参加者：名前・絵文字が出て、話している人の絵文字が跳ねる／ミュートも表示</li>
       <li>🌱 育てる：使うほどあなたの絵文字が成長（🌱→🌿→🌷or🌻→❓）</li>
       <li>🔔 音：入室・退出や新しい部屋を音で知らせる（それぞれオン/オフ。新しい部屋の音はタブを開いている間だけ）</li>
+      <li>👥 人数：ふつうの部屋は <b>8人</b>、📣 配信部屋は <b>15人</b>まで（全員が全員に繋がる仕組みなので、多いと音が途切れます）</li>
     </ul>
   </details>
 
@@ -666,6 +800,7 @@
 //   ④ 成長           滞在時間や参加回数から段階を出す（飾り・localStorage）
 //   ⑤ 接続の土台     Trystero設定 / TURN資格情報 / 参加者リスト / 音の解析(VAD)
 //   ⑥ 通知音・EQ     WebAudio で合成。ファイルもCDNも使わない
+//   ⑥' 配信部屋      誰の音を鳴らすかを署名で決める（部屋ID＝名前~pk~指紋 は ② にある）
 //   ⑦ 通話           joinCall / leaveCall / toggleMute / つなぎ直し / 音声の到着監視
 //   ⑧ ロビー         固定の隠し部屋で在室を配り合う。一覧・入室・自動再接続
 //   ⑨ 在室のNostr直publish   ロビーとは別経路（バナー用・部屋名はハッシュ）
@@ -724,7 +859,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.7.0'
+const APP_VERSION = 'v0.8.0'
 
 const $ = id => document.getElementById(id)
 
@@ -773,8 +908,21 @@ const CALL_INIT = () => ({
   iceServers: null,     // いま通話に渡してある iceServers 配列。**中身を入れ替えて使う**（refreshIce）
   iceTimer: null,       // 上を定期的に入れ替えるタイマー
   nostrPubAt: 0,        // 在室を最後に Nostr へ流した時刻（ハートビートより粗く間引くため）
+  bcast: false,         // 配信部屋か（部屋IDに ~pk~指紋 が付いているか）
+  ownerKey: null,       // 自分がオーナーなら署名用の秘密鍵（CryptoKey）。null＝聞き役／普通の部屋
+  ownerPub: '',         // 自分がオーナーのときの公開鍵（base64url raw）。名簿に添えて配る
+  grants: new Set(),    // **オーナーの原本**：話してよい人の peerId（自分を含む）
+  speakers: new Set(),  // **検証済みの名簿**：この部屋で音を鳴らしてよい人の peerId
+  ownerPeer: '',        // 名簿に書かれている配信者本人の peerId（📢 と 🎙 を描き分けるため）
+  roster: null,         // 最後に受け取った（署名済みの）名簿。新しい人にそのまま転送するために持つ
+  rosterT: 0,           // 自分が署名した名簿の時刻（必ず増やす）
+  rosterSeen: 0,        // 採用済みの名簿の時刻。**これ以下は捨てる**＝古い名簿の再送（リプレイ）よけ
+  bcAction: null,       // 名簿を配るデータチャネル
+  bcTimer: null,        // オーナーが名簿を定期的に配り直すタイマー（取りこぼしの自己修復）
   ignored: new Set(),   // 無視している相手の peerId。**この部屋にいる間だけ**（相手が入り直すと別IDになる）
   byeSeen: new Set(),   // 「退出します」を送ってきた相手。来ないまま消えたら「接続が切れた」と書き分ける
+  tab: 'members',       // 通話中に開いているタブ。通話ごとに既定へ戻す（だからここに置く）
+  capTimer: null,       // 満室判定を少し待つタイマー（相手のプロフィールが届いてから数えるため）
   noticeTimer: null     // 上の通知を自動で畳むタイマー
 })
 // **テンプレートに入れない2つ**。どちらも「退出しても引き継ぐ」ものなので、reset で戻すと壊れる。
@@ -875,9 +1023,10 @@ $('qr').onclick = async () => {
 }
 // 部屋名が変わっても描き直せるよう切り出してある（syncShare から呼ばれる）
 const drawQr = async () => {
-  const img = $('qrImg'), name = pendingRoom()
+  const img = $('qrImg'), id = pendingRoom()
   img.textContent = '生成中…'
-  $('qrRoom').textContent = name ? '部屋：' + name : ''
+  // 表示は名前だけ（指紋はURLの中身なので読めても意味がない。長いだけで邪魔になる）
+  $('qrRoom').textContent = id ? '部屋：' + (isBcRoom(id) ? '📢 ' : '') + roomName(id) : ''
   try {
     const qrcode = await loadQR()
     const qr = qrcode(0, 'M'); qr.addData(shareUrl()); qr.make()
@@ -923,6 +1072,74 @@ const ROOM_MAX = 30
 // 部屋名は識別子なので、**参加時と受信時で必ず同じ処理**を通すこと（片方だけ整形すると同じ部屋に
 // 入れなくなる）。だから入口も出口も capRoom を経由させている。
 const capRoom = s => capText(s, ROOM_MAX)
+
+// ───────── 配信部屋の部屋ID（`部屋名~pk~指紋`） ─────────
+// **公開鍵の指紋を部屋IDそのものに入れる。**分けずに一体にするのが要点で、こうすると
+// 「同じ部屋にいる全員が、同じオーナー鍵を見ている」ことが**構造で保証される**。
+// 鍵を参加時の自己申告にすると、先に入った改造クライアントが「自分がオーナーだ」と名乗れて
+// しまい、受信側の既定（＝配信部屋の存在理由そのもの）が丸ごと無効になる。
+// ＝ HANDOFF 2026-07-28「公開鍵は必ずURL（＝部屋の身元）に固定」の一番強い形。
+//
+// URLに載せるのは公開鍵そのもの（65バイト＝87文字）ではなく **SHA-256 の先頭16バイト（22文字）**。
+// 公開鍵の本体はデータチャネルで配り、受け取った側がこの指紋と突き合わせてから採用する。
+//  ・公開鍵は**公開して安全**なので誰が転送してもよい（オーナーが去った後も検証は続けられる）
+//  ・共有リンクとQRが短いまま済む（このアプリの主要な導線はリンクとQRなので、ここは効く）
+//  ・強度は「指紋の第二原像を探す」＝128ビット。破るより新しい部屋を作るほうが早い
+// 指紋は**末尾**に置き、22文字ちょうどの base64url のときだけ認める。だから `~pk~` を含む
+// 部屋名を手で打っても（＝壊れた指紋になるので）ただの部屋名として扱われる。
+// 区切りは `~pk~`。設計メモでは `~pk=` だったが、**`=` は encodeURIComponent で `%3D` に化ける**
+// ので、共有リンクが `#部屋名~pk%3Dxxxx` になって読みにくい。`~` は変換されない文字なので
+// そのまま出る（unreserved: A-Za-z0-9 - _ . ! ~ * ' ( ) ）。
+const PK_SEP = '~pk~'
+const FP_LEN = 22
+const FP_RE = new RegExp('^[A-Za-z0-9_-]{' + FP_LEN + '}$')
+const roomPk = id => {
+  const s = String(id ?? ''), i = s.lastIndexOf(PK_SEP)
+  const p = i < 0 ? '' : s.slice(i + PK_SEP.length)
+  return FP_RE.test(p) ? p : ''
+}
+const roomName = id => { const s = String(id ?? ''); return roomPk(s) ? s.slice(0, s.lastIndexOf(PK_SEP)) : s }
+const isBcRoom = id => !!roomPk(id)
+const roomIdOf = (name, pk) => name && FP_RE.test(pk || '') ? name + PK_SEP + pk : name
+// 受け取った部屋IDの整形。**切り詰めてよいのは名前の部分だけ**（全体を capRoom に通すと
+// 30文字で切れて指紋が欠け、別の部屋になる＝ロビーからタップしても誰にも会えない）。
+const capRoomId = v => roomIdOf(capRoom(roomName(v)), roomPk(v))
+
+// ───────── 配信部屋の鍵（ECDSA P-256・localStorage） ─────────
+// オーナーであることの証明は**秘密鍵を持っていること**だけで決まる。トークン方式を捨てた理由は
+// HANDOFF 2026-08-13 の訂正：他人のクライアントに検証手段が無いので「自分がオーナーだ」と
+// 名乗るだけで通ってしまう。`crypto.subtle` は標準搭載なのでサーバ無しで本物の検証ができる。
+const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+const unb64u = s => Uint8Array.from(atob(String(s).replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))
+const ECDSA = { name: 'ECDSA', namedCurve: 'P-256' }
+const SIGN_ALG = { name: 'ECDSA', hash: 'SHA-256' }
+const fpOf = async pub => b64u((await crypto.subtle.digest('SHA-256', unb64u(pub))).slice(0, 16))
+const BC_KEY = 'pot-call-bcast'
+const BC_MAX = 20            // 溜め込まない。古い順に捨てる（＝古い配信部屋のオーナー権は失う）
+const loadBcKeys = () => { try { const o = JSON.parse(localStorage.getItem(BC_KEY) || '{}'); return o && typeof o === 'object' ? o : {} } catch { return {} } }
+// **同じ部屋名なら同じ鍵**を使い回す＝配信リンクが毎回変わらない（前に配ったリンクが生き続ける）。
+const ownerKeyFor = async name => {
+  const all = loadBcKeys()
+  const hit = Object.entries(all).find(([, v]) => v && v.name === name)
+  if (hit) return { fp: hit[0], ...hit[1] }
+  const kp = await crypto.subtle.generateKey(ECDSA, true, ['sign', 'verify'])
+  const jwk = await crypto.subtle.exportKey('jwk', kp.privateKey)
+  const pub = b64u(await crypto.subtle.exportKey('raw', kp.publicKey))
+  const fp = await fpOf(pub)
+  all[fp] = { name, jwk, pub, at: Date.now() }
+  const ks = Object.keys(all)
+  if (ks.length > BC_MAX) ks.sort((a, b) => (all[a].at || 0) - (all[b].at || 0)).slice(0, ks.length - BC_MAX).forEach(k => delete all[k])
+  try { localStorage.setItem(BC_KEY, JSON.stringify(all)) } catch {}
+  return { fp, name, jwk, pub }
+}
+// 指紋から自分の鍵を探す。**見つかれば自分がその部屋のオーナー**（＝端末に縛られる代償）。
+const ownerKeyByFp = fp => { const v = fp ? loadBcKeys()[fp] : null; return v ? { fp, ...v } : null }
+const importSign = jwk => crypto.subtle.importKey('jwk', jwk, ECDSA, false, ['sign'])
+const importVerify = pub => crypto.subtle.importKey('raw', unb64u(pub), ECDSA, false, ['verify'])
+
+// これから入る部屋の公開鍵指紋。URL（#部屋名~pk~…）・ロビーのタップ・下の「📣 配信部屋にする」の
+// どれかで決まる。**参加していない間の予定**なので call には置かない（退出で消えると困る）。
+let pendingPk = ''
 const roomInput = $('room')
 // 文字数カウンタ。絵文字を1文字と数えるためコードポイント単位で数える（capRoom と同じ数え方）。
 // value への代入では input イベントが飛ばないので、値を書き換えた箇所では必ずこれを呼ぶこと。
@@ -930,7 +1147,9 @@ const roomInput = $('room')
 // 招待リンクは location.href ではなく部屋名から組み立てる。こうすると **入室前でも** リンクが確定し、
 // 先に配ってから入る、という使い方ができる（アドレスバーは参加するまで変えない）。
 const roomUrl = name => location.origin + location.pathname + '#' + encodeURIComponent(name)
-const pendingRoom = () => call.joinedId || capRoom(roomInput.value.trim() || defaultRoom())
+// これから入る（または入っている）部屋の**ID**。配信部屋なら `~pk~指紋` が付いた形で、
+// 共有リンクもこれで組む＝**リンクを配った時点で部屋の正体（配信部屋かどうか）が決まる**。
+const pendingRoom = () => call.joinedId || roomIdOf(capRoom(roomInput.value.trim() || defaultRoom()), pendingPk)
 const shareUrl = () => { const n = pendingRoom(); return n ? roomUrl(n) : location.href }
 // 共有欄（リンク・コピー・QR）の表示を今の部屋名に合わせる。部屋名が無ければ隠す。
 const syncShare = () => {
@@ -950,14 +1169,65 @@ const syncRoomCount = () => {
   el.classList.toggle('over', n > ROOM_MAX)
   el.title = n > ROOM_MAX ? '参加すると ' + ROOM_MAX + ' 文字までに切り詰められます' : ''
 }
-roomInput.addEventListener('input', () => { syncRoomCount(); syncShare() })
+roomInput.addEventListener('input', () => {
+  // 他人の配信部屋のリンクを開いた状態で部屋名を書き換えた＝「別の部屋を作る」意思なので、
+  // もらってきた指紋は捨てる（そのまま持っていると、名前だけ違う"存在しない配信部屋"に入ってしまう）。
+  if (pendingPk && !ownerKeyByFp(pendingPk)) pendingPk = ''
+  syncRoomCount()
+  if (kindBc.checked) applyBcast()   // 名前が変われば鍵も部屋も変わる（中で syncShare する）
+  else { syncShare(); syncKindRow() }
+})
 // URLの部屋名。壊れたパーセントエンコーディング（例 #%E3%81 ＝リンクが途中で切れた・手で削られた等）
 // だと decodeURIComponent は URIError を投げる。ここはモジュールのトップレベルなので、投げさせると
 // **以降の初期化が全部止まってアプリごと動かなくなる**（ボタンが一切効かない白紙同然の状態）。
 // 読めない hash は諦めて空にし、部屋名を手で入れ直せる状態を必ず残す。
 const roomFromHash = () => { try { return decodeURIComponent(location.hash.slice(1)) } catch { return '' } }
-roomInput.value = roomFromHash()
+{
+  // 入力欄に入れるのは**名前だけ**。指紋は pendingPk で持つ（欄に出すと、うっかり消されて
+  // 「同じ名前の別の部屋」に入ってしまうし、文字数カウンタの意味も壊れる）。
+  const h = roomFromHash()
+  roomInput.value = roomName(h)
+  pendingPk = roomPk(h)
+}
 syncRoomCount()
+
+// 部屋の種類（📣 配信部屋 / 🏠 雑談部屋）。**既定は雑談部屋**＝これまでの部屋と同じ挙動。
+// 配信部屋を選んだ**その瞬間に鍵を作って共有リンクを確定させる**ので、参加する前にリンクだけ
+// 配ることができる（このアプリが元々そう作られている＝syncShare 参照）。
+const kindBc = $('kindBc'), kindChat = $('kindChat'), kindRow = $('kindRow')
+let bcMint = 0   // 鍵づくりは非同期。部屋名を打ち替えるたびに走るので、最後の1回だけ採用する
+const syncKindRow = () => {
+  // 他人の配信部屋にいる／入ろうとしている間は、この2択そのものを出さない。
+  // 部屋の正体はURLで決まっているので、ここで切り替えられると誤解のもとになる。
+  const foreign = !!pendingPk && !ownerKeyByFp(pendingPk)
+  kindRow.hidden = !!call.joinedId || foreign
+  kindBc.parentElement.classList.toggle('sel', kindBc.checked)
+  kindChat.parentElement.classList.toggle('sel', kindChat.checked)
+}
+// 種類を選び直したときと、配信部屋のまま部屋名を打ち替えたときに走る（名前が変われば鍵も部屋も変わる）
+const applyBcast = async () => {
+  const mine = ++bcMint
+  syncRoomCount()
+  if (!kindBc.checked) { pendingPk = ''; syncShare(); syncKindRow(); return }
+  const name = capRoom(roomInput.value.trim() || defaultRoom())
+  if (!name) { pendingPk = ''; syncShare(); syncKindRow(); return }
+  try {
+    const k = await ownerKeyFor(name)
+    if (mine !== bcMint) return            // もっと新しい入力に追い越された
+    pendingPk = k.fp
+  } catch (e) {
+    // crypto.subtle は安全なコンテキスト（https/localhost）でしか使えない。ここで黙って
+    // 落ちると「配信部屋を選んだのに普通の部屋だった」になるので、必ず雑談部屋へ戻して知らせる。
+    kindChat.checked = true; pendingPk = ''
+    setState('配信部屋を作れませんでした（' + (e.name || e) + '）', 'error')
+  }
+  syncShare(); syncKindRow()
+}
+kindBc.onchange = applyBcast
+kindChat.onchange = applyBcast
+// 自分が作った配信部屋のリンクを開き直した＝オーナーとして戻ってきた、と分かるようにする
+if (pendingPk && ownerKeyByFp(pendingPk)) kindBc.checked = true
+syncKindRow()
 
 // プロフィール（名前・アバター絵文字）— ブラウザに保存し次回も引き継ぐ。
 // いまは自分の設定を保持するだけ。相手への送信・参加者リスト表示は次の段階で足す。
@@ -1096,7 +1366,12 @@ const NUDGE_ACCEPT_MS = Math.max(1000, NUDGE_EVERY_MS - 2000)
 
 // 自分の現在のプロフィール送信データ（名前・絵文字・ミュート状態・成長段階・接続経路）。
 // relay は「自分が中継経由か」の自己申告（各自のブラウザだけが確実に知る）。参加者リストに経路アイコンを出す。
-const myProfilePayload = () => ({ name: profile.name, emoji: profile.emoji, muted: call.muted, stage: stageOf(), relay: call.usingRelay })
+// 配信部屋の聞き役は**マイクを持っていない**＝「声が出ていない」という意味ではミュートと同じ。
+// 参加者リストにもロビーにも同じ印（🔇）で出す＝見る側は「誰の声が来るのか」だけを読めばよい。
+const micOff = () => call.muted || (call.bcast && !call.stream)
+// since ＝ この部屋に入ってから何秒か。**満室のときに誰が抜けるかを決めるのに使う**（下の checkCapacity）。
+// 絶対時刻ではなく経過秒で配るのは、端末ごとの時計ズレの影響を受けないため（部屋の継続時間と同じ考え方）。
+const myProfilePayload = () => ({ name: profile.name, emoji: profile.emoji, muted: micOff(), stage: stageOf(), relay: call.usingRelay, since: mySeconds() })
 
 // Trystero 設定（通話部屋とロビー部屋で共用）。
 const TRYSTERO_BASE = {
@@ -1162,6 +1437,8 @@ const setCount = () => { $('count').textContent = call.peers.size }
 
 // ミュート印のマイク斜線SVG。参加者リストとロビーのチップで共用する（ボタンのミュート表示とも同じ形）。
 const MIC_OFF_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/><line x1="4" y1="3" x2="20" y2="21"/></svg>'
+// 斜線なしのマイク（配信部屋の登壇ボタン）。上と同じ形にしてあるので、並んでも別物に見えない。
+const MIC_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/></svg>'
 // 接続経路アイコン。中継＝Cloudflareの雲（オレンジ）／直結＝双方向矢印（ティール）。色だけで意味を持たせる（案A）。
 const CLOUD_SVG  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.2 9.4 4 4 0 0 0 6.5 19z"/></svg>'
 // 無視の切替アイコン。**塗り＝受け取っている／割れた輪郭＝受け取っていない**。
@@ -1178,7 +1455,10 @@ const ARROWS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 // relay: true=中継 / false=直結 / undefined=経路不明（プロフィール未着や旧クライアント）→アイコンを出さない。
 const membersEl = $('members')
 const emojiEls = new Map()  // uid('self'|peerId) → 現在の絵文字要素（描き直すたび貼り替え、VADから参照する）
-const memberRow = (emoji, name, you, isMuted, stage, relay, action) => {
+// 配信部屋の印と、登壇の切替ボタン（bc）。bc は配信部屋のときだけ渡す。
+//   bc.mark  … 📢＝配信者 / 🎙＝話してよい人 / ''＝聞き役
+//   bc.grant … オーナーの画面にだけ付く切替（{on, title, onClick}）
+const memberRow = (emoji, name, you, isMuted, stage, relay, action, bc) => {
   const row = document.createElement('div'); row.className = 'member' + (isMuted ? ' muted' : '')
   const av = document.createElement('span'); av.className = 'm-emoji'; av.textContent = emoji || '🙂'
   // 名前・成長・（あなた）は1つの箱にまとめる。**縮んでよいのは名前だけ**で、
@@ -1189,6 +1469,11 @@ const memberRow = (emoji, name, you, isMuted, stage, relay, action) => {
   nm.textContent = name || 'ゲスト'; nm.title = name || 'ゲスト'   // 詰められた分は title で読める
   id.append(nm)
   if (stage) { const st = document.createElement('span'); st.className = 'm-stage'; st.textContent = stage; id.append(st) }
+  if (bc && bc.mark) {
+    const m = document.createElement('span'); m.className = 'm-bc'; m.textContent = bc.mark
+    m.title = bc.mark === '📢' ? 'この部屋の配信者' : '話す許可を持っている人'
+    id.append(m)
+  }
   if (you) { const t = document.createElement('span'); t.className = 'you'; t.textContent = '（あなた）'; id.append(t) }
   // ミュート印はボタンと同じマイク斜線SVG（絵文字ではなく揃える）。常に置いて visibility だけ切替
   // ＝追加/削除で行の高さが変わり枠がピクつくのを防ぐ。margin-left:auto で右クラスタを右端へ寄せる。
@@ -1205,6 +1490,23 @@ const memberRow = (emoji, name, you, isMuted, stage, relay, action) => {
       : (relay ? '中継ごし：この人のIPアドレスは隠れています' : '直接：この人のIPアドレスが見えています')
     c.innerHTML = relay ? CLOUD_SVG : ARROWS_SVG
     row.append(c)
+  }
+  // 登壇の切替（配信部屋のオーナーの画面にだけ出る）。無視ボタンの左に置く＝
+  // 「この人の音を出す／出さない」で意味が近いものを隣り合わせにする。
+  if (bc && bc.grant) {
+    const g = document.createElement('button'); g.type = 'button'
+    g.className = 'm-mic' + (bc.grant.on ? ' on' : '')
+    g.innerHTML = MIC_SVG   // SVGは定数なので innerHTML で安全
+    if (bc.grant.hidden) {
+      // 自分の行にも同じ場所を空ける（.m-ig と同じ理由＝右端の要素数が行ごとに変わると縦がずれる）
+      g.disabled = true; g.setAttribute('aria-hidden', 'true'); g.style.visibility = 'hidden'
+    } else {
+      g.title = bc.grant.title
+      g.setAttribute('aria-label', bc.grant.title)
+      g.setAttribute('aria-pressed', String(!!bc.grant.on))
+      g.onclick = bc.grant.onClick
+    }
+    row.append(g)
   }
   // 無視の切替（行の右端）。**自分の行にも同じ場所を空ける**＝出さないのではなく見えなくする。
   // 行ごとに右端の要素が変わると、経路アイコン（☁️/↔）の縦位置がずれる。
@@ -1230,8 +1532,9 @@ const legendEl = $('connLegend')
 // リアクションの置き場。**renderMembers から参照するので、ここで先に取る**
 // （実体のボタンは下の REACTIONS のところで作る）
 const reactionsEl = $('reactions')
-// ひとことの入力欄。**renderMembers から参照するので、ここで先に取る**
+// ひとことの入力欄とタイムライン。**renderMembers から参照するので、ここで先に取る**
 const chatRow = $('chatRow'), chatText = $('chatText'), chatSend = $('chatSend')
+const chatLogEl = $('chatLog')
 const connIcon = relay => {
   const ic = document.createElement('span')
   ic.className = 'm-conn ' + (relay ? 'relay' : 'direct')
@@ -1261,29 +1564,83 @@ const legendLine = (relay, text, cls) => {
 // `open =` では飛ばず、ユーザー操作（キーボードでの開閉も click になる）だけを拾える。
 $('connLegendSum').addEventListener('click', () => { clearTimeout(call.legendTimer); call.legendTimer = null })
 
+// ───────── 通話中のタブ ─────────
+// **タブは「どのパネルを見せるか」だけを持つ。**中の要素は参加/退出に合わせて自分で
+// hidden を切り替えており（renderMembers 参照）、ここはその上に重なる2枚目の条件になる。
+// ＝**参加していなければ、どのタブを選んでいても中身は出ない**（未参加の画面に通話中のUIを
+// 混ぜない、という決まりを1か所で壊さないため）。
+const TAB_PANELS = [['members', 'tabMembers', 'panMembers'], ['chat', 'tabChat', 'panChat'], ['settings', 'tabSettings', 'panSettings']]
+const renderTabs = () => {
+  $('tabs').hidden = !call.joinedId
+  TAB_PANELS.forEach(([key, tabId, panId]) => {
+    const on = !!call.joinedId && call.tab === key
+    $(tabId).setAttribute('aria-selected', String(on))
+    $(tabId).tabIndex = on ? 0 : -1        // 矢印キーで移る（Tab キーはタブ列を1つとして扱う）
+    $(panId).hidden = !on
+  })
+}
+const selectTab = key => {
+  if (!TAB_PANELS.some(t => t[0] === key)) return
+  call.tab = key
+  renderTabs()
+}
+TAB_PANELS.forEach(([key, tabId]) => { $(tabId).onclick = () => selectTab(key) })
+$('tabs').addEventListener('keydown', e => {
+  const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+  if (!d) return
+  e.preventDefault()
+  const i = TAB_PANELS.findIndex(t => t[0] === call.tab)
+  const next = TAB_PANELS[(i + d + TAB_PANELS.length) % TAB_PANELS.length]
+  selectTab(next[0]); $(next[1]).focus()
+})
+
+// この人数までは高さの中に収まる。超えたら**スクロールに切り替える**（それまでは切らない＝
+// 吹き出しが先頭の行で切れないため。上の CSS のコメント参照）。
+const MEMBERS_VIEW = 5
 const renderMembers = () => {
   membersEl.replaceChildren(); emojiEls.clear()
+  membersEl.classList.toggle('scroll', call.peers.size + 1 > MEMBERS_VIEW)
+  renderTabs()                       // タブの出し入れ。**未参加でも通るよう、下の早期 return より前に**
+  renderCrowd()                      // 人数の注意。**未参加でも通るよう、下の早期 return より前に置く**
   legendEl.hidden = !call.joinedId   // 凡例は通話中だけ（未参加のときはアイコン自体が出ない）
   reactionsEl.hidden = !call.joinedId
   chatRow.hidden = !call.joinedId
-  if (!call.joinedId) return
-  const add = (uid, emoji, name, you, isMuted, stage, relay, action) => {
-    const row = memberRow(emoji, name, you, isMuted, stage, relay, action)
+  // 退出したらタイムラインは捨てる（次の参加に持ち越さない＝join/leave の対称性）。
+  // **通話中の再描画では触らない**ので、参加者が増減しても流れは残る。
+  if (!call.joinedId) { chatLogEl.replaceChildren(); chatLogEl.hidden = true; return }
+  const add = (uid, emoji, name, you, isMuted, stage, relay, action, bc) => {
+    const row = memberRow(emoji, name, you, isMuted, stage, relay, action, bc)
     emojiEls.set(uid, row.querySelector('.m-emoji'))
     membersEl.appendChild(row)
   }
-  add('self', profile.emoji, profile.name, true, call.muted, stageOf(), call.usingRelay)
+  // 配信部屋の印。配信者は 📢、あとから許された人は 🎙、それ以外は無印（＝聞き役）。
+  // **誰が配信者かも署名の中に入っている**ので、自分の行か相手の行かで判断を変えなくてよい。
+  const bcMark = id => !call.bcast ? '' : (id && id === call.ownerPeer ? '📢' : call.speakers.has(id) ? '🎙' : '')
+  // 聞き役はマイクを持っていないので、ミュート印を出しておく（一覧の見え方を「話せない人」で揃える）
+  add('self', profile.emoji, profile.name, true, micOff(), stageOf(), call.usingRelay, null,
+    { mark: bcMark(myPeerId), grant: call.ownerKey ? { hidden: true } : null })
   // peers（接続の事実）を軸にし、プロフィール未着の相手は仮表示にする（経路も未着なら undefined＝アイコンなし）
   call.peers.forEach(id => {
     const p = call.profiles.get(id) || {}
     const ig = call.ignored.has(id)
+    const bc = {
+      mark: bcMark(id),
+      // オーナーだけが登壇を切り替えられる。**判定はボタンの有無ではなく署名**なので、
+      // ここを他人に見せても実害は無い（押しても署名できない）が、混乱するので出さない。
+      grant: call.ownerKey ? {
+        on: call.grants.has(id),
+        title: call.grants.has(id) ? 'この人が話すのをやめてもらう' : 'この人にも話してもらう（全員に届きます）',
+        onClick: () => toggleGrant(id)
+      } : null
+    }
     // 無視中でも**接続は生きている**ので peers に残る。行を薄くして取り消し線を引くのは
     // **自分にだけ見える印**（相手には何も伝わらない）。忘れて混乱しないためのもの。
     add(id, p.emoji, p.name, false, !!p.muted, p.stage, p.relay, ig
       ? { off: true, title: 'この人の音をまた受け取る', onClick: () => unignorePeer(id) }
-      : { off: false, title: 'この人の音を受け取らない（無視。相手には伝わりません）', onClick: () => ignorePeer(id) })
+      : { off: false, title: 'この人の音を受け取らない（無視。相手には伝わりません）', onClick: () => ignorePeer(id) }, bc)
     if (ig) membersEl.lastElementChild.classList.add('ignored')
   })
+  renderBcNote()
 }
 
 // アクティブスピーカー検出（VAD）：各ストリームの音量を測り、話している人の絵文字を跳ねさせる。
@@ -1476,6 +1833,73 @@ const refreshIce = async () => {
   live.splice(0, live.length, ...fresh)  // ★参照を保ったまま中身だけ差し替える（代入では効かない）
 }
 
+// ───────── 人数上限 ─────────
+// **壁は帯域ではなく接続数。**フルメッシュなので部屋全体の接続は N(N-1)/2 で増える
+// （5人=10本 / 10人=45本 / 15人=105本）。音声1本は30kbps程度なので帯域はまだ余裕だが、
+// メモリ・CPU と、入退室のたびに走るシグナリングのほうが先に音を上げる。
+// **上限を置くのは「人気は自分で選べない」から。**公開ロビーがあるので人は集まりうるし、
+// 上限が無いと「重い・入れたり入れなかったり」という**原因の分からない不調**になる。
+// **壊れるより断るほうが親切。**
+//  ・ふつうの部屋 … 全員が全員に声を送るので先に破綻する。8人で打ち止め、6人から予告する
+//  ・配信部屋     … 流れる音声は1本なので成立する。15人まで
+const ROOM_CAP = 8, ROOM_WARN = 6
+const BC_CAP = 15, BC_WARN = 12
+const roomCapOf = id => isBcRoom(id) ? BC_CAP : ROOM_CAP
+const roomCap = () => roomCapOf(call.joinedId)
+// 上限も予告も**部屋IDだけから決まる**（call.bcast と二重の根拠を作らない）
+const roomWarn = () => isBcRoom(call.joinedId) ? BC_WARN : ROOM_WARN
+// 満室のときに**抜けるのは、あとから入ってきた側だけ**。ここを外すと、部屋にいる全員が同じ判定を
+// 回して**全員が抜けてしまう**。条件は2つあって、**両方**を満たしたときだけ自分から抜ける：
+//  ① **到着順で数えて自分が定員の外**（＝自分より先に入った人が既に定員ぶんいる）
+//  ② **参加直後のこの窓の中にいる**（長く居た人は、何が起きても自分からは抜けない）
+// **①だけでは足りず、②だけでは壊れる。**②だけで判定していたとき、9人目が来た瞬間に
+// 「その直前に入った人たち」もまだ窓の中だったので**一緒に抜けて 8人→4人になった**
+// （2026-08-15・T29 が検出）。だから「誰があとから来たのか」を実際に見る必要がある。
+// 順位づけには相手のプロフィールに載っている since（部屋にいる秒数）を使う。
+const CAP_PROBE_MS = 15000
+// 自分より先にこの部屋に入っていた人の数。**同時のときは peerId の大小で決める**
+// （全員が同じ答えを出せる決定的な順序が要る。両方が譲ると二人とも抜けてしまう）。
+const olderThanMe = () => {
+  const mine = Date.now() - mySeconds() * 1000   // 自分が入った時刻（こちらの時計）
+  let n = 0
+  call.peers.forEach(id => {
+    const at = (call.profiles.get(id) || {}).joinedAt
+    // 不明（プロフィール未着・旧クライアント）は「先にいた」とみなす＝迷ったら自分が引く
+    if (at === undefined || at < mine || (at === mine && id < myPeerId)) n++
+  })
+  return n
+}
+
+const renderCrowd = () => {
+  const el = $('crowdNote')
+  const n = call.peers.size + 1
+  el.hidden = !call.joinedId || n < roomWarn()
+  if (el.hidden) return
+  el.textContent = n >= roomCap()
+    ? '👥 ' + n + '人です。この部屋の上限（' + roomCap() + '人）に達しました'
+    : '👥 ' + n + '人になりました。あと ' + (roomCap() - n) + '人まで（多いほど音が途切れやすくなります）'
+}
+// 入ってきた自分が定員を超えていたら、自分から抜ける。**一瞬入って出る**ことになるが、
+// 満室のまま全員の通話が重くなるより、入れなかったと分かるほうがよい。
+const checkCapacity = () => {
+  if (!call.joinedId || retrying) return
+  const cap = roomCap()                                          // leaveCall で call が戻るので先に控える
+  if (call.peers.size + 1 <= cap) return
+  if (performance.now() - call.joinedAt > CAP_PROBE_MS) return   // ② 長く居た人は抜けない
+  if (olderThanMe() < cap) return                                // ① 定員の内側に入れている＝抜けない
+  leaveCall()
+  setState('この部屋は満員です（最大 ' + cap + '人）。しばらくしてから入り直してください', 'warn')
+}
+// **すぐには数えない。**接続が張れた直後は相手のプロフィール（＝到着時刻）がまだ届いておらず、
+// 到着順が「全員が自分より先」に見えてしまう＝**定員内にいる人まで抜ける**。
+// 少し待ってから数え、プロフィールが届くたびに数え直す（先に来たイベントは捨てる）。
+const CAP_SETTLE_MS = 1500
+const scheduleCapacityCheck = () => {
+  if (!call.joinedId) return
+  clearTimeout(call.capTimer)
+  call.capTimer = setTimeout(() => { call.capTimer = null; checkCapacity() }, CAP_SETTLE_MS)
+}
+
 const JOIN_ERR_MS = 20000   // これだけ誰とも繋がらないままなら「つなぎ直す」を勧める
 const joinErrText = raw => {
   const s = String(raw || '')
@@ -1491,14 +1915,15 @@ const render = () => {
   // 圏外・Wi-Fiオフでも参加自体は成功する（マイクはローカル、ライブラリは読込済み）。
   // 何も言わないと「誰も来ない部屋」に見えて原因が分からないので、まずこれを出す。
   // navigator.onLine は「回線があるか」までしか分からないが、外れても実害のない案内なのでこれで十分。
+  const label = (call.bcast ? '📢 ' : '') + roomName(call.joinedId)   // 指紋は出さない（読めても意味がない）
   if (!navigator.onLine) setState('インターネットに繋がっていません', 'error')
-  else if (call.peers.size) setState('通話中：' + call.joinedId, 'ok')
+  else if (call.peers.size) setState('通話中：' + label, 'ok')
   // 誰とも繋がらないままエラーが出ている。**しばらく続いたら「つなぎ直す」へ誘導する**。
   // つなぎ直す＝リロードなので、ピアID（selfId）も TURN 資格情報も取り直される＝この手の
   // 詰まり（居残った幽霊ピア／期限切れの資格情報）に実際に効く、唯一こちらから打てる手。
   // ただし即座には言わない。相手の到着待ちで一時的にエラーが出ることは普通にあるため。
   else if (call.warn) setState(call.warn + (aloneLong() ? '（「つなぎ直す」を試してみてください）' : '（相手を探しています…）'), 'warn')
-  else setState('参加中：' + call.joinedId + '（相手を探しています…）', 'ok')
+  else setState('参加中：' + label + '（相手を探しています…）', 'ok')
 }
 // 通話の途中で圏外になった／戻ったときにも表示を追従させる（通話中のみ render が中身を持つ）
 addEventListener('online', render)
@@ -1534,10 +1959,13 @@ const checkAudioArrival = () => {
   if (!call.peers.size) render()
   const now = Date.now()
   const stuck = []
+  let expect = 0        // 音が来るはずの相手の数（自動復帰の判定に使う）
   call.peers.forEach(id => {
     // 無視中の相手は「音が来ない」のが正常。**外すと相手に「送り直して」が飛んで無視が漏れ、
     // こちらには偽の警告が出る**（受信側だけで完結する、という前提が崩れる）。
-    if (call.ignored.has(id)) return
+    // 配信部屋で名簿に載っていない人も同じ（聞き役から音が来ないのは正常）。
+    if (!canHear(id)) return
+    expect++
     // 届いていれば覚えを捨てる（また切れたら最初から頼み直せるように）
     if ((call.audios.get(id) || []).length) { call.nudges.delete(id); return }
     if (now - (call.peerSince.get(id) || now) < AUDIO_WAIT_MS) return   // まだ待つ（相手の準備中かもしれない）
@@ -1549,7 +1977,7 @@ const checkAudioArrival = () => {
     call.nudges.set(id, { n: st.n + 1, at: now })
   })
   renderAudioWarn(stuck)
-  checkRecover(now, stuck)
+  checkRecover(now, stuck, expect)
 }
 const stopAudioWatch = () => {
   if (call.audioWatch) { clearInterval(call.audioWatch); call.audioWatch = null }
@@ -1599,7 +2027,8 @@ const ignorePeer = id => {
 const unignorePeer = id => {
   call.ignored.delete(id)
   // 音は捨ててあるので、相手に送り直してもらう。「音が届いていない」ときと同じ頼み方。
-  try { call.nudgeAction?.send(1, { target: id }).catch(() => {}) } catch {}
+  // 配信部屋で名簿に載っていない相手には頼まない（送ってもらっても鳴らさないので無駄になる）。
+  if (canHear(id)) try { call.nudgeAction?.send(1, { target: id }).catch(() => {}) } catch {}
   call.peerSince.set(id, Date.now())   // 監視の待ち時間を数え直す（すぐ警告を出さない）
   renderMembers()
 }
@@ -1740,18 +2169,21 @@ const REACT_MAX_FLY   = 14    // 同時に浮かべる上限（DOM を溢れさ�
 // 押した人のアバターから浮かべる。uid は参加者リストの行キー（自分は 'self'）。
 const flyReaction = (uid, idx) => {
   const av = emojiEls.get(uid)
+  // 同時上限は**音にも効かせる**（連打で音が重なるのを防ぐ門番。ここは従来どおり）
   if (!av || document.querySelectorAll('.react-fly').length >= REACT_MAX_FLY) return
   const r = av.getBoundingClientRect()
-  if (!r.width) return                     // 画面に出ていない（畳まれている等）
-  const el = document.createElement('div')
-  el.className = 'react-fly'
-  el.textContent = REACTIONS[idx]
-  el.style.left = (r.left + r.width / 2 + (Math.random() * 18 - 9)) + 'px'
-  el.style.top = (r.top - 4) + 'px'
-  document.body.appendChild(el)
-  setTimeout(() => el.remove(), 1400)
-  // 音は**上の門番を通ったものだけ**鳴らす（同時上限も連打の下限もここまでで効いている）。
-  // 先に鳴らすと、絵文字が出ないのに音だけ鳴る＝うるさいだけの状態になる。
+  // 画面に出ていないとき（他のタブを見ている・畳まれている）は**飛ばさないが、音は鳴らす**。
+  // タブに分けた結果、メンバーを見ていない間はリアクションの気配が音しか無くなるため
+  // （2026-08-16 の判断。それ以前は「絵文字が出ないなら音も出さない」だった）。
+  if (r.width) {
+    const el = document.createElement('div')
+    el.className = 'react-fly'
+    el.textContent = REACTIONS[idx]
+    el.style.left = (r.left + r.width / 2 + (Math.random() * 18 - 9)) + 'px'
+    el.style.top = (r.top - 4) + 'px'
+    document.body.appendChild(el)
+    setTimeout(() => el.remove(), 1400)
+  }
   soundReact(idx)
 }
 const sendReaction = idx => {
@@ -1775,18 +2207,44 @@ REACTIONS.forEach((e, i) => {
 //     ここを抜くと、見えない文字で表示を壊されたり、右横書き制御で文面を偽装される。
 //  ② **`textContent` でしか入れない**。`innerHTML` にすると、そこがそのまま穴になる。
 //  ③ **無視した相手のものは出さない**（リアクションと同じ）。
-// 履歴は持たない＝後から来た人には見えない。その場だけのもの。
+// 吹き出し（誰がいま言ったかの気づき）と、入力欄の上のタイムライン（見逃した分の読み返し）の
+// 二本立て。**タイムラインは自分が受け取った分を自分の画面に貯めるだけで、後から来た人には
+// 送らない**＝「その場だけのもの」という性質も、ログが残ることの面倒（通報・削除要求）も変わらない。
 const CHAT_MAX = 60           // 1回の長さ（入力欄の maxlength と揃える）
 const CHAT_EVERY_MS = 1200    // 送る側の下限
 const CHAT_ACCEPT_MS = 900    // 受け取る側の下限。**送る側より短く**（nudge で踏んだ罠）
 const CHAT_MAX_BUBBLE = 6     // 同時に出す上限
+// タイムラインに残す件数。**見えている範囲を決めるのは CSS の高さ**（溢れた行は上へ抜けて切れる）で、
+// この数字は DOM が無限に伸びないための上限。画面に入る行数より十分多く取っておく。
+const CHAT_LOG_MAX = 30
 chatText.maxLength = CHAT_MAX
+
+// タイムラインに1行足す。**吹き出しと同じ入口（showBubble）からしか呼ばない**ので、
+// 「無視した相手は出さない」「capText を通す」という受信口の条件がそのまま効く。
+// 貯めるのは DOM だけ（別に配列を持つと二重管理になる）。退出時は renderMembers が空にする。
+const logChat = (uid, text) => {
+  const me = uid === 'self'
+  const p = me ? profile : (call.profiles.get(uid) || {})
+  const row = document.createElement('div'); row.className = 'cl-row'
+  const em = document.createElement('span'); em.className = 'cl-em'; em.textContent = p.emoji || '🙂'
+  const who = document.createElement('span'); who.className = 'cl-who'
+  who.textContent = (p.name || 'ゲスト') + (me ? '（あなた）' : '')
+  who.title = p.name || 'ゲスト'
+  const tx = document.createElement('span'); tx.className = 'cl-text'
+  tx.textContent = text                    // ★ここも innerHTML にしないこと
+  row.append(em, who, tx)
+  // スクロールしない（CSS が下詰めで、溢れた行は上で切れる）ので、位置合わせは要らない
+  chatLogEl.append(row)
+  while (chatLogEl.children.length > CHAT_LOG_MAX) chatLogEl.firstElementChild.remove()
+  chatLogEl.hidden = false
+}
 
 const showBubble = (uid, text) => {
   // **行そのものに入れる。**座標を計算して body に置くと、あとでレイアウトが動いたときに
   // 取り残される（上の CSS のコメント参照）。行に入れておけば一緒に動く。
   const row = emojiEls.get(uid)?.parentElement
   if (!row || !text) return
+  logChat(uid, text)   // ★吹き出しの同時上限に当たっても、タイムラインには必ず残す（見逃しの受け皿なので）
   if (document.querySelectorAll('.chat-bubble').length >= CHAT_MAX_BUBBLE) return
   const el = document.createElement('div')
   el.className = 'chat-bubble'
@@ -1814,6 +2272,10 @@ chatSend.onclick = sendChat
 const keepTopVisible = () => {
   const first = membersEl.firstElementChild
   if (!first || chatRow.hidden) return
+  // タブに分けてからは、入力欄が出ているとき参加者リストは**別のタブにいて見えていない**。
+  // 見えていないものを基準に測ると 0 が返ってページが変な位置へ飛ぶので、その場合は何もしない
+  // （入力欄自体はブラウザが勝手に見える位置へ持ち上げる）。**測る前に必ず見えているか確かめる。**
+  if (!membersEl.offsetParent) return
   const vv = window.visualViewport
   const top = (vv ? vv.offsetTop : 0) + 8
   const bottom = (vv ? vv.offsetTop + vv.height : innerHeight) - 8
@@ -1843,6 +2305,170 @@ const showPeerNotice = text => {
   if (text) call.noticeTimer = setTimeout(() => { $('peerNotice').hidden = true }, 12000)
 }
 
+// ───────── 配信部屋（誰の音を鳴らすかを、署名で決める） ─────────
+// **強制ではなく取り決めだが、受信側に置くと実効性が出る。**配信部屋では全員のクライアントが
+// 「承認された人以外の音声は再生しない」を既定にする。これは各自が自分の出力を決めているだけなので
+// 送信側の善意に依存しない＝改造クライアントで喋っても**誰の耳にも届かない**。
+//
+// 承認の中身は「話してよい人の peerId 一覧（名簿）」で、**オーナーの秘密鍵で署名されている**。
+//  ・署名対象は `部屋ID + 時刻 + 配信者のpeerId + peerId一覧`。**部屋IDを含める**ので、別の部屋で
+//    拾った名簿を持ち込めない（部屋IDには公開鍵の指紋が入っているので、鍵が違えば部屋も違う）。
+//    **配信者本人の peerId も署名の中**なので、「自分が配信者だ」と表示だけ偽ることもできない。
+//  ・**時刻は必ず増やす**。受け取る側は「採用済みより古い名簿」を捨てる＝過去の名簿を録って
+//    投げ直す攻撃（リプレイ）が効かない。peerId はページ読込ごとの使い捨てなので、
+//    仮に古い名簿が通っても、そこに載っている人はもう居ない。
+//  ・公開鍵は**公開して安全**なので名簿に添えて配る。受け取る側は URL の指紋と突き合わせてから
+//    使う（＝自己申告のオーナーは弾かれる）。誰が転送してもよいので、オーナーが去った後も
+//    残った人どうしで名簿を渡し合える。
+//
+// **時間で失効させない**のは意図的。オーナーのタブが裏に回ると setInterval は毎分1回程度まで
+// 絞られるので、鮮度で切ると「裏に回した瞬間に配信が無音になる」。承認は**新しい名簿でしか
+// 上書きされない**（オーナーが去っても、許した事実は消えない）。
+const SPEAKER_MAX = 8        // 名簿の上限。配信部屋は「1人＋数人のゲスト」を想定
+const ROSTER_EVERY_MS = 30000   // 名簿を配り直す間隔（取りこぼしの自己修復。承認の失効ではない）
+const B64U_RE = /^[A-Za-z0-9_-]{80,100}$/   // 公開鍵87文字・署名86文字。長さの桁だけ見る
+let myPeerId = ''            // Trystero の selfId（ページ読込ごとに決まる。参加前は空）
+const enc = s => new TextEncoder().encode(s)
+// 署名する文（決定的に組み立てる）。配信者本人の peerId も**署名の中に**入れる＝
+// 「誰が配信者か」も偽れない（一覧に 📢 と 🎙 を描き分けるのに使う）。
+const rosterMsg = (id, t, own, ids) => id + '\n' + t + '\n' + own + '\n' + ids.join(',')
+
+// この人の音を鳴らしてよいか。**「対象をパラメータにする」フィルタ層の音声版**。
+// 無視（受信側だけで完結）と配信部屋（受信側の既定）は方向が同じなので単純に重なる（AND）。
+const canHear = id => !call.ignored.has(id) && (!call.bcast || call.speakers.has(id))
+
+// 検証済みの名簿を反映する。**音の出し入れはここに集約する**（画面の描き直しだけでは音は止まらない）。
+const setSpeakers = ids => {
+  const next = new Set(ids), was = call.speakers
+  call.speakers = next
+  call.peers.forEach(id => {
+    const now = next.has(id), before = was.has(id)
+    if (before && !now) { dropAudios(id); removeAnalyser(id); call.nudges.delete(id) }   // 降格＝その場で黙らせる
+    // 昇格したのに音が無い＝相手は既にストリームを送り終えている可能性がある。無視を戻すときと
+    // 同じやり方で「送り直して」を頼む（こちらの都合で捨てた分を取り戻す）。
+    if (!before && now && !call.ignored.has(id) && !(call.audios.get(id) || []).length) {
+      try { call.nudgeAction?.send(1, { target: id }).catch(() => {}) } catch {}
+      call.peerSince.set(id, Date.now())   // 監視の待ち時間を数え直す（すぐ警告を出さない）
+    }
+  })
+  // 自分の立場が変わったときだけ知らせる。オーナーは自分で操作しているので出さない。
+  if (myPeerId && !call.ownerKey) {
+    const now = next.has(myPeerId), before = was.has(myPeerId)
+    if (now && !before) showPeerNotice('🎙 配信者から「話してよい」と許可されました。「マイクを使う」を押すと声が届きます')
+    if (!now && before) { stopSpeaking(); showPeerNotice('🎙 話す許可が外れました（マイクは止めました）') }
+  }
+  renderMembers(); renderSpeak(); renderBcNote()
+}
+
+// オーナーだけが呼ぶ：いまの原本（call.grants）に署名して全員へ配り、自分にも適用する。
+const broadcastRoster = async (target = null) => {
+  if (!call.ownerKey || !call.joinedId) return
+  const id = call.joinedId
+  const t = Math.max(Math.floor(Date.now() / 1000), call.rosterT + 1)   // 必ず増やす（受け手が古い順を捨てるため）
+  const ids = [...call.grants].slice(0, SPEAKER_MAX).sort()
+  const own = myPeerId
+  let sig
+  try { sig = b64u(await crypto.subtle.sign(SIGN_ALG, call.ownerKey, enc(rosterMsg(id, t, own, ids)))) } catch { return }
+  if (id !== call.joinedId) return       // 署名の間に退出・部屋移動していたら捨てる
+  call.rosterT = t; call.rosterSeen = t; call.ownerPeer = own
+  const roster = { pk: call.ownerPub, t, o: own, ids, sig }
+  call.roster = roster
+  try { call.bcAction?.send(roster, target ? { target } : undefined).catch(() => {}) } catch {}
+  if (!target) setSpeakers(ids)
+}
+// 新しく来た人へ、いま持っている名簿をそのまま渡す。**署名済みなので誰が転送してもよい**
+// ＝オーナーが去った後に入ってきた人も、残った人から受け取って検証できる。
+const forwardRoster = id => {
+  if (call.ownerKey) { broadcastRoster(id); return }
+  if (call.roster) { try { call.bcAction?.send(call.roster, { target: id }).catch(() => {}) } catch {} }
+}
+// 受け取った名簿の検証。**ここを緩めると配信部屋の意味が無くなる**ので、条件は全部残すこと。
+const acceptRoster = async d => {
+  if (!call.bcast || !d || typeof d !== 'object') return
+  const pub = typeof d.pk === 'string' && B64U_RE.test(d.pk) ? d.pk : ''
+  const sig = typeof d.sig === 'string' && B64U_RE.test(d.sig) ? d.sig : ''
+  const t = d.t
+  if (!pub || !sig || !Number.isSafeInteger(t) || t <= call.rosterSeen) return
+  const ids = Array.isArray(d.ids)
+    ? d.ids.filter(x => typeof x === 'string' && x.length <= 40).slice(0, SPEAKER_MAX)
+    : []
+  const own = typeof d.o === 'string' && d.o.length <= 40 ? d.o : ''
+  const id = call.joinedId
+  // ★この1行が要。**URLの指紋と一致する公開鍵しか信じない**＝自己申告のオーナーは通らない。
+  if (await fpOf(pub).catch(() => '') !== roomPk(id)) return
+  const key = await importVerify(pub).catch(() => null)
+  if (!key) return
+  const ok = await crypto.subtle.verify(SIGN_ALG, key, unb64u(sig), enc(rosterMsg(id, t, own, ids))).catch(() => false)
+  // 非同期の間に退出・部屋移動・より新しい名簿の採用が起きていないか、最後にもう一度見る
+  if (!ok || id !== call.joinedId || t <= call.rosterSeen) return
+  call.rosterSeen = t; call.ownerPeer = own
+  call.roster = { pk: pub, t, o: own, ids, sig }
+  setSpeakers(ids)
+}
+
+// 登壇の切り替え（オーナーの画面にだけ出るボタン）。原本を書き換えて配り直すだけ。
+const toggleGrant = id => {
+  if (!call.ownerKey) return
+  if (call.grants.has(id)) call.grants.delete(id)
+  else {
+    if (call.grants.size >= SPEAKER_MAX) { showPeerNotice('🎙 同時に話せるのは ' + SPEAKER_MAX + ' 人までです'); return }
+    call.grants.add(id)
+  }
+  renderMembers()          // 押した手応えを先に返す（配り直しは非同期）
+  broadcastRoster()
+}
+
+// 配信部屋の説明。**自分がいま話せるのか**が一番の関心なので、そこを主語にして書く。
+const renderBcNote = () => {
+  const el = $('bcNote')
+  el.hidden = !call.joinedId || !call.bcast
+  if (el.hidden) return
+  el.textContent = call.ownerKey
+    ? '📢 あなたの配信部屋です。ほかの人の声は誰にも流れません（🎙 を押すとその人も話せます）'
+    : call.speakers.has(myPeerId)
+      ? '🎙 あなたは話す許可を持っています'
+      : call.speakers.size
+        ? '📢 配信部屋です。配信者の声だけが流れます（あなたのマイクは使いません）'
+        : '📢 配信部屋です。まだ配信者が来ていません'
+}
+
+// 登壇を許された人がマイクを取る。**押されるまで getUserMedia を呼ばない**のが要点で、
+// 聞き役でいるつもりの人に許可ダイアログが降ってこない（＝入口が軽いままになる）。
+const renderSpeak = () => {
+  const may = !!call.joinedId && call.bcast && call.speakers.has(myPeerId)
+  $('speak').style.display = may && !call.stream ? 'flex' : 'none'
+  $('mute').style.display = call.joinedId && call.stream ? 'flex' : 'none'
+}
+const startSpeaking = async () => {
+  if (call.stream || !call.joinedId || !call.room) return
+  $('speak').disabled = true
+  try {
+    call.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  } catch (e) {
+    showPeerNotice('🎙 ' + micErrText(e))
+    return
+  } finally { $('speak').disabled = false }
+  if (!call.joinedId) { call.stream.getTracks().forEach(t => t.stop()); call.stream = null; return }  // 待っている間に退出した
+  call.muted = false; renderMute()
+  try { call.room.addStream(call.stream) } catch {}
+  addAnalyser('self', call.stream)   // 自分の絵文字も跳ねるようにする（話せている実感）
+  if (call.profileAction) call.profileAction.send(myProfilePayload()).catch(() => {})
+  renderSpeak(); renderMembers(); sendHeartbeat()
+}
+// 許可が外れた／自分でやめたときにマイクを返す。**掴んだままにしない**（録音インジケータが
+// 点きっぱなしになり、本人には止める手段が見えない）。
+const stopSpeaking = () => {
+  if (!call.stream) return
+  try { call.room?.removeStream(call.stream) } catch {}
+  call.stream.getTracks().forEach(t => t.stop())
+  call.stream = null; call.muted = false
+  removeAnalyser('self')
+  renderMute(); renderSpeak(); renderMembers()
+  if (call.profileAction) call.profileAction.send(myProfilePayload()).catch(() => {})
+  sendHeartbeat()
+}
+$('speak').onclick = startSpeaking
+
 const wake = async () => { try { call.wakeLock = await navigator.wakeLock.request('screen') } catch {} }
 document.addEventListener('visibilitychange', () => {
   if (call.wantWake && document.visibilityState === 'visible') wake()
@@ -1857,6 +2483,13 @@ const failJoin = msg => {
   if (call.stream) { call.stream.getTracks().forEach(t => t.stop()); call.stream = null }
   setState(msg, 'error')
 }
+// 生の DOMException 名（NotAllowedError 等）を出しても伝わらないので、起きたことを日本語で言う。
+// 参加時と、配信部屋で登壇したとき（startSpeaking）の両方から使う。
+const micErrText = e => ({
+  NotAllowedError: 'マイクの使用が許可されませんでした。ブラウザの設定を確認してください',
+  NotFoundError: 'マイクが見つかりませんでした',
+  NotReadableError: 'マイクを他のアプリが使っているようです'
+}[e?.name] || ('マイクを使えませんでした: ' + (e?.name || e)))
 
 // 連打すると getUserMedia が二重に走って2本目のマイクが宙に浮く。さらに2本目の joinRoom は
 // 同じ部屋オブジェクトを掴んでゾンビ検出に引っかかり、**正常に入れているのにエラー表示**になる。
@@ -1878,13 +2511,19 @@ const runJoin = async () => {
   const muteOnJoin = joinMuted; joinMuted = false   // 失敗しても次の参加に持ち越さないよう、先に消費する
   // 空欄のときは名前から作る（'lobby' に落とすと、その名前が #lobby としてURLに焼き付き、
   // 以後ハッシュ優先で自動命名が効かなくなって二度と抜けられなくなる）。名前も無ければ促して中止。
-  const roomId = capRoom(roomInput.value.trim() || defaultRoom())
-  if (!roomId) {
+  const name = capRoom(roomInput.value.trim() || defaultRoom())
+  if (!name) {
     setState('部屋名を入れてください', 'warn')
     roomInput.focus()
     return
   }
-  roomInput.value = roomId; syncRoomCount()   // 補った／切り詰めた名前を入力欄にも反映する
+  roomInput.value = name; syncRoomCount()   // 補った／切り詰めた名前を入力欄にも反映する
+  // 配信部屋なら部屋IDは `名前~pk~指紋`。**指紋から自分の秘密鍵が引ければ自分がオーナー**
+  // ＝マイクを取る側。引けなければ聞き役なので、この先 getUserMedia を一度も呼ばない。
+  const roomId = roomIdOf(name, pendingPk)
+  const bcast = isBcRoom(roomId)
+  const owner = bcast ? ownerKeyByFp(roomPk(roomId)) : null
+  const wantMic = !bcast || !!owner
   // location.hash はここでは書かない。参加が成立してから焼き付ける（下の joinedId 設定の直後）。
   // マイクを拒否した等で中断したのに URL だけ書き換わると、その部屋名がリンクとして残ってしまう。
   syncShare()   // 入力中の部屋名で「招待リンク（まだ参加していません）」を更新する
@@ -1897,28 +2536,46 @@ const runJoin = async () => {
     await call.leaving
   }
 
-  // ① マイク取得
-  setState('マイクを準備しています…（「許可」を押してください）', 'busy')
-  try {
-    call.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    // 参加が成立する前に効かせる。こうすると相手へ最初に配るプロフィールも、ロビーの
-    // ハートビートも、最初からミュートとして出る（あとから切り替えるとズレる瞬間ができる）。
-    if (muteOnJoin) { call.muted = true; call.stream.getAudioTracks().forEach(t => t.enabled = false); renderMute() }
-  } catch (e) {
-    // 生の DOMException 名（NotAllowedError 等）を出しても伝わらないので、起きたことを日本語で言う
-    const why = { NotAllowedError: 'マイクの使用が許可されませんでした。ブラウザの設定を確認してください',
-                  NotFoundError: 'マイクが見つかりませんでした',
-                  NotReadableError: 'マイクを他のアプリが使っているようです' }[e.name]
-    failJoin(why || ('マイクを使えませんでした: ' + e.name)); return
+  // ① マイク取得（配信部屋の聞き役はここを丸ごと飛ばす＝マイクの許可を一度も求めない）
+  if (wantMic) {
+    setState('マイクを準備しています…（「許可」を押してください）', 'busy')
+    try {
+      call.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // 参加が成立する前に効かせる。こうすると相手へ最初に配るプロフィールも、ロビーの
+      // ハートビートも、最初からミュートとして出る（あとから切り替えるとズレる瞬間ができる）。
+      if (muteOnJoin) { call.muted = true; call.stream.getAudioTracks().forEach(t => t.enabled = false); renderMute() }
+    } catch (e) {
+      failJoin(micErrText(e)); return
+    }
   }
 
   // ② 接続ライブラリ読込
   setState('つなぐ準備をしています…', 'busy')
   let joinRoom
   try {
-    ({ joinRoom } = await loadTrystero())
+    const tr = await loadTrystero()
+    joinRoom = tr.joinRoom
+    // selfId はページ読込ごとに決まり、部屋の出入りでは変わらない。名簿は peerId 単位なので、
+    // 「自分が名簿に載っているか」を見るためにここで控える。
+    myPeerId = tr.selfId || myPeerId
   } catch (e) {
     failJoin('つなぐ準備に失敗しました: ' + (e.message || e)); return
+  }
+
+  // ③' 配信部屋なら、自分の立場を確定させてから部屋に入る（部屋に入ってから決めると、
+  //     最初の onPeerJoin に名簿を渡せない）。秘密鍵が壊れていたら聞き役として続ける
+  //     ＝入れないよりはよい（オーナーは自分のリンクを開き直せば作り直せる）。
+  call.bcast = bcast
+  if (owner) {
+    try {
+      call.ownerKey = await importSign(owner.jwk)
+      call.ownerPub = owner.pub
+      call.grants = new Set([myPeerId])   // オーナーはまず自分を名簿に載せる（自分への許可も同じ道を通る）
+    } catch {
+      call.ownerKey = null; call.ownerPub = ''
+      if (call.stream) { call.stream.getTracks().forEach(t => t.stop()); call.stream = null }   // 誰にも届かないマイクは掴まない
+      showPeerNotice('📢 配信者の鍵を読めませんでした。この部屋では聞き役になります')
+    }
   }
 
   // ③ 部屋に参加（先に TURN 資格情報を取得。失敗しても STUN のみで続行）
@@ -1959,9 +2616,17 @@ const runJoin = async () => {
         muted: !!data?.muted,
         stage: capText(data?.stage ?? prev.stage, 4),
         // 経路は boolean のときだけ採用（旧クライアントは送らない→undefinedのまま＝アイコン非表示）
-        relay: typeof data?.relay === 'boolean' ? data.relay : prev.relay
+        relay: typeof data?.relay === 'boolean' ? data.relay : prev.relay,
+        // 相手が部屋に入った時刻（こちらの時計での推定）。届いた「経過秒」を受信時刻から引く。
+        // 満室のときに**誰が抜けるか**の順位づけに使う。旧クライアントは送ってこない＝undefined のままで、
+        // その場合は「自分より先にいた人」として扱う（＝抜けるのは自分側に倒す。下の checkCapacity）。
+        // 上限30日は自己申告の暴走ガード（「自分は大昔から居る」と言い張って居座らせない）。
+        joinedAt: Number.isFinite(data?.since) && data.since >= 0 && data.since < 30 * 24 * 3600
+          ? Date.now() - data.since * 1000
+          : prev.joinedAt
       })
       renderMembers()
+      scheduleCapacityCheck()   // 到着時刻が分かった＝満室の順位を数え直す
     }
     const sendProfile = id => call.profileAction.send(myProfilePayload(), { target: id }).catch(() => {})
 
@@ -1978,9 +2643,11 @@ const runJoin = async () => {
       try { if (call.stream && call.room) call.room.addStream(call.stream, { target: peerId }) } catch {}
     }
 
-    call.room.addStream(call.stream)
+    if (call.stream) call.room.addStream(call.stream)   // 配信部屋の聞き役はマイクを持っていない
     call.room.onPeerStream = (stream, id) => {
-      if (call.ignored.has(id)) return   // 切る前に届いてしまった分。鳴らさない（onPeerJoin で閉じている）
+      // ★受信側の門番。**無視した相手／配信部屋で承認されていない相手の音は、ここで捨てる。**
+      // 送信側の善意に頼らないので、改造クライアントが勝手に喋っても誰の耳にも届かない。
+      if (!canHear(id)) return
       // 同じ相手から何度もストリームが来る（再ネゴ、そして「送り直して」を頼んだ結果）。
       // 足し続けると無音の <audio> と古い MediaStream への参照が溜まるので、1人につき1本に保つ。
       const cur = call.audios.get(id) || []
@@ -2011,6 +2678,11 @@ const runJoin = async () => {
       showBubble(peerId, text)
     }
 
+    // 配信部屋の名簿。**古いクライアントはこの action を知らないので黙って捨てる**（Trystero の
+    // 仕様。2026-08-15 に実測で確認済み）＝ベータ先行で出しても本番の人を壊さない。
+    call.bcAction = call.room.makeAction('bc')
+    call.bcAction.onMessage = d => { acceptRoster(d) }
+
     call.reactAction = call.room.makeAction('react')
     call.reactAction.onMessage = (data, { peerId }) => {
       // ★受け取った値をそのまま描かない。**添字として検査**し、一覧の中のものだけを出す。
@@ -2022,7 +2694,7 @@ const runJoin = async () => {
       flyReaction(peerId, data)
     }
 
-    call.room.onPeerJoin = id => { call.peers.add(id); call.peerSince.set(id, Date.now()); call.room.addStream(call.stream, { target: id }); sendProfile(id); call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin() }
+    call.room.onPeerJoin = id => { call.peers.add(id); call.peerSince.set(id, Date.now()); if (call.stream) call.room.addStream(call.stream, { target: id }); sendProfile(id); if (call.bcast) forwardRoster(id); call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin(); scheduleCapacityCheck() }
     call.room.onPeerLeave = id => {
       // 'bye' が来ていなければ異常な切断。本物の回線障害でも出るが、**理由は分からなくても
       // 「何かおかしい」と分かる**ほうがよい（自分の回線のせいだと思い込まないため）。
@@ -2034,6 +2706,10 @@ const runJoin = async () => {
       call.peers.delete(id); call.profiles.delete(id); call.peerSince.delete(id)
       call.nudges.delete(id); call.nudgeSeen.delete(id); call.byeSeen.delete(id)
       call.ignored.delete(id)   // peerId は使い捨て。入り直すと別人なので、無視も持ち越さない
+      // 登壇の許可も同じ理由で持ち越さない（入り直した人は別の peerId＝改めて許可し直す）。
+      // オーナーは原本から消すが、**名簿を配り直さない**：残った人の許可は変わらないので、
+      // 抜けた人ぶんの署名をやり直す必要が無い（次の grant/revoke か定期配布で揃う）。
+      call.grants.delete(id); call.speakers.delete(id)
       dropAudios(id); removeAnalyser(id)
       setCount(); render(); renderMembers(); renderAudioWarn([]); soundLeave()
     }
@@ -2045,7 +2721,14 @@ const runJoin = async () => {
   }
 
   call.wantWake = true; wake()
-  call.joinedId = roomId; call.joinedAt = performance.now(); call.warn = ''; render(); renderMembers()
+  call.joinedId = roomId; call.joinedAt = performance.now(); call.warn = ''; render(); renderMembers(); renderBcNote()
+  // 配信部屋のオーナー：自分を載せた名簿をまず配る。以後は grant/revoke のたびと、
+  // 取りこぼしの自己修復として定期的に配り直す（署名は1回1ms程度なので負荷にはならない）。
+  if (call.ownerKey) {
+    broadcastRoster()
+    clearInterval(call.bcTimer)
+    call.bcTimer = setInterval(broadcastRoster, ROSTER_EVERY_MS)
+  }
   location.hash = encodeURIComponent(roomId)   // 参加が成立してから URL に焼き付ける（失敗時は元のまま）
   // 入室音のガード：参加直後は「既にいる人ぶん」の onPeerJoin が連発するので、1.5秒は鳴らさない。
   // 前回のタイマーが生きていると、入り直した直後にそれが発火して早く解禁されてしまう（＝入室音が
@@ -2071,7 +2754,8 @@ const runJoin = async () => {
   const d = localDay(); if (stats.lastDay !== d) { stats.days++; stats.lastDay = d }
   saveStats(); renderGrow()
   call.growTimer = setInterval(() => { stats.seconds += 30; saveStats(); renderGrow(); renderMembers() }, 30000)
-  $('join').style.display = 'none'; $('mute').style.display = 'flex'; $('leave').style.display = 'flex'
+  $('join').style.display = 'none'; $('leave').style.display = 'flex'
+  renderSpeak()   // ミュート／「マイクを使う」のどちらを出すかは、マイクを持っているかで決まる
   // 前の通話で出た「音声を有効化」を必ず消す。隠すのは resetJoinedUI だけだったが、あれは
   // つなぎ直しの途中では呼ばれない。＝一度出たボタンが居座り、押しても再生するものが無い、
   // という「効かないボタン」になっていた（join と leave の非対称）。
@@ -2079,7 +2763,7 @@ const runJoin = async () => {
   $('sndPeerRow').style.display = 'flex'   // 入室・退出音のトグルは通話中だけ表示（ミュート/退出と同じ）
   $('sndReactRow').style.display = 'flex'
   $('retry').hidden = false
-  roomInput.disabled = true; lockProfile(true)
+  roomInput.disabled = true; lockProfile(true); syncKindRow()
   // 通話中は名前も部屋名も変えられないので、入力欄ごと畳む（名前は参加者リスト、部屋名は状態表示に出ている）
   $('setupFields').classList.add('collapsed')
 }
@@ -2109,6 +2793,7 @@ $('mute').onclick = toggleMute
 // 参加中の見た目を「未参加」に戻す一式。退出時と、つなぎ直しに失敗して参加できなかった時に使う。
 const resetJoinedUI = () => {
   $('join').style.display = 'flex'; $('mute').style.display = 'none'; $('leave').style.display = 'none'; $('unlock').style.display = 'none'
+  $('speak').style.display = 'none'; $('speak').disabled = false
   $('sndPeerRow').style.display = 'none'
   $('sndReactRow').style.display = 'none'
   $('retry').hidden = true
@@ -2171,11 +2856,14 @@ const spendAuto = () => {
 //  ・cut … 予告なく（'bye' 無しで）相手を失って、いま誰もいない
 //          ＝相手が普通に退出しただけの「一人になった」とは区別される
 //  ・deaf … 繋がってはいるが、**催促を使い切ってなお誰の音も来ない**
-const isBroken = stuck =>
+// expect ＝ 音が来るはずの相手の数。**繋がっている人数ではない**のが要点で、配信部屋では
+// 聞き役が何人いても「音が来ないのが正常」＝ここに入らない（入れると、リスナーだけの部屋で
+// 25秒ごとに勝手にリロードが始まる）。誰からも音が来る予定が無いなら、壊れようがない。
+const isBroken = (stuck, expect) =>
   (call.lostPeer && call.peers.size === 0) ||
-  (call.peers.size > 0 && stuck.length === call.peers.size)
-const checkRecover = (now, stuck) => {
-  if (!call.joinedId || retrying || !isBroken(stuck)) { call.lostAt = 0; return }
+  (expect > 0 && stuck.length === expect)
+const checkRecover = (now, stuck, expect) => {
+  if (!call.joinedId || retrying || !isBroken(stuck, expect)) { call.lostAt = 0; return }
   if (!call.lostAt) { call.lostAt = now; return }              // 壊れ始めた時刻を覚える
   if (now - call.lostAt < RECOVER_AFTER_MS) return             // まだ待つ（瞬断かもしれない）
   if (!autoLeft()) {                                           // 打ち止め。ここから先は人に委ねる
@@ -2207,6 +2895,8 @@ const leaveCall = () => {
   clearTimeout(call.soundsTimer)                               // 入室音の解禁タイマーも捨てる
   clearTimeout(call.legendTimer)                               // 凡例を畳むタイマーも捨てる
   clearInterval(call.iceTimer)                                 // 資格情報の入れ替えも止める
+  clearInterval(call.bcTimer)                                  // 配信部屋の名簿の配り直しも止める
+  clearTimeout(call.capTimer)                                  // 満室判定の待ちも捨てる
   stopAudioWatch()   // 音声到着の監視を停止＋待ち時間と催促回数の記憶を捨てる
   stopVad(); resetTalk(); stopEq()   // 解析ループ停止＋AudioContext破棄（join が確保したものを全て解放）
   stopHeartbeat()  // ロビーへ「退出した」を通知＋定期発信を停止（ロビー部屋自体は閲覧用に残す）
@@ -2222,7 +2912,8 @@ const leaveCall = () => {
   resetCall()
 
   // ③ 画面を「未参加」に戻す
-  setCount(); renderGrow(); renderMembers(); renderLobby(); renderMute()
+  setCount(); renderGrow(); renderMembers(); renderLobby(); renderMute(); renderSpeak(); renderBcNote()
+  syncKindRow()   // 参加中は隠していた「配信部屋／雑談部屋」の2択を戻す
   resetQr()   // QRトグルを畳んでおく（次の参加で古いリンクを残さない）
   syncShare() // 「共有リンク」→「招待リンク（まだ参加していません）」に戻す
   setState('退出しました', 'idle')
@@ -2240,7 +2931,11 @@ $('leave').onclick = leaveCall
 // つなぎ直しの後半：リロード後に自分で入り直す（予約は上の rejoin で読み取り済み）。
 // マイク許可が要求される場面なので、失敗しても普通の参加エラーとして見えればよい（部屋名は残る）。
 if (rejoin) {
-  roomInput.value = capRoom(rejoin.room); syncRoomCount(); syncShare()
+  // **指紋ごと戻す**。名前だけ戻すと、つなぎ直した瞬間に配信部屋から普通の部屋へ移ってしまう
+  // （＝オーナーは自分だけの部屋に取り残され、リスナーには誰も来なくなる）。
+  roomInput.value = capRoom(roomName(rejoin.room)); pendingPk = roomPk(rejoin.room)
+  if (pendingPk && ownerKeyByFp(pendingPk)) kindBc.checked = true
+  syncRoomCount(); syncShare(); syncKindRow()
   joinCall().then(() => { if (rejoin.muted && !call.muted && call.joinedId) toggleMute() })
 }
 
@@ -2259,7 +2954,7 @@ let lobbyRoom = null, lobbyPresence = null, heartbeatTimer = null
 const presences = new Map()  // 発信者peerId → {room, name, emoji, muted, stage, ts}
 
 const heartbeatPayload = () => call.joinedId
-  ? { room: call.joinedId, name: profile.name, emoji: profile.emoji, muted: call.muted, stage: stageOf(), elapsed: mySeconds(), talk: talkLevel }
+  ? { room: call.joinedId, name: profile.name, emoji: profile.emoji, muted: micOff(), stage: stageOf(), elapsed: mySeconds(), talk: talkLevel }
   : { room: null }
 // ───────── 在室の Nostr 直publish（段階A：既存ロビーに併走で足すだけ） ─────────
 // 外部（ブログのバナー等）が「この部屋が今ライブか」を、メッシュに入らず読み取り専用で知れるように、
@@ -2414,8 +3109,15 @@ const renderLobby = () => {
     const btn = document.createElement('button')
     btn.className = 'room' + (room === call.joinedId ? ' here' : '') + (act ? ' act' + act : '')
     const top = document.createElement('div'); top.className = 'room-top'
-    const nm = document.createElement('span'); nm.className = 'room-name'; nm.textContent = '🏠 ' + room
-    const ct = document.createElement('span'); ct.className = 'room-count'; ct.textContent = people.length + '人'
+    // 配信部屋は 📢 で区別する（一覧では「入ると何が起きるか」が違うので、家の絵文字では足りない）。
+    // 指紋そのものは出さない＝長いだけで読み手には意味がない。
+    const nm = document.createElement('span'); nm.className = 'room-name'
+    nm.textContent = (isBcRoom(room) ? '📢 ' : '🏠 ') + roomName(room)
+    // 満室の表示は**目安**（在室情報は30秒失効なのでずれる）。**押せるままにしておく**＝
+    // 空いているのに入れない人を作らないため。実際の判定は入室時（checkCapacity）。
+    const full = people.length >= roomCapOf(room)
+    const ct = document.createElement('span'); ct.className = 'room-count' + (full ? ' full' : '')
+    ct.textContent = people.length + '人' + (full ? '・満室' : '')
     top.append(nm, ct)
     const dur = document.createElement('div'); dur.className = 'room-dur'
     const durText = document.createElement('span')
@@ -2452,13 +3154,22 @@ const renderLobby = () => {
 // 確認のうえ今の部屋を退出してから入り直す（自室のタップは無視）。
 const selectRoom = room => {
   if (room === call.joinedId) return
+  // 配信部屋の聞き役として入るなら、そもそもマイクを使わない。「ミュートで入る」と書くと
+  // 「あとで解除すれば話せる」と読まれてしまうので、起きることをそのまま書く。
+  const listen = isBcRoom(room) && !ownerKeyByFp(roomPk(room))
+  const how = listen ? '聞き役で入室します（マイクは使いません）。' : 'ミュート状態で入室します。'
+  const label = (isBcRoom(room) ? '📢 ' : '') + roomName(room)
   if (call.joinedId) {
-    if (!confirm('参加中の部屋「' + call.joinedId + '」を退出して「' + room + '」に移りますか？\nミュート状態で入室します。')) return
+    if (!confirm('参加中の部屋「' + roomName(call.joinedId) + '」を退出して「' + label + '」に移りますか？\n' + how)) return
     leaveCall()   // 今の部屋を退出（非同期の後片付けは leaving が保持し、次の参加で待たれる）
   } else {
-    if (!confirm('「' + room + '」に参加しますか？\nミュート状態で入室します。')) return   // 未参加時のミスタップ防止
+    if (!confirm('「' + label + '」に参加しますか？\n' + how)) return   // 未参加時のミスタップ防止
   }
-  roomInput.value = room; syncRoomCount(); syncShare()
+  // **指紋も一緒に持っていく**（名前だけ渡すと、同じ名前の普通の部屋に入って誰にも会えない）
+  roomInput.value = roomName(room); pendingPk = roomPk(room)
+  const own = !!(pendingPk && ownerKeyByFp(pendingPk))
+  kindBc.checked = own; kindChat.checked = !own
+  syncRoomCount(); syncShare(); syncKindRow()
   joinMuted = true   // 一覧から入る＝誰かの会話に入っていくので、ミュートで始める
   joinCall()      // そのまま入室。参加の⓪で leaving を待つので、部屋移動でも取りこぼさない
 }
@@ -2536,7 +3247,9 @@ const openLobby = async (again, status, soft = false) => {
     lobbyPresence.onMessage = (d, { peerId }) => {
       if (!d || d.room == null) presences.delete(peerId)
       else presences.set(peerId, {
-        room: capRoom(d.room), name: capText(d.name, 20),
+        // ★capRoom ではなく capRoomId。**切り詰めてよいのは名前の部分だけ**で、全体を
+        // 30文字で切ると配信部屋の指紋が欠け、タップしても誰にも会えない部屋になる。
+        room: capRoomId(d.room), name: capText(d.name, 20),
         emoji: capText(d.emoji || '🙂', 8), muted: !!d.muted,
         stage: capText(d.stage, 4), ts: Date.now(),
         // 相手が「その部屋に入ってからの秒数」。受信時刻(ts)を足して現在値に補正して使う。
