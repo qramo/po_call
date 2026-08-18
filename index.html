@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.8.5
+  ぽっと通話〈実験版〉 v0.8.6
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -194,6 +194,16 @@
      部屋の種類の2択は hidden で出し入れするので、これが無いと隠れない */
   .snd-opt[hidden]{ display:none }
   #sndPeerRow, #sndReactRow{ margin-top:4px }   /* 人数表示のすぐ下に寄せる */
+  /* 音量スライダー。行の形はトグル（.snd-opt）と同じだが、input の扱いが逆
+     （.snd-opt input は width:auto 固定、こちらは横いっぱいに伸ばしたい）ので別クラスにする。
+     range は共通の input{} が持つ枠・背景・余白を全部剥がさないと太い箱に見える */
+  .vol-opt{ display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; color:#9fb0c7; user-select:none }
+  .vol-opt[hidden]{ display:none }
+  .vol-opt input[type=range]{ flex:1; width:auto; min-width:0; margin:0; padding:0; border:0;
+    background:transparent; accent-color:#00e5cc; cursor:pointer }
+  .vol-ic, .vol-lbl{ flex:none }
+  .vol-val{ flex:none; width:3.4em; text-align:right; font-variant-numeric:tabular-nums }
+  .vol-note{ margin:4px 0 0; font-size:11.5px; color:#6f7f96; line-height:1.5 }
   #copy{ background:#1d2740; color:#cfe; margin-top:8px; padding:10px; font-size:14px }
   /* 版の表示。共有ボタンの右下に、目に留まらない濃さで置く（普段は意識させない） */
   .ver{ margin-top:6px; text-align:right; font-size:10.5px; color:#4a5a72; letter-spacing:.04em }
@@ -759,6 +769,13 @@
       </div>
     </div>
     <div id="panSettings" class="panel" role="tabpanel" aria-labelledby="tabSettings" hidden>
+      <!-- 音量。相手ごとの差ではなく、**同じ端末の他の音（YouTube 等）との相対バランス**を
+           変えるためのもの。OS の音量は全部まとめて上下するので比率が変えられない -->
+      <label class="vol-opt" id="volRow"><span class="vol-ic" id="volIc">🔊</span><span class="vol-lbl">音量</span>
+        <input id="vol" type="range" min="0" max="100" step="5" value="100" aria-label="音量">
+        <span class="vol-val" id="volVal">100%</span>
+      </label>
+      <p class="vol-note">この通話の音だけが変わります（他のアプリの音はそのまま）。</p>
       <label class="snd-opt" id="sndPeerRow" style="display:none"><input type="checkbox" id="sndPeer"> 🔔 入室・退出を音で知らせる</label>
       <label class="snd-opt" id="sndReactRow" style="display:none"><input type="checkbox" id="sndReact"> 🎵 リアクションを音で鳴らす</label>
     </div>
@@ -863,6 +880,7 @@
       <li>👥 参加者：名前・絵文字が出て、話している人の絵文字が跳ねる／ミュートも表示</li>
       <li>🌱 育てる：使うほどあなたの絵文字が成長（🌱→🌿→🌷or🌻→❓）</li>
       <li>🔔 音：入室・退出や新しい部屋を音で知らせる（それぞれオン/オフ。新しい部屋の音はタブを開いている間だけ）</li>
+      <li>🔊 音量：通話中の ⚙️ 設定タブで、<b>この通話の音だけ</b>を下げられる（動画や音楽と一緒に聞くとき用。他のアプリの音はそのまま）</li>
       <li>👥 人数：ふつうの部屋は <b>8人</b>、📣 配信部屋は <b>15人</b>まで（全員が全員に繋がる仕組みなので、多いと音が途切れます）</li>
     </ul>
   </details>
@@ -1000,7 +1018,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.8.5'
+const APP_VERSION = 'v0.8.6'
 
 const $ = id => document.getElementById(id)
 
@@ -1861,6 +1879,70 @@ const ensureAudioCtx = () => {
   return audioCtx
 }
 
+// ─ 全体の音量 ─────────────────────────────────────────────
+// 目的は**相手ごとの音量差ではなく**、同じ端末で鳴っている他の音（YouTube・音楽）との
+// 相対バランス。デバイス音量は全部まとめて上下するので比率が永遠に変わらず、Windows の
+// 音量ミキサーもブラウザ丸ごと1つ（別タブの YouTube と分けられない）。だからアプリ内に持つ。
+const VOL_KEY = 'pot-call-vol'
+// iOS Safari は audio.volume への代入を**黙って無視する**。機種名を見ずに、実際に代入して
+// 読み返して判定する（効く環境は素朴な .volume のままでよい＝経路を増やさない）。
+const volumeWorks = (() => { try { const a = new Audio(); a.volume = 0.5; return a.volume !== 1 } catch { return true } })()
+const clampVol = v => (v >= 0 && v <= 1 ? v : 1)
+let masterVol = clampVol(parseFloat(localStorage.getItem(VOL_KEY)))
+let masterGain = null   // .volume が効かない環境でだけ張る「各ピア → マスターGain → 出力」
+
+// **100% のときは Web Audio の経路を張らない。**既定のままの人の音の出方は今までと同一で、
+// 「鳴らない」原因を増やさない（iOS は実機でしか確かめられないので、既定は触らない側に倒す）。
+const gainOn = () => !volumeWorks && masterVol !== 1
+const ensureMasterGain = () => {
+  const ctx = ensureAudioCtx()
+  if (!masterGain) { masterGain = ctx.createGain(); masterGain.connect(ctx.destination) }
+  masterGain.gain.value = masterVol
+  return masterGain
+}
+// 1人ぶんの経路を今の設定に合わせる。**繋ぎ替えても <audio> は捨てない**（muted にして残す）：
+// Safari はストリームを繋いだ要素が生きていないと Web Audio 側で鳴らない、という癖がある。
+// 音源は VAD が既に作っている createMediaStreamSource を使い回す（同じ流れを二重に読まない）。
+const routePeer = uid => {
+  const a = analysers.get(uid)
+  if (!a) return
+  const els = call.audios.get(uid) || []
+  if (gainOn()) {
+    if (!a.gain) { try { a.gain = ensureMasterGain(); a.src.connect(a.gain) } catch { a.gain = null } }
+    if (a.gain) {
+      els.forEach(el => { el.muted = true })
+      // muted な要素の play() は拒否されない＝unlock ボタンが出ない。止まっているのが
+      // AudioContext のほうだと**無音のまま誰も気づけない**ので、ここで自分から出す。
+      if (audioCtx && audioCtx.state === 'suspended') $('unlock').style.display = 'block'
+    }
+  } else if (a.gain) {                       // 100% に戻した＝元の素朴な鳴らし方へ返す
+    try { a.src.disconnect(a.gain) } catch {}
+    a.gain = null
+    els.forEach(el => { if (el.muted) { el.muted = false; play(el) } })
+  }
+}
+const applyVolume = () => {
+  if (volumeWorks) allAudios().forEach(a => { a.volume = masterVol })
+  else {
+    if (masterGain) masterGain.gain.value = masterVol
+    analysers.forEach((_, uid) => routePeer(uid))
+  }
+}
+{
+  const slider = $('vol'), val = $('volVal'), ic = $('volIc')
+  const draw = () => {
+    slider.value = String(Math.round(masterVol * 100))
+    val.textContent = Math.round(masterVol * 100) + '%'
+    ic.textContent = masterVol === 0 ? '🔇' : masterVol < 0.5 ? '🔉' : '🔊'
+  }
+  draw()
+  slider.oninput = () => {
+    masterVol = clampVol(Number(slider.value) / 100)
+    localStorage.setItem(VOL_KEY, String(masterVol))
+    draw(); applyVolume()
+  }
+}
+
 // ─ 通知音 ─ 音声ファイルもCDNも使わず WebAudio で合成する（単一ファイルのまま）。
 // 入室・退出音は既定オン／新しい部屋の音は既定オフ（オプトイン）。設定は localStorage に保存。
 // キーは定数にしておく（生文字列を読み書き2箇所ずつに散らすと、片方だけ直して設定が
@@ -1874,6 +1956,8 @@ let sndReact = localStorage.getItem(SND_REACT_KEY) !== '0' // 未保存＝オン
 const seenRooms = new Set() // ロビーで既に鳴らした部屋名（重複防止・消えたら忘れて再通知する）
 // notes: [[周波数Hz, 開始秒, 長さ秒], …] を柔らかいエンベロープで鳴らす。ロビー音は未解錠なら resume も試みる。
 const playTones = (notes, vol = 0.11) => {
+  vol *= masterVol                    // 通知音も「アプリ全体の音」の一部として一緒に下げる
+  if (vol <= 0) return                // 0 は exponentialRamp の行き先にできない（例外になる）
   let ctx; try { ctx = ensureAudioCtx() } catch { return }
   if (!ctx) return
   const t0 = ctx.currentTime + 0.01
@@ -1925,6 +2009,7 @@ const stopVad = () => {
   if (vadRAF) { cancelAnimationFrame(vadRAF); vadRAF = null }
   analysers.forEach((_, uid) => removeAnalyser(uid))
   if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null }
+  masterGain = null   // ctx と寿命を合わせる（閉じた ctx のノードは次の join では使えない）
 }
 let roomRms = 0   // 部屋の中でいちばん大きい音量（EQの高さを駆動する）。速く上がり・ゆっくり下がる
 const vadTick = () => {
@@ -3000,9 +3085,11 @@ const runJoin = async () => {
       dropAudios(id)            // 別のストリームに入れ替わった＝古い方は用済み
       const a = document.createElement('audio')
       a.srcObject = stream; a.autoplay = true; a.playsInline = true
+      if (volumeWorks) a.volume = masterVol
       document.body.appendChild(a)
       call.audios.set(id, [a])
       addAnalyser(id, stream)   // 相手の音量を測って絵文字を跳ねさせる（中で古い方を外している）
+      routePeer(id)             // .volume が効かない環境だけ、マスター音量の経路に繋ぎ替える
       play(a)
     }
 
