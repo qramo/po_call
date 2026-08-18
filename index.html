@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.8.6
+  ぽっと通話〈実験版〉 v0.8.7
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1018,7 +1018,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.8.6'
+const APP_VERSION = 'v0.8.7'
 
 const $ = id => document.getElementById(id)
 
@@ -1884,16 +1884,16 @@ const ensureAudioCtx = () => {
 // 相対バランス。デバイス音量は全部まとめて上下するので比率が永遠に変わらず、Windows の
 // 音量ミキサーもブラウザ丸ごと1つ（別タブの YouTube と分けられない）。だからアプリ内に持つ。
 const VOL_KEY = 'pot-call-vol'
-// iOS Safari は audio.volume への代入を**黙って無視する**。機種名を見ずに、実際に代入して
-// 読み返して判定する（効く環境は素朴な .volume のままでよい＝経路を増やさない）。
-const volumeWorks = (() => { try { const a = new Audio(); a.volume = 0.5; return a.volume !== 1 } catch { return true } })()
 const clampVol = v => (v >= 0 && v <= 1 ? v : 1)
 let masterVol = clampVol(parseFloat(localStorage.getItem(VOL_KEY)))
-let masterGain = null   // .volume が効かない環境でだけ張る「各ピア → マスターGain → 出力」
+let masterGain = null   // 「各ピア → マスターGain → 出力」。100% のときは張らない
 
-// **100% のときは Web Audio の経路を張らない。**既定のままの人の音の出方は今までと同一で、
-// 「鳴らない」原因を増やさない（iOS は実機でしか確かめられないので、既定は触らない側に倒す）。
-const gainOn = () => !volumeWorks && masterVol !== 1
+// ★**`audio.volume` は当てにしない**（2026-08-19・iPhone 実機で確定）。iOS 18.7 / Safari 26.6 は
+// **代入がプロパティには反映されるのに音は変わらない**＝「代入して読み返す」では見分けられない
+// （読み返しは 0.2 を返すのに音はそのまま）。最初はこの判定で分岐させて実機で効かなかった。
+// なので**音量は全端末 Web Audio の GainNode だけで作る**。`.volume` には二度と頼らないこと。
+// **100% のときだけ経路を張らない**＝既定の人の鳴らし方は今までと同一で、これが戻り道にもなる。
+const gainOn = () => masterVol !== 1
 const ensureMasterGain = () => {
   const ctx = ensureAudioCtx()
   if (!masterGain) { masterGain = ctx.createGain(); masterGain.connect(ctx.destination) }
@@ -1908,13 +1908,13 @@ const routePeer = uid => {
   if (!a) return
   const els = call.audios.get(uid) || []
   if (gainOn()) {
+    // ★AudioContext が止まったまま muted にすると**完全な無音**になる（画面は正常のまま）。
+    // その間は素の再生のまま解錠ボタンを出し、押されたら applyVolume でやり直す。
+    // muted な要素の play() は拒否されない＝ここで自分から出さないと誰も気づけない。
+    const ctx = ensureAudioCtx()
+    if (ctx.state !== 'running') { $('unlock').style.display = 'block'; return }
     if (!a.gain) { try { a.gain = ensureMasterGain(); a.src.connect(a.gain) } catch { a.gain = null } }
-    if (a.gain) {
-      els.forEach(el => { el.muted = true })
-      // muted な要素の play() は拒否されない＝unlock ボタンが出ない。止まっているのが
-      // AudioContext のほうだと**無音のまま誰も気づけない**ので、ここで自分から出す。
-      if (audioCtx && audioCtx.state === 'suspended') $('unlock').style.display = 'block'
-    }
+    if (a.gain) els.forEach(el => { el.muted = true })
   } else if (a.gain) {                       // 100% に戻した＝元の素朴な鳴らし方へ返す
     try { a.src.disconnect(a.gain) } catch {}
     a.gain = null
@@ -1922,11 +1922,8 @@ const routePeer = uid => {
   }
 }
 const applyVolume = () => {
-  if (volumeWorks) allAudios().forEach(a => { a.volume = masterVol })
-  else {
-    if (masterGain) masterGain.gain.value = masterVol
-    analysers.forEach((_, uid) => routePeer(uid))
-  }
+  if (masterGain) masterGain.gain.value = masterVol
+  analysers.forEach((_, uid) => routePeer(uid))
 }
 {
   const slider = $('vol'), val = $('volVal'), ic = $('volIc')
@@ -2211,7 +2208,7 @@ const dropAudios = id => {
   call.audios.delete(id)
 }
 
-$('unlock').onclick = () => { if (audioCtx) audioCtx.resume().catch(() => {}); allAudios().forEach(a => a.play().catch(() => {})); $('unlock').style.display = 'none' }
+$('unlock').onclick = () => { if (audioCtx) audioCtx.resume().then(applyVolume).catch(() => {}); allAudios().forEach(a => a.play().catch(() => {})); $('unlock').style.display = 'none' }
 
 // 音が届いていない相手を見張る。まず黙って「送り直して」と頼み（相手の入り直しと同じ効果）、
 // それでも来なければ本人に知らせる。無音のまま本人が理由に気づけないのが一番まずいので、
@@ -3085,11 +3082,10 @@ const runJoin = async () => {
       dropAudios(id)            // 別のストリームに入れ替わった＝古い方は用済み
       const a = document.createElement('audio')
       a.srcObject = stream; a.autoplay = true; a.playsInline = true
-      if (volumeWorks) a.volume = masterVol
       document.body.appendChild(a)
       call.audios.set(id, [a])
       addAnalyser(id, stream)   // 相手の音量を測って絵文字を跳ねさせる（中で古い方を外している）
-      routePeer(id)             // .volume が効かない環境だけ、マスター音量の経路に繋ぎ替える
+      routePeer(id)             // 音量が 100% でなければマスター音量の経路に繋ぎ替える
       play(a)
     }
 
