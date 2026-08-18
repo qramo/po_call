@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.8.3
+  ぽっと通話〈実験版〉 v0.8.4
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -265,6 +265,10 @@
   .tab{ width:auto; margin:0; padding:8px 11px; font-size:13px; font-weight:700; line-height:1.2;
     white-space:nowrap; display:inline-flex; align-items:center; gap:5px;
     background:transparent; color:#8fa0b8; border-radius:10px 10px 0 0; position:relative }
+  /* ★display を書いたら [hidden] も書くこと。**これを忘れて、普通の部屋でも
+     「おたより」タブが出ていた**（2026-08-18・v0.8.2 で display:inline-flex を足したときの見落とし）。
+     このファイルで同じ罠を踏むのは3度目。display を足したら必ず対で書く。 */
+  .tab[hidden]{ display:none }
   .t-em{ font-size:13px; line-height:1 }
   .tab:hover{ color:#cfe }
   .tab[aria-selected="true"]{ color:#eef2f8; background:#131d30 }
@@ -407,8 +411,11 @@
     text-overflow:ellipsis; white-space:nowrap }
   .m-stage{ flex:none; font-size:14px }
   .m-id .you{ flex:none; color:#9fb0c7; font-size:12px; white-space:nowrap }
+  /* 状態のまとまり（見るだけ）。**名前の左**に置き、中身が無くても場所は空ける
+     ＝行ごとに名前の左端がずれない。押せるものはここには入れない（右端に集める）。 */
+  .m-state{ flex:none; display:flex; align-items:center; gap:5px }
   /* ミュート印＝朱色の丸い土台に暗いマイク斜線（退出ボタンと同系）。常に置いて visibility だけ切替 */
-  .m-mute{ margin-left:auto; flex:none; width:22px; height:22px; border-radius:50%;
+  .m-mute{ flex:none; width:22px; height:22px; border-radius:50%;
     background:#ef5a3c; display:inline-flex; align-items:center; justify-content:center; visibility:hidden }
   .m-mute svg{ width:13px; height:13px; color:#0d1526 }
   .member.muted .m-mute{ visibility:visible }
@@ -435,8 +442,9 @@
   .m-mic.on{ color:#00e5cc }
   .m-mic:hover{ color:#9fb0c7 }
   .m-mic.on:hover{ color:#7cffee }
-  /* 配信部屋の印（📢＝配信者／🎙＝話してよい人）。名前のとなりに小さく置く */
-  .m-bc{ flex:none; font-size:12px }
+  /* 配信部屋の印（📣＝配信者／🎙＝話してよい人）。**配信部屋のときだけ**枠を作り、
+     誰でもない行では空のまま場所だけ取る（名前の左端を揃えるため） */
+  .m-bc{ flex:none; width:16px; font-size:13px; line-height:1; text-align:center }
   /* リアクション。参加者リストの真下＝**飛び出す先のすぐ下**に置く（視線がつながる）。
      共通の button{} の width と margin をどちらも打ち消すこと（.m-ig と同じ罠） */
   .reactions{ margin-top:8px; display:flex; gap:5px }
@@ -821,7 +829,7 @@
     <p class="help-tip">💡 部屋名はURLの一部（末尾の <code>#◯◯</code>）。共有リンク＝その部屋のURLなので、開けば同じ部屋に入れます。</p>
   </details>
 
-  <details class="help-sec"><summary>📢 配信部屋</summary>
+  <details class="help-sec"><summary>📣 配信部屋</summary>
     <p>「あなたが話し、ほかの人は聞く」形の部屋です。部屋名の下で <b>📣 配信部屋にする</b> を選んで参加すると作れます（既定は <b>🏠 雑談部屋</b>＝全員で話せる、これまでどおりの部屋）。共有リンクは <b>1種類だけ</b>（配信者用の秘密のリンクはありません）。</p>
     <ul>
       <li>聞き役で入った人は <b>マイクを使いません</b>（許可を求められません）</li>
@@ -986,7 +994,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.8.3'
+const APP_VERSION = 'v0.8.4'
 
 const $ = id => document.getElementById(id)
 
@@ -1040,7 +1048,7 @@ const CALL_INIT = () => ({
   ownerPub: '',         // 自分がオーナーのときの公開鍵（base64url raw）。名簿に添えて配る
   grants: new Set(),    // **オーナーの原本**：話してよい人の peerId（自分を含む）
   speakers: new Set(),  // **検証済みの名簿**：この部屋で音を鳴らしてよい人の peerId
-  ownerPeer: '',        // 名簿に書かれている配信者本人の peerId（📢 と 🎙 を描き分けるため）
+  ownerPeer: '',        // 名簿に書かれている配信者本人の peerId（📣 と 🎙 を描き分けるため）
   roster: null,         // 最後に受け取った（署名済みの）名簿。新しい人にそのまま転送するために持つ
   rosterT: 0,           // 自分が署名した名簿の時刻（必ず増やす）
   rosterSeen: 0,        // 採用済みの名簿の時刻。**これ以下は捨てる**＝古い名簿の再送（リプレイ）よけ
@@ -1175,7 +1183,7 @@ const drawQr = async () => {
   const img = $('qrImg'), id = pendingRoom()
   img.textContent = '生成中…'
   // 表示は名前だけ（指紋はURLの中身なので読めても意味がない。長いだけで邪魔になる）
-  $('qrRoom').textContent = id ? '部屋：' + (isBcRoom(id) ? '📢 ' : '') + roomName(id) : ''
+  $('qrRoom').textContent = id ? '部屋：' + (isBcRoom(id) ? '📣 ' : '') + roomName(id) : ''
   try {
     const qrcode = await loadQR()
     const qr = qrcode(0, 'M'); qr.addData(shareUrl()); qr.make()
@@ -1605,32 +1613,25 @@ const ARROWS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 const membersEl = $('members')
 const emojiEls = new Map()  // uid('self'|peerId) → 現在の絵文字要素（描き直すたび貼り替え、VADから参照する）
 // 配信部屋の印と、登壇の切替ボタン（bc）。bc は配信部屋のときだけ渡す。
-//   bc.mark  … 📢＝配信者 / 🎙＝話してよい人 / ''＝聞き役
+//   bc.mark  … 📣＝配信者 / 🎙＝話してよい人 / ''＝聞き役
 //   bc.grant … オーナーの画面にだけ付く切替（{on, title, onClick}）
 const memberRow = (emoji, name, you, isMuted, stage, relay, action, bc) => {
   const row = document.createElement('div'); row.className = 'member' + (isMuted ? ' muted' : '')
   const av = document.createElement('span'); av.className = 'm-emoji'; av.textContent = emoji || '🙂'
-  // 名前・成長・（あなた）は1つの箱にまとめる。**縮んでよいのは名前だけ**で、
-  // 🌿 と（あなた）は必ず残す。以前は全部を .m-name に入れていたので、
-  // 名前が長いと「（あな／た）」のように**折り返しの途中で割れていた**（狭い画面で発生）。
-  const id = document.createElement('span'); id.className = 'm-id'
-  const nm = document.createElement('span'); nm.className = 'm-name'
-  nm.textContent = name || 'ゲスト'; nm.title = name || 'ゲスト'   // 詰められた分は title で読める
-  id.append(nm)
-  if (stage) { const st = document.createElement('span'); st.className = 'm-stage'; st.textContent = stage; id.append(st) }
-  if (bc && bc.mark) {
-    const m = document.createElement('span'); m.className = 'm-bc'; m.textContent = bc.mark
-    m.title = bc.mark === '📢' ? 'この部屋の配信者' : '話す許可を持っている人'
-    id.append(m)
-  }
-  if (you) { const t = document.createElement('span'); t.className = 'you'; t.textContent = '（あなた）'; id.append(t) }
-  // ミュート印はボタンと同じマイク斜線SVG（絵文字ではなく揃える）。常に置いて visibility だけ切替
-  // ＝追加/削除で行の高さが変わり枠がピクつくのを防ぐ。margin-left:auto で右クラスタを右端へ寄せる。
+  // ★行の並びは **[アバター][状態][名前][操作]**。**左は見るだけ・右は押すもの**、と役割で分ける
+  //   （2026-08-18：見る印と押す印が右端で交互に並んでいて、どれが押せるのか分からなかった）。
+  //   状態の枠は**中身が無くても場所を空ける**＝行ごとに名前の左端がずれない。ただし
+  //   **その部屋で誰にも関係しない印は、そもそも枠を作らない**（配信部屋の印は配信部屋のときだけ）。
+  const st = document.createElement('span'); st.className = 'm-state'
+  // ミュート印はボタンと同じマイク斜線SVG（絵文字ではなく揃える）
   const m = document.createElement('span'); m.className = 'm-mute'; m.title = 'ミュート中'; m.innerHTML = MIC_OFF_SVG
-  row.append(av, id, m)
-  // 接続経路アイコン（行の右端）。経路が分かるときだけ足す（不明なら出さない）。SVGは定数なので innerHTML で安全。
-  if (relay !== undefined) {
-    const c = document.createElement('span'); c.className = 'm-conn ' + (relay ? 'relay' : 'direct')
+  st.append(m)
+  // 接続経路アイコン。経路が分からないときは**場所だけ空けて見えなくする**（行ごとにずれないため）。
+  // SVGは定数なので innerHTML で安全。
+  const c = document.createElement('span')
+  c.className = 'm-conn ' + (relay === undefined ? 'unknown' : relay ? 'relay' : 'direct')
+  if (relay === undefined) { c.style.visibility = 'hidden'; c.setAttribute('aria-hidden', 'true') }
+  else {
     // 主語は「その行の人」。自分の行と相手の行で**立場が入れ替わる**（自分の↔＝自分のIPが相手に
     // 見える／相手の↔＝その人のIPが自分に見える）ので、you で言い分ける。以前は両方とも
     // 「あなたの」と書いていて、相手の行では意味が逆になっていた。
@@ -1638,10 +1639,28 @@ const memberRow = (emoji, name, you, isMuted, stage, relay, action, bc) => {
       ? (relay ? '中継ごし：あなたのIPアドレスは隠れています' : '直接：あなたのIPアドレスが見えています')
       : (relay ? '中継ごし：この人のIPアドレスは隠れています' : '直接：この人のIPアドレスが見えています')
     c.innerHTML = relay ? CLOUD_SVG : ARROWS_SVG
-    row.append(c)
   }
-  // 登壇の切替（配信部屋のオーナーの画面にだけ出る）。無視ボタンの左に置く＝
-  // 「この人の音を出す／出さない」で意味が近いものを隣り合わせにする。
+  st.append(c)
+  // 配信部屋の印（📣＝配信者／🎙＝話してよい人）。**配信部屋のときだけ枠を作る**
+  // ＝普通の部屋では名前が左に寄る。bc が渡ってくること自体が「配信部屋である」の合図。
+  if (bc) {
+    const b2 = document.createElement('span'); b2.className = 'm-bc'; b2.textContent = bc.mark || ''
+    if (bc.mark) b2.title = bc.mark === '📣' ? 'この部屋の配信者' : '話す許可を持っている人'
+    else b2.setAttribute('aria-hidden', 'true')
+    st.append(b2)
+  }
+  // 名前・成長・（あなた）は1つの箱にまとめる。**縮んでよいのは名前だけ**で、
+  // 🌿 と（あなた）は必ず残す。以前は全部を .m-name に入れていたので、
+  // 名前が長いと「（あな／た）」のように**折り返しの途中で割れていた**（狭い画面で発生）。
+  const id = document.createElement('span'); id.className = 'm-id'
+  const nm = document.createElement('span'); nm.className = 'm-name'
+  nm.textContent = name || 'ゲスト'; nm.title = name || 'ゲスト'   // 詰められた分は title で読める
+  id.append(nm)
+  if (stage) { const sg = document.createElement('span'); sg.className = 'm-stage'; sg.textContent = stage; id.append(sg) }
+  if (you) { const t = document.createElement('span'); t.className = 'you'; t.textContent = '（あなた）'; id.append(t) }
+  row.append(av, st, id)
+  // ここから右は**押せるものだけ**。登壇の切替（配信部屋のオーナーの画面にだけ出る）→ 無視の切替。
+  // 「この人の音を出す／出さない」で意味が近いので隣り合わせにする。
   if (bc && bc.grant) {
     const g = document.createElement('button'); g.type = 'button'
     g.className = 'm-mic' + (bc.grant.on ? ' on' : '')
@@ -1658,7 +1677,6 @@ const memberRow = (emoji, name, you, isMuted, stage, relay, action, bc) => {
     row.append(g)
   }
   // 無視の切替（行の右端）。**自分の行にも同じ場所を空ける**＝出さないのではなく見えなくする。
-  // 行ごとに右端の要素が変わると、経路アイコン（☁️/↔）の縦位置がずれる。
   const b = document.createElement('button'); b.type = 'button'; b.className = 'm-ig'
   if (action) {
     b.innerHTML = action.off ? HEART_BROKEN_SVG : HEART_SVG   // SVGは定数なので innerHTML で安全
@@ -1776,17 +1794,17 @@ const renderMembers = () => {
     emojiEls.set(uid, row.querySelector('.m-emoji'))
     membersEl.appendChild(row)
   }
-  // 配信部屋の印。配信者は 📢、あとから許された人は 🎙、それ以外は無印（＝聞き役）。
+  // 配信部屋の印。配信者は 📣、あとから許された人は 🎙、それ以外は無印（＝聞き役）。
   // **誰が配信者かも署名の中に入っている**ので、自分の行か相手の行かで判断を変えなくてよい。
-  const bcMark = id => !call.bcast ? '' : (id && id === call.ownerPeer ? '📢' : call.speakers.has(id) ? '🎙' : '')
+  const bcMark = id => !call.bcast ? '' : (id && id === call.ownerPeer ? '📣' : call.speakers.has(id) ? '🎙' : '')
   // 聞き役はマイクを持っていないので、ミュート印を出しておく（一覧の見え方を「話せない人」で揃える）
   add('self', profile.emoji, profile.name, true, micOff(), stageOf(), call.usingRelay, null,
-    { mark: bcMark(myPeerId), grant: call.ownerKey ? { hidden: true } : null })
+    call.bcast ? { mark: bcMark(myPeerId), grant: call.ownerKey ? { hidden: true } : null } : null)
   // peers（接続の事実）を軸にし、プロフィール未着の相手は仮表示にする（経路も未着なら undefined＝アイコンなし）
   call.peers.forEach(id => {
     const p = call.profiles.get(id) || {}
     const ig = call.ignored.has(id)
-    const bc = {
+    const bc = !call.bcast ? null : {
       mark: bcMark(id),
       // オーナーだけが登壇を切り替えられる。**判定はボタンの有無ではなく署名**なので、
       // ここを他人に見せても実害は無い（押しても署名できない）が、混乱するので出さない。
@@ -2078,7 +2096,7 @@ const render = () => {
   // 圏外・Wi-Fiオフでも参加自体は成功する（マイクはローカル、ライブラリは読込済み）。
   // 何も言わないと「誰も来ない部屋」に見えて原因が分からないので、まずこれを出す。
   // navigator.onLine は「回線があるか」までしか分からないが、外れても実害のない案内なのでこれで十分。
-  const label = (call.bcast ? '📢 ' : '') + roomName(call.joinedId)   // 指紋は出さない（読めても意味がない）
+  const label = (call.bcast ? '📣 ' : '') + roomName(call.joinedId)   // 指紋は出さない（読めても意味がない）
   if (!navigator.onLine) setState('インターネットに繋がっていません', 'error')
   else if (call.peers.size) setState('通話中：' + label, 'ok')
   // 誰とも繋がらないままエラーが出ている。**しばらく続いたら「つなぎ直す」へ誘導する**。
@@ -2493,7 +2511,7 @@ const B64U_RE = /^[A-Za-z0-9_-]{80,100}$/   // 公開鍵87文字・署名86文�
 let myPeerId = ''            // Trystero の selfId（ページ読込ごとに決まる。参加前は空）
 const enc = s => new TextEncoder().encode(s)
 // 署名する文（決定的に組み立てる）。配信者本人の peerId も**署名の中に**入れる＝
-// 「誰が配信者か」も偽れない（一覧に 📢 と 🎙 を描き分けるのに使う）。
+// 「誰が配信者か」も偽れない（一覧に 📣 と 🎙 を描き分けるのに使う）。
 const rosterMsg = (id, t, own, ids) => id + '\n' + t + '\n' + own + '\n' + ids.join(',')
 
 // この人の音を鳴らしてよいか。**「対象をパラメータにする」フィルタ層の音声版**。
@@ -2593,12 +2611,12 @@ const renderBcNote = () => {
   el.hidden = !call.joinedId || !call.bcast
   if (el.hidden) return
   el.textContent = call.ownerKey
-    ? '📢 あなたの配信部屋です。ほかの人の声は誰にも流れません（🎙 を押すとその人も話せます）'
+    ? '📣 あなたの配信部屋です。ほかの人の声は誰にも流れません（🎙 を押すとその人も話せます）'
     : call.speakers.has(myPeerId)
       ? '🎙 あなたは話す許可を持っています'
       : call.speakers.size
-        ? '📢 配信部屋です。配信者の声だけが流れます（あなたのマイクは使いません）'
-        : '📢 配信部屋です。まだ配信者が来ていません'
+        ? '📣 配信部屋です。配信者の声だけが流れます（あなたのマイクは使いません）'
+        : '📣 配信部屋です。まだ配信者が来ていません'
 }
 
 // 登壇を許された人がマイクを取る。**押されるまで getUserMedia を呼ばない**のが要点で、
@@ -2895,7 +2913,7 @@ const runJoin = async () => {
     } catch {
       call.ownerKey = null; call.ownerPub = ''
       if (call.stream) { call.stream.getTracks().forEach(t => t.stop()); call.stream = null }   // 誰にも届かないマイクは掴まない
-      showPeerNotice('📢 配信者の鍵を読めませんでした。この部屋では聞き役になります')
+      showPeerNotice('📣 配信者の鍵を読めませんでした。この部屋では聞き役になります')
     }
   }
 
@@ -3478,10 +3496,10 @@ const renderLobby = () => {
     const btn = document.createElement('button')
     btn.className = 'room' + (room === call.joinedId ? ' here' : '') + (act ? ' act' + act : '')
     const top = document.createElement('div'); top.className = 'room-top'
-    // 配信部屋は 📢 で区別する（一覧では「入ると何が起きるか」が違うので、家の絵文字では足りない）。
+    // 配信部屋は 📣 で区別する（一覧では「入ると何が起きるか」が違うので、家の絵文字では足りない）。
     // 指紋そのものは出さない＝長いだけで読み手には意味がない。
     const nm = document.createElement('span'); nm.className = 'room-name'
-    nm.textContent = (isBcRoom(room) ? '📢 ' : '🏠 ') + roomName(room)
+    nm.textContent = (isBcRoom(room) ? '📣 ' : '🏠 ') + roomName(room)
     // 満室の表示は**目安**（在室情報は30秒失効なのでずれる）。**押せるままにしておく**＝
     // 空いているのに入れない人を作らないため。実際の判定は入室時（checkCapacity）。
     const full = people.length >= roomCapOf(room)
@@ -3527,7 +3545,7 @@ const selectRoom = room => {
   // 「あとで解除すれば話せる」と読まれてしまうので、起きることをそのまま書く。
   const listen = isBcRoom(room) && !ownerKeyByFp(roomPk(room))
   const how = listen ? '聞き役で入室します（マイクは使いません）。' : 'ミュート状態で入室します。'
-  const label = (isBcRoom(room) ? '📢 ' : '') + roomName(room)
+  const label = (isBcRoom(room) ? '📣 ' : '') + roomName(room)
   if (call.joinedId) {
     if (!confirm('参加中の部屋「' + roomName(call.joinedId) + '」を退出して「' + label + '」に移りますか？\n' + how)) return
     leaveCall()   // 今の部屋を退出（非同期の後片付けは leaving が保持し、次の参加で待たれる）
