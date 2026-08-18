@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.8.2
+  ぽっと通話〈実験版〉 v0.8.3
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -191,6 +191,10 @@
   #copy{ background:#1d2740; color:#cfe; margin-top:8px; padding:10px; font-size:14px }
   /* 版の表示。共有ボタンの右下に、目に留まらない濃さで置く（普段は意識させない） */
   .ver{ margin-top:6px; text-align:right; font-size:10.5px; color:#4a5a72; letter-spacing:.04em }
+  /* β（旧URL）にだけ出る安定版への導線。ブログ等から旧URLに来た人が、
+     ここが試験用だと気づけるようにする。版表示と同じ濃さで、探せば見つかる程度に。 */
+  .stable-link{ margin-left:8px; color:#6f7f96; text-decoration:underline }
+  .stable-link:hover{ color:#9fb0c7 }
   #qr{ background:#1d2740; color:#cfe; margin-top:8px; padding:10px; font-size:14px }
   .status{ margin-top:18px; padding:14px; border-radius:10px; background:#0d1526; font-size:14px; line-height:1.7 }
   /* 状態表示の右に「つなぎ直す」。共通の button{width:100%} を打ち消して小さなチップにする */
@@ -982,7 +986,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.8.2'
+const APP_VERSION = 'v0.8.3'
 
 const $ = id => document.getElementById(id)
 
@@ -1078,6 +1082,18 @@ $('ver').textContent = APP_VERSION
 if (location.hostname !== 'potalk.app') {
   $('chan').textContent = ' β'
   $('brandMark').textContent = '🦞'   // 旧URLの顔（tools/banner.html にも同じ 🦞 が残っている）
+  // 安定版への導線。**旧URLは「新機能を先に試す場」なので、初めて来た人には本番の場所を示す**
+  // （2026-08-17：紹介記事が旧URLを先に載せていたため、記事から来た人が β に着地する）。
+  // **部屋名（ハッシュ）を引き継ぐ**ので、部屋にいる人はそのまま同じ部屋へ移れる。
+  // hash は参加時に書き換わるので hashchange で追従させる（作った時点で固定すると古い部屋に飛ぶ）。
+  const stable = document.createElement('a')
+  stable.className = 'stable-link'
+  stable.textContent = '安定版へ'
+  stable.title = 'ここは試験用（β）です。安定版は potalk.app'
+  const syncStable = () => { stable.href = 'https://potalk.app/' + location.hash }
+  syncStable()
+  addEventListener('hashchange', syncStable)
+  $('chan').after(stable)
 }
 
 // ホーム追加（PWA）判定。display-mode が使えない古いiOS向けに navigator.standalone も見て
