@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.8.7
+  ぽっと通話〈実験版〉 v0.8.8
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -204,6 +204,8 @@
   .vol-ic, .vol-lbl{ flex:none }
   .vol-val{ flex:none; width:3.4em; text-align:right; font-variant-numeric:tabular-nums }
   .vol-note{ margin:4px 0 0; font-size:11.5px; color:#6f7f96; line-height:1.5 }
+  .vol-note[hidden]{ display:none }
+  .bgm-row{ margin-top:14px }
   #copy{ background:#1d2740; color:#cfe; margin-top:8px; padding:10px; font-size:14px }
   /* 版の表示。共有ボタンの右下に、目に留まらない濃さで置く（普段は意識させない） */
   .ver{ margin-top:6px; text-align:right; font-size:10.5px; color:#4a5a72; letter-spacing:.04em }
@@ -776,6 +778,21 @@
         <span class="vol-val" id="volVal">100%</span>
       </label>
       <p class="vol-note">この通話の音だけが変わります（他のアプリの音はそのまま）。</p>
+      <!-- BGM。**既定は「なし」**（通話アプリで勝手に音が鳴るのは事故）。
+           選択肢は性格が一番遠い2つだけ＝曲を流すか、地の音を敷くか。
+           部屋名から曲を決めるので**通信は一切増えない**（送らずに導出する。リアクションで
+           絵文字ではなく添字を送ると決めたのと同じ原理）。★display を書いたら [hidden] も書くこと -->
+      <div id="bgmRow" class="kind bgm-row" role="radiogroup" aria-label="BGM">
+        <label class="snd-opt"><input type="radio" name="bgm" id="bgmOff" checked> 🔇 BGMなし</label>
+        <label class="snd-opt"><input type="radio" name="bgm" id="bgmTune"> 🎵 軽快な音楽</label>
+        <label class="snd-opt"><input type="radio" name="bgm" id="bgmAmb"> 🌫 アンビエント空間</label>
+      </div>
+      <label class="vol-opt" id="bgmVolRow" hidden><span class="vol-ic">🎚</span><span class="vol-lbl">BGM</span>
+        <input id="bgmVol" type="range" min="0" max="100" step="5" value="30" aria-label="BGMの音量">
+        <span class="vol-val" id="bgmVolVal">30%</span>
+      </label>
+      <p class="vol-note" id="bgmNote" hidden>自分にだけ鳴ります（相手には送っていません）。
+        スピーカーだと自分のマイクが拾って相手に流れるので、イヤホンをおすすめします。</p>
       <label class="snd-opt" id="sndPeerRow" style="display:none"><input type="checkbox" id="sndPeer"> 🔔 入室・退出を音で知らせる</label>
       <label class="snd-opt" id="sndReactRow" style="display:none"><input type="checkbox" id="sndReact"> 🎵 リアクションを音で鳴らす</label>
     </div>
@@ -881,6 +898,7 @@
       <li>🌱 育てる：使うほどあなたの絵文字が成長（🌱→🌿→🌷or🌻→❓）</li>
       <li>🔔 音：入室・退出や新しい部屋を音で知らせる（それぞれオン/オフ。新しい部屋の音はタブを開いている間だけ）</li>
       <li>🔊 音量：通話中の ⚙️ 設定タブで、<b>この通話の音だけ</b>を下げられる（動画や音楽と一緒に聞くとき用。他のアプリの音はそのまま）</li>
+      <li>🎵 BGM：⚙️ 設定タブで <b>軽快な音楽</b> か <b>アンビエント空間</b> を選べる（既定はオフ。<b>自分にだけ鳴り</b>、曲は部屋名で決まります。イヤホン推奨）</li>
       <li>👥 人数：ふつうの部屋は <b>8人</b>、📣 配信部屋は <b>15人</b>まで（全員が全員に繋がる仕組みなので、多いと音が途切れます）</li>
     </ul>
   </details>
@@ -1018,7 +1036,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.8.7'
+const APP_VERSION = 'v0.8.8'
 
 const $ = id => document.getElementById(id)
 
@@ -1923,6 +1941,7 @@ const routePeer = uid => {
 }
 const applyVolume = () => {
   if (masterGain) masterGain.gain.value = masterVol
+  if (bgm) bgm.gain.gain.value = bgmLevel()   // BGM も「アプリの音」の一部として一緒に上下する
   analysers.forEach((_, uid) => routePeer(uid))
 }
 {
@@ -1938,6 +1957,165 @@ const applyVolume = () => {
     localStorage.setItem(VOL_KEY, String(masterVol))
     draw(); applyVolume()
   }
+}
+
+// ─ BGM ───────────────────────────────────────────────
+// **自分にだけ鳴る**（ワイヤには何も乗らない＝送信も同期もしない）。曲は**部屋名から導出する**ので、
+// 通信を増やさずに同じ部屋の全員が同じ音になる（リアクションで絵文字ではなく添字を送るのと同じ原理）。
+// 音源ファイルは持たず Web Audio で合成する＝**著作権の論点が最初から無い**（同梱音源の代わり）。
+// 選択肢は性格が一番遠い2つだけ：🎵 軽快な音楽（拍と旋律がある）／🌫 アンビエント空間（どちらも無い）。
+const BGM_KEY = 'pot-call-bgm'          // 'off' | 'tune' | 'amb'
+const BGM_VOL_KEY = 'pot-call-bgm-vol'
+let bgmKind = ['off', 'tune', 'amb'].includes(localStorage.getItem(BGM_KEY)) ? localStorage.getItem(BGM_KEY) : 'off'
+let bgmVol = (() => { const v = parseFloat(localStorage.getItem(BGM_VOL_KEY)); return v >= 0 && v <= 1 ? v : 0.3 })()
+let bgm = null   // 鳴っている間だけ {nodes, timers, gain}。**止めるときはここを畳むだけ**（join/leave と同じ対称性）
+
+// 部屋名 → 数。同じ部屋名なら何度でも同じ曲になる（リロードしても・別のブラウザでも）
+const bgmSeed = str => {
+  let h = 1779033703 ^ str.length
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353)
+    h = (h << 13) | (h >>> 19)
+  }
+  return (h ^ (h >>> 16)) >>> 0
+}
+const bgmRng = seed => {
+  let a = seed >>> 0
+  return () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+// BGM は**マスター音量にも従う**（アプリの音をまとめて下げたときに BGM だけ残らない）
+const bgmLevel = () => bgmVol * masterVol * 0.5
+const bgmTrack = n => { bgm.nodes.push(n); return n }
+const stopBgm = () => {
+  if (!bgm) return
+  bgm.timers.forEach(clearInterval)   // clearInterval は setTimeout の id も消せる
+  bgm.nodes.forEach(n => { try { n.stop && n.stop() } catch {} ; try { n.disconnect() } catch {} })
+  bgm = null
+}
+// 先読みスケジューラ：25ms ごとに起きて 100ms 先までを**絶対時刻で**予約する。
+// 発火した瞬間に鳴らす作りだと、タイマーの揺れがそのままリズムの揺れになる（タブを裏に回すと露骨）。
+const bgmSchedule = (stepSec, onStep) => {
+  let next = ctx0().currentTime + 0.06, step = 0
+  const tick = () => {
+    if (!bgm) return
+    while (next < ctx0().currentTime + 0.1) { onStep(step++, next); next += stepSec }
+  }
+  tick()
+  bgm.timers.push(setInterval(tick, 25))
+}
+const ctx0 = () => audioCtx
+const bgmPing = (t, freq, dur, type, gain, pan) => {
+  const ctx = ctx0()
+  const o = ctx.createOscillator(), g = ctx.createGain()
+  o.type = type; o.frequency.value = freq
+  g.gain.setValueAtTime(0.0001, t)
+  g.gain.exponentialRampToValueAtTime(gain, t + 0.012)
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+  let out = g
+  if (pan !== undefined && ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = pan; g.connect(p); out = p }
+  o.connect(g); out.connect(bgm.gain)
+  o.start(t); o.stop(t + dur + 0.05)
+  bgmTrack(o)
+}
+const BGM_HZ = m => 440 * Math.pow(2, (m - 69) / 12)
+const BGM_CHORDS = [   // Cキーのダイアトニック7th（外れの進行が出にくい範囲に絞る）
+  [60, [0, 4, 7, 11]], [62, [0, 3, 7, 10]], [64, [0, 3, 7, 10]],
+  [65, [0, 4, 7, 11]], [67, [0, 4, 7, 10]], [69, [0, 3, 7, 10]]
+]
+// 🎵 軽快な音楽：ベース・和音の刻み・シェイカー・旋律。BPM120 の16分で回す
+const bgmTune = seed => {
+  const rnd = bgmRng(seed)
+  const prog = [0, 1, 2, 3].map(() => BGM_CHORDS[Math.floor(rnd() * BGM_CHORDS.length)])
+  const ctx = ctx0()
+  const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate)
+  const nd = noise.getChannelData(0)
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1
+  const comp = [0, 3, 6, 10, 13]
+  bgmSchedule(60 / 120 / 4, (i, t) => {
+    const [root, ivs] = prog[Math.floor(i / 16) % 4], sN = i % 16
+    if (sN === 0 || sN === 11) bgmPing(t, BGM_HZ(root - 24), 0.5, 'sine', 0.5)
+    if (comp.includes(sN)) ivs.forEach((iv, k) => bgmPing(t, BGM_HZ(root + iv), 0.34, 'triangle', 0.075, (k - 1.5) * 0.2))
+    if (sN % 2 === 0) {
+      const src = ctx.createBufferSource(), g = ctx.createGain(), f = ctx.createBiquadFilter()
+      src.buffer = noise; f.type = 'highpass'; f.frequency.value = 6000
+      g.gain.setValueAtTime(sN % 4 === 0 ? 0.05 : 0.028, t)
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06)
+      src.connect(f); f.connect(g); g.connect(bgm.gain); src.start(t); src.stop(t + 0.08); bgmTrack(src)
+    }
+    if (sN === 4 || sN === 12) bgmPing(t, BGM_HZ(root + ivs[Math.floor(rnd() * ivs.length)] + 12), 0.42, 'triangle', 0.09, 0.15)
+  })
+}
+// 🌫 アンビエント空間：同じ和音の材料から拍と旋律を外して敷く。1和音が11秒かけて入って抜ける
+const bgmAmbient = seed => {
+  const rnd = bgmRng(seed)
+  const prog = [0, 1, 2, 3].map(() => BGM_CHORDS[Math.floor(rnd() * BGM_CHORDS.length)])
+  const ctx = ctx0()
+  const filt = bgmTrack(ctx.createBiquadFilter())
+  filt.type = 'lowpass'; filt.frequency.value = 700; filt.Q.value = 0.4
+  filt.connect(bgm.gain)
+  const lfo = bgmTrack(ctx.createOscillator()), lg = bgmTrack(ctx.createGain())
+  lfo.frequency.value = 0.035; lg.gain.value = 220      // 開き具合がゆっくり呼吸する
+  lfo.connect(lg); lg.connect(filt.frequency); lfo.start()
+  let n = 0
+  const chord = () => {
+    if (!bgm) return
+    const [root, ivs] = prog[n++ % 4], t = ctx.currentTime
+    ivs.concat([12]).forEach((iv, k) => {
+      const o = ctx.createOscillator(), g = ctx.createGain()
+      o.type = k % 2 ? 'sine' : 'triangle'
+      o.frequency.value = BGM_HZ(root + iv - 12) * (1 + (rnd() - 0.5) * 0.004)
+      g.gain.setValueAtTime(0.0001, t)
+      g.gain.linearRampToValueAtTime(0.055, t + 3.2)
+      g.gain.linearRampToValueAtTime(0.0001, t + 11)
+      o.connect(g); g.connect(filt); o.start(t); o.stop(t + 11.5); bgmTrack(o)
+    })
+  }
+  chord()
+  bgm.timers.push(setInterval(chord, 9000))
+}
+// 通話中だけ鳴らす。**AudioContext は join のジェスチャで既に起きている**ものを使う（2つ目を作らない）
+const startBgm = () => {
+  stopBgm()
+  if (bgmKind === 'off' || !call.joinedId) return
+  let ctx; try { ctx = ensureAudioCtx() } catch { return }
+  if (!ctx) return
+  const gain = ctx.createGain()
+  gain.gain.value = bgmLevel()
+  gain.connect(ctx.destination)
+  bgm = { nodes: [gain], timers: [], gain }
+  try { (bgmKind === 'tune' ? bgmTune : bgmAmbient)(bgmSeed(call.joinedId)) } catch { stopBgm() }
+}
+const renderBgm = () => {
+  $('bgmOff').checked = bgmKind === 'off'
+  $('bgmTune').checked = bgmKind === 'tune'
+  $('bgmAmb').checked = bgmKind === 'amb'
+  const on = bgmKind !== 'off'
+  $('bgmVolRow').hidden = !on
+  $('bgmNote').hidden = !on
+  $('bgmVol').value = String(Math.round(bgmVol * 100))
+  $('bgmVolVal').textContent = Math.round(bgmVol * 100) + '%'
+  ;[...$('bgmRow').querySelectorAll('.snd-opt')].forEach(l => l.classList.toggle('sel', l.querySelector('input').checked))
+}
+{
+  const pick = k => () => {
+    bgmKind = k; localStorage.setItem(BGM_KEY, k)
+    renderBgm(); startBgm()      // 選び直したらその場で作り直す（前のものは startBgm が畳む）
+  }
+  $('bgmOff').onchange = pick('off')
+  $('bgmTune').onchange = pick('tune')
+  $('bgmAmb').onchange = pick('amb')
+  $('bgmVol').oninput = () => {
+    bgmVol = Math.min(1, Math.max(0, Number($('bgmVol').value) / 100))
+    localStorage.setItem(BGM_VOL_KEY, String(bgmVol))
+    renderBgm()
+    if (bgm) bgm.gain.gain.value = bgmLevel()
+  }
+  renderBgm()
 }
 
 // ─ 通知音 ─ 音声ファイルもCDNも使わず WebAudio で合成する（単一ファイルのまま）。
@@ -3220,6 +3398,7 @@ const runJoin = async () => {
   syncShare()   // call.joinedId が入ったのでラベルを「共有リンク」に切り替える（冒頭の呼び出しは未参加のまま）
   addAnalyser('self', call.stream)   // 自分のマイク音量でも絵文字を跳ねさせる（ミュート中は無反応）
   startEq()                       // 点字EQの飾りを開始（音量で下から伸びる）
+  startBgm()                      // BGM（選ばれていれば）。部屋名から曲を決めるので通信は増えない
   stopAudioWatch(); call.audioWatch = setInterval(checkAudioArrival, 2000)   // 音が来ない相手に送り直しを頼む監視を開始
   clearInterval(call.iceTimer)   // 長い通話の途中で資格情報が切れないよう、定期的に入れ替える
   call.iceTimer = setInterval(refreshIce, ICE_REFRESH_MS)
@@ -3374,6 +3553,7 @@ const leaveCall = () => {
   clearInterval(call.bcTimer)                                  // 配信部屋の名簿の配り直しも止める
   clearTimeout(call.capTimer)                                  // 満室判定の待ちも捨てる
   stopAudioWatch()   // 音声到着の監視を停止＋待ち時間と催促回数の記憶を捨てる
+  stopBgm()                          // BGM を止める（**stopVad より先に**＝AudioContext を閉じる前に畳む）
   stopVad(); resetTalk(); stopEq()   // 解析ループ停止＋AudioContext破棄（join が確保したものを全て解放）
   stopHeartbeat()  // ロビーへ「退出した」を通知＋定期発信を停止（ロビー部屋自体は閲覧用に残す）
   // 公開Nostrへの署名鍵を捨てる。**同じ鍵を使い続けると、リレーを見ている人に「同じ人が
