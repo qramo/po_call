@@ -252,12 +252,21 @@ const preparePip = async () => {
 const enterPip = () => {
   const v = $('pipv')
   if (!pipStream) { mark('🖼 PiPの素材が無い'); return }
+  // ★標準方式が**在るのに拒否される**ことがある（PWA では NotSupportedError）。
+  //   その場合は iOS の古い方式に落とす。「APIが有る＝使える」ではない。
+  const legacy = () => {
+    if (!v.webkitSetPresentationMode) { mark('🖼 古い方式も無い＝この環境では小窓を出せない'); return }
+    try {
+      v.webkitSetPresentationMode('picture-in-picture')
+      setTimeout(() => mark('🖼 古い方式の結果: ' + (v.webkitPresentationMode || '不明')), 600)
+    } catch (e) { mark('🖼 古い方式も失敗: ' + e.name) }
+  }
   try {
     if (v.requestPictureInPicture) {
-      v.requestPictureInPicture().then(() => mark('🖼 PiPに入った')).catch(e => mark('🖼 PiP失敗: ' + e.name))
-    } else if (v.webkitSetPresentationMode) { v.webkitSetPresentationMode('picture-in-picture'); mark('🖼 PiPに入った（webkit式）') }
-    else mark('🖼 PiPに入れない（APIが無い）')
-  } catch (e) { mark('🖼 PiP失敗: ' + e.name) }
+      v.requestPictureInPicture().then(() => mark('🖼 PiPに入った'))
+        .catch(e => { mark('🖼 標準方式が拒否: ' + e.name + ' → 古い方式を試す'); legacy() })
+    } else legacy()
+  } catch (e) { mark('🖼 PiP失敗: ' + e.name); legacy() }
 }
 const startSilent = () => {
   ctx = ctx || new (window.AudioContext || window.webkitAudioContext)()
