@@ -76,6 +76,12 @@
   <label class="mode"><input type="radio" name="mode" value="silent"> 🔈 無音を鳴らし続ける</label>
   <p class="note">再生中の音があると背面でも生かされる、という手。</p>
   <label class="mode"><input type="radio" name="mode" value="both"> 🖼＋🔈 両方</label>
+  <hr style="border:0;border-top:1px solid rgba(255,255,255,.09);margin:14px 0">
+  <label class="mode"><input type="checkbox" id="loud"> 🔊 <b>相手の声を実際に鳴らす（アプリと同じ条件）</b></label>
+  <p class="note">★これが本命の疑い。<b>「マイクだけ無効・相手の声は聞こえる」</b>という症状は、
+    <b>録りながら鳴らす</b>ときだけ起きる可能性がある（iOS は入出力を連結するため）。
+    これまでの計測は受信を muted にしていたので、この条件を一度も試していない。<br>
+    <b>自分の声がそのまま返ってきます。必ずイヤホンで。</b></p>
   <video id="pipv" playsinline muted hidden></video>
 </div>
 
@@ -120,7 +126,7 @@ log('Document PiP（任意のDOMの小窓）: ' + ('documentPictureInPicture' in
 log('動画PiP: ' + (document.pictureInPictureEnabled ? '使える'
     : (typeof HTMLVideoElement !== 'undefined' && HTMLVideoElement.prototype.webkitSetPresentationMode ? '使える（webkit式）' : '使えない')))
 
-let stream = null, pc1 = null, pc2 = null, track = null
+let stream = null, pc1 = null, pc2 = null, track = null, sinkEl = null
 let measuring = false, baseline = null
 let silent = null, ctx = null, pipStream = null, rafPip = null
 let hidTotal = 0, hidAt = 0       // 背面（hidden）にいた合計。**結果の信頼性の目安**
@@ -175,10 +181,10 @@ $('b1').onclick = async () => {
   // ★受信側を**どこにも再生しない**とデコードされず、届いた秒数が 0 のままになる（実際そうなった）。
   //   <audio> に繋いで鳴らす。ただし自分の声が返ってくるので muted にする
   //   （iOS では .volume が効かないので、絞るのではなく muted にするしかない）。
-  const sink = document.createElement('audio')
-  sink.srcObject = remote; sink.autoplay = true; sink.playsInline = true; sink.muted = true
-  document.body.appendChild(sink)
-  await sink.play().catch(e => log('受信側の再生に失敗: ' + e.name, 'ng'))
+  sinkEl = document.createElement('audio')
+  sinkEl.srcObject = remote; sinkEl.autoplay = true; sinkEl.playsInline = true; sinkEl.muted = true
+  document.body.appendChild(sinkEl)
+  await sinkEl.play().catch(e => log('受信側の再生に失敗: ' + e.name, 'ng'))
   log('送受信を作った（本物の RTCPeerConnection。ここを流れた秒数とパケットを数える）', 'ok')
 
   tickTimer = setInterval(() => ticks.push(Date.now()), 500)
@@ -275,11 +281,16 @@ $('b3').onclick = async () => {
   const mode = [...document.querySelectorAll('input[name=mode]')].find(r => r.checked).value
   if (mode === 'pip' || mode === 'both') enterPip()          // ★同期で
   if (mode === 'silent' || mode === 'both') startSilent()
+  // ★アプリと同じ条件＝**録りながら鳴らす**。ここを muted にしていたせいで、
+  //   「マイクだけ無効・相手の声は聞こえる」という実症状を再現できていなかった。
+  const loud = $('loud').checked
+  if (sinkEl) { sinkEl.muted = !loud; if (loud) sinkEl.play().catch(() => {}) }
   measuring = true
   $('b3').disabled = true; $('b4').disabled = false
   ticks = []; hidTotal = 0; hidAt = 0
   baseline = await snap()
-  log('── 計測開始（' + mode + '）' + new Date().toLocaleTimeString() + ' ──', 'ok')
+  log('── 計測開始（' + mode + (loud ? '・**相手の声を鳴らす**' : '・受信は無音') + '）'
+      + new Date().toLocaleTimeString() + ' ──', 'ok')
   log('  開始時点: マイク ' + baseline.micSec.toFixed(1) + '秒 / 受信 ' + baseline.gotSec.toFixed(1) + '秒 / パケット ' + baseline.recv, 'dim')
   $('big').textContent = '計測中… いますぐ背面へ（30秒ほど）'
 }
@@ -312,7 +323,7 @@ const finish = async () => {
   ticks.forEach(t => { if (t - prev > 1500) frozen += (t - prev); prev = t })
   if (now.wall - prev > 1500) frozen += (now.wall - prev)
 
-  log('── 結果（' + mode + '）──', 'ok')
+  log('── 結果（' + mode + ($('loud').checked ? '・相手の声を鳴らした' : '・受信は無音') + '）──', 'ok')
   log('経過（実時間）: ' + wall.toFixed(1) + '秒')
   // ★「本当に背面にいたのか」。ここが短いと、その結果は基準として使えない
   //   （PiP を出していると**ホーム画面に行っても hidden にならない**ことがあるので、
