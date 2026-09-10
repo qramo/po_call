@@ -116,6 +116,7 @@ log('動画PiP: ' + (document.pictureInPictureEnabled ? '使える'
 let stream = null, pc1 = null, pc2 = null, track = null
 let measuring = false, baseline = null
 let silent = null, ctx = null, pipStream = null, rafPip = null
+let hidTotal = 0, hidAt = 0       // 背面（hidden）にいた合計。**結果の信頼性の目安**
 let ticks = [], tickTimer = null   // 実時間の見張り（**凍っている間は増えない**＝凍結の検出）
 
 const mark = s => log('  ' + at() + ' ' + s, 'dim')
@@ -238,7 +239,7 @@ $('b3').onclick = async () => {
   if (mode === 'silent' || mode === 'both') startSilent()
   measuring = true
   $('b3').disabled = true; $('b4').disabled = false
-  ticks = []
+  ticks = []; hidTotal = 0; hidAt = 0
   baseline = await snap()
   log('── 計測開始（' + mode + '）' + new Date().toLocaleTimeString() + ' ──', 'ok')
   log('  開始時点: マイク ' + baseline.micSec.toFixed(1) + '秒 / 受信 ' + baseline.gotSec.toFixed(1) + '秒 / パケット ' + baseline.recv, 'dim')
@@ -249,6 +250,8 @@ $('b3').onclick = async () => {
 // 実時間の飛びで凍結を測り、④のボタンでも判定できるようにしてある。
 document.addEventListener('visibilitychange', () => {
   mark('画面: ' + document.visibilityState)
+  if (document.visibilityState === 'hidden') hidAt = Date.now()
+  else if (hidAt) { hidTotal += Date.now() - hidAt; hidAt = 0 }
   if (measuring && document.visibilityState === 'visible') setTimeout(finish, 800)
 })
 addEventListener('pagehide', () => mark('pagehide'))
@@ -273,6 +276,14 @@ const finish = async () => {
 
   log('── 結果（' + mode + '）──', 'ok')
   log('経過（実時間）: ' + wall.toFixed(1) + '秒')
+  // ★「本当に背面にいたのか」。ここが短いと、その結果は基準として使えない
+  //   （PiP を出していると**ホーム画面に行っても hidden にならない**ことがあるので、
+  //    hidden=0 でも「戻っていない」とは限らない。目視の申告と突き合わせること）
+  log('画面が hidden だった時間: ' + (hidTotal / 1000).toFixed(1) + '秒'
+      + (hidTotal < 10000 ? '  ⚠️ 短い（背面にしていないか、PiPで前面扱いのまま）' : ''),
+      hidTotal < 10000 ? 'ng' : 'dim')
+  log('PiP: ' + (document.pictureInPictureElement ? '出ていた'
+      : ($('pipv').webkitPresentationMode ? $('pipv').webkitPresentationMode : '出ていない')), 'dim')
   log('JS が止まっていた時間: ' + (frozen / 1000).toFixed(1) + '秒' + (frozen > 1500 ? '（＝画面や処理は確実に凍っていた）' : ''))
   log('🎤 マイクが作った音: ' + mic.toFixed(1) + '秒（実時間の ' + (wall > 0 ? (mic / wall * 100).toFixed(0) : '0') + '%）',
       mic > wall * 0.8 ? 'ok' : 'ng')
