@@ -93,7 +93,10 @@ const at = () => ((Date.now() - t0) / 1000).toFixed(1) + 's'
 const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true
 log('UA: ' + navigator.userAgent, 'dim')
 log('起動: ' + (standalone ? 'ホーム画面から（PWA）' : 'ブラウザのタブ') + ' / 画面: ' + innerWidth + 'x' + innerHeight, 'dim')
-log('Document PiP: ' + ('documentPictureInPicture' in window ? '使える' : '**使えない**（スマホは全滅）'),
+// 任意のDOMを小窓にする API。**スマホは Android も iOS も非対応**、デスクトップも Safari は非対応
+// （＝Chrome/Edge/Firefox のデスクトップだけ）。この行はその環境の事実だけを言う
+log('Document PiP（任意のDOMの小窓）: ' + ('documentPictureInPicture' in window
+      ? 'この環境では使える' : 'この環境では使えない'),
     'documentPictureInPicture' in window ? 'ok' : 'ng')
 log('動画PiP: ' + (document.pictureInPictureEnabled ? '使える'
     : (typeof HTMLVideoElement !== 'undefined' && HTMLVideoElement.prototype.webkitSetPresentationMode ? '使える（webkit式）' : '使えない')))
@@ -102,6 +105,7 @@ let stream = null, ctx = null, node = null, srcNode = null
 let beats = []          // 音声スレッドの心拍 [経過ms, RMS]
 let events = []         // 画面やトラックの出来事
 let measuring = false, startedAt = 0, hidTotal = 0, hidAt = 0
+const MIN_HIDDEN = 8000   // これだけ背面にいたら判定する（短いと OS が止める前に戻ってしまう）
 let silent = null, pipStream = null, rafPip = null
 
 const mark = s => { events.push([Date.now() - t0, s]); if (measuring) log('  ' + at() + ' ' + s, 'dim') }
@@ -206,7 +210,7 @@ $('b3').onclick = () => {
   measuring = true; startedAt = Date.now(); hidTotal = 0; hidAt = 0
   beats = []; events = []
   $('b3').disabled = true
-  $('big').textContent = '計測中… 背面にしてください'
+  $('big').textContent = '計測中… いますぐ背面へ（' + (MIN_HIDDEN / 1000) + '秒以上、できれば30秒）'
   log('── 計測開始（' + mode + '）' + new Date().toLocaleTimeString() + ' ──', 'ok')
   if (mode === 'pip' || mode === 'both') enterPip()     // ★同期で（await を挟むと弾かれる）
   if (mode === 'silent' || mode === 'both') startSilent()
@@ -219,8 +223,14 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { hidAt = Date.now() }
   else if (hidAt) {
     hidTotal += Date.now() - hidAt; hidAt = 0
-    if (hidTotal >= 8000) setTimeout(finish, 600)   // 十分な時間 背面にいたら判定
-    else $('big').textContent = '背面が短すぎます（' + (hidTotal / 1000).toFixed(0) + '秒）。もう一度、30秒ほど背面へ'
+    if (hidTotal >= MIN_HIDDEN) setTimeout(finish, 600)   // 十分な時間 背面にいたら判定
+    else {
+      // ★案内は**記録にも残す**。画面にだけ出すと、コピーした記録から「なぜ結果が無いのか」が
+      //   分からない（2026-09-10 の Mac での初回テストが実際にそうなった）
+      const msg = '⏳ 背面が短すぎます（' + (hidTotal / 1000).toFixed(1) + '秒）。'
+        + 'あと ' + ((MIN_HIDDEN - hidTotal) / 1000).toFixed(0) + '秒以上、続けて背面にしてください（合計で数えます）'
+      log(msg, 'ng'); $('big').textContent = msg
+    }
   }
 })
 addEventListener('pagehide', () => mark('pagehide'))
