@@ -160,7 +160,18 @@ $('b1').onclick = async () => {
 
   tickTimer = setInterval(() => ticks.push(Date.now()), 500)
   await preparePip()
-  $('b3').disabled = false
+  // ★**パケットが流れ始めるまで ③ を押させない。**0個から始めた回は「流れなかった」のか
+  //   「最初から繋がっていなかった」のか区別できず、判定できない（実際その回が出た）。
+  $('s1').textContent = '送受信の確立を待っています…'
+  let ready = false
+  for (let i = 0; i < 30; i++) {
+    const o = await snap()
+    if (o.recv > 0) { ready = true; break }
+    await new Promise(r => setTimeout(r, 400))
+  }
+  log(ready ? '送受信が流れ始めた（ここから計測できる）' : '⚠️ 送受信が繋がらない（リロードしてやり直してください）', ready ? 'ok' : 'ng')
+  $('s1').textContent = ready ? '準備できました：' + track.label : '⚠️ 送受信が繋がりませんでした。リロードしてください'
+  $('b3').disabled = !ready
 }
 
 // ─ 統計の読み取り ────────────────────────────────────
@@ -294,16 +305,19 @@ const finish = async () => {
       pkt > wall * 50 * 0.8 ? 'ok' : 'ng')
   log('   トラック: muted=' + (track ? track.muted : '?') + ' / ' + (track ? track.readyState : '?'))
 
-  // ★判定は**マイクが作った秒数**と**パケット数**で行う。「届いた秒数」は再生側の事情
-  //   （muted な要素ではサンプルが進まない環境がある）で 0 になりうるので参考扱いにする。
+  // ★**「マイクが捕っていたか」と「相手に流れていたか」は別の話。**分けて判定する。
+  //   以前は**良いほうを採っていた**ので、送受信が0個の回まで合格にしていた（2026-09-10 の誤り）。
   const micR = wall > 0 ? mic / wall : 0
   const pktR = wall > 0 ? pkt / (wall * 50) : 0
-  const ratio = Math.max(micR, pktR)
-  const verdict = ratio > 0.8
-      ? '✅ 背面でも通話の音は流れ続けた（' + (frozen > 1500 ? 'JS は凍っていたが音は生きていた' : '凍りもしなかった') + '）'
-      : ratio > 0.3 ? '⚠️ 途中まで流れて止まった（マイク ' + (micR * 100).toFixed(0) + '% / パケット ' + (pktR * 100).toFixed(0) + '%）'
-      : '❌ 背面で音が止まった'
-  log(verdict, ratio > 0.8 ? 'ok' : 'ng')
+  const started = baseline.recv > 0            // 開始時点で流れていたか＝計測できる状態だったか
+  const micOk = micR > 0.8, pktOk = pktR > 0.8
+  const verdict = !started
+      ? '❓ 判定できません（開始時点で送受信が繋がっていなかった）。リロードしてやり直してください'
+      : (micOk && pktOk) ? '✅ マイクも送受信も生きていた（' + (frozen > 1500 ? 'JS は凍っていたが音は流れた' : 'JS も凍らなかった') + '）'
+      : (micOk && !pktOk) ? '⚠️ マイクは捕っていたが、相手に流れていなかった（送受信 ' + (pktR * 100).toFixed(0) + '%）'
+      : (!micOk && pktOk) ? '⚠️ 送受信は動いていたが、マイクが止まっていた（マイク ' + (micR * 100).toFixed(0) + '%）'
+      : '❌ どちらも止まった'
+  log(verdict, (started && micOk && pktOk) ? 'ok' : 'ng')
   $('big').textContent = verdict
 
   if (rafPip) cancelAnimationFrame(rafPip)
