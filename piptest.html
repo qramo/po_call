@@ -1,20 +1,29 @@
 <!doctype html>
-<!--
-  背面でマイクが生きているかの計測ページ（ベータ路のみ・恒久設置しない）
-  2026-09-10：アプリを切り替える／画面をロックするとマイクが止まる件。
-  ★Document PiP（任意のDOMの小窓）は **Chrome Android も iOS Safari も非対応**なので、
-    スマホの解にはならない。ここで試すのは「ページを生かし続ける」側の手：
-    ①何もしない ②動画PiP（canvasの偽映像） ③無音を鳴らし続ける ④PiP＋無音。
-  ★測り方が肝：背面ではタイマーが間引かれるので、**音声スレッドで動くもの**を心拍にする
-    （ScriptProcessor / AudioWorklet）。止まれば時刻に穴が空く＝それが答え。
-    併せて track の mute/unmute/ended を拾う（iOS はここで止まる）。
--->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>背面マイク計測（ぽっと通話）</title>
+<!--
+  背面で「通話の音が流れ続けているか」の計測ページ（ベータ路のみ・恒久設置しない）
+
+  ★2026-09-10 の作り直し。初版は **Web Audio（ScriptProcessor）の心拍**で測っていたが、
+    それは「JS が生きているか」であって「音が相手に流れているか」ではなかった。
+    iPhone 実機で **背面でもマイク使用中のオレンジ点が出たまま**なのに初版は「止まった」と
+    判定した＝計測器の誤り。iOS は JS と Web Audio を凍らせても WebRTC の音声パイプラインは
+    生かしていることがある。**アプリにとって重要なのは後者。**
+
+  ★測り方：ページ内で RTCPeerConnection を折り返して本物の送受信を作り、
+    **累積カウンタは凍結中も進む**ことを利用して、背面に入る前と戻った後の**差**を見る。
+      ・media-source.totalSamplesDuration … マイクが実際に作った音の秒数
+      ・inbound-rtp.totalSamplesDuration  … 受け取れた音の秒数
+    実時間の経過とほぼ同じだけ進んでいれば「背面でも通話は生きていた」。
+
+  ★visibilitychange は当てにしない。iPhone では**画面ロックで飛ばないことがあった**
+    （初版のログで、表示中のまま54秒の穴が空いた）。代わりに**実時間の飛び**で凍結を検出し、
+    戻ったら手でも判定できるボタンを常に置く。
+-->
 <style>
   :root{ color-scheme: dark }
   body{ margin:0; padding:16px 16px 40px; background:#0a1120; color:#eef2f8;
@@ -39,34 +48,41 @@
 </style>
 </head>
 <body>
-<h1>📱 背面でマイクは生きているか</h1>
-<p class="lead">アプリを切り替えたり画面をロックしたときに、<b>マイクが止まるかどうか</b>を実際に測ります。
-①でマイクを許可 → ②で手を選ぶ → ③を押してから<b>ホームに戻る／画面をロック</b>し、
-<b>30秒ほど待って戻ってくる</b>と結果が出ます。</p>
+<h1>📱 背面で通話の音は流れ続けるか</h1>
+<p class="lead">アプリを切り替えたり画面をロックしたときに、<b>マイクの音が実際に流れ続けているか</b>を測ります。
+測るのは「JSが動いているか」ではなく<b>「何秒ぶんの音が作られ、届いたか」</b>です
+（前回はここを取り違えて誤判定しました）。<br>
+①マイク許可 → ②手を選ぶ → ③押して<b>背面へ30秒</b> → 戻ってきて④。</p>
 
 <div class="card">
   <h2>① マイクを使う</h2>
-  <button id="b1" class="go">🎤 マイクを許可して待機</button>
+  <button id="b1" class="go">🎤 マイクを許可して送受信を作る</button>
   <p class="ask" id="s1">まだ取得していません</p>
 </div>
 
 <div class="card">
   <h2>② 生かし方を選ぶ</h2>
   <label class="mode"><input type="radio" name="mode" value="none" checked> ⬜️ 何もしない（基準）</label>
-  <p class="note">いまのアプリと同じ状態。ここで止まるなら「止まる端末」だと確定する。</p>
+  <p class="note">いまのアプリと同じ状態。</p>
   <label class="mode"><input type="radio" name="mode" value="pip"> 🖼 動画PiP（canvasの偽映像）</label>
-  <p class="note">小窓を出してページを生かす案。iOS/Android とも動画PiP自体は使える。</p>
+  <p class="note">スマホで唯一出せる小窓。ページを生かせるか。</p>
   <label class="mode"><input type="radio" name="mode" value="silent"> 🔈 無音を鳴らし続ける</label>
-  <p class="note">再生中の音があると背面でも生かされる、という手。MediaSession も付ける。</p>
-  <label class="mode"><input type="radio" name="mode" value="both"> 🖼＋🔈 PiP と無音の両方</label>
+  <p class="note">再生中の音があると背面でも生かされる、という手。</p>
+  <label class="mode"><input type="radio" name="mode" value="both"> 🖼＋🔈 両方</label>
   <video id="pipv" playsinline muted hidden></video>
 </div>
 
 <div class="card">
   <h2>③ 計測</h2>
-  <button id="b3" class="go" disabled>▶️ 計測を始める（このあと背面へ）</button>
+  <button id="b3" class="go" disabled>▶️ 計測を始める（このあと背面へ30秒）</button>
   <div id="big"></div>
-  <p class="ask">戻ってきたら自動で判定します。押したあと <b>30秒以上</b>、ホーム画面かロック画面にしてください。</p>
+</div>
+
+<div class="card">
+  <h2>④ 戻ってきたら</h2>
+  <button id="b4" disabled>🏁 結果を見る</button>
+  <p class="ask">戻ると自動で判定しますが、<b>画面ロックでは自動判定が働かないことがある</b>ので、
+    そのときはこれを押してください。</p>
 </div>
 
 <div class="card">
@@ -89,108 +105,118 @@ const log = (s, cls) => {
 const t0 = Date.now()
 const at = () => ((Date.now() - t0) / 1000).toFixed(1) + 's'
 
-// 端末の素性。**PWA（ホーム画面から起動）かどうかで挙動が変わりうる**ので必ず残す
 const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true
 log('UA: ' + navigator.userAgent, 'dim')
 log('起動: ' + (standalone ? 'ホーム画面から（PWA）' : 'ブラウザのタブ') + ' / 画面: ' + innerWidth + 'x' + innerHeight, 'dim')
-// 任意のDOMを小窓にする API。**スマホは Android も iOS も非対応**、デスクトップも Safari は非対応
-// （＝Chrome/Edge/Firefox のデスクトップだけ）。この行はその環境の事実だけを言う
-log('Document PiP（任意のDOMの小窓）: ' + ('documentPictureInPicture' in window
-      ? 'この環境では使える' : 'この環境では使えない'),
+log('Document PiP（任意のDOMの小窓）: ' + ('documentPictureInPicture' in window ? 'この環境では使える' : 'この環境では使えない'),
     'documentPictureInPicture' in window ? 'ok' : 'ng')
 log('動画PiP: ' + (document.pictureInPictureEnabled ? '使える'
     : (typeof HTMLVideoElement !== 'undefined' && HTMLVideoElement.prototype.webkitSetPresentationMode ? '使える（webkit式）' : '使えない')))
 
-let stream = null, ctx = null, node = null, srcNode = null
-let beats = []          // 音声スレッドの心拍 [経過ms, RMS]
-let events = []         // 画面やトラックの出来事
-let measuring = false, startedAt = 0, hidTotal = 0, hidAt = 0
-const MIN_HIDDEN = 8000   // これだけ背面にいたら判定する（短いと OS が止める前に戻ってしまう）
-let silent = null, pipStream = null, rafPip = null
+let stream = null, pc1 = null, pc2 = null, track = null
+let measuring = false, baseline = null
+let silent = null, ctx = null, pipStream = null, rafPip = null
+let ticks = [], tickTimer = null   // 実時間の見張り（**凍っている間は増えない**＝凍結の検出）
 
-const mark = s => { events.push([Date.now() - t0, s]); if (measuring) log('  ' + at() + ' ' + s, 'dim') }
+const mark = s => log('  ' + at() + ' ' + s, 'dim')
 
+// ─ ① マイク＋折り返しの送受信 ─────────────────────────────
+// ローカルのストリームを眺めるだけでは足りない。**本物の送受信**にしないと
+// 「相手に音が流れているか」を表す数字（packets / totalSamplesDuration）が出ない。
 $('b1').onclick = async () => {
   $('b1').disabled = true
   try {
-    // 実際の通話と同じ条件で取る（エコーキャンセル等が挙動に効く可能性があるため）
     stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
   } catch (e) {
     $('s1').textContent = 'マイクが取れませんでした: ' + e.name
     log('getUserMedia 失敗: ' + e.name, 'ng'); $('b1').disabled = false; return
   }
-  const tr = stream.getAudioTracks()[0]
-  $('s1').textContent = '取得しました：' + tr.label
-  log('マイク取得: ' + tr.label, 'ok')
-  // ★iOS はここが鳴る：背面に回ると track が mute される
-  tr.onmute = () => mark('🔇 トラックが mute された（＝OSが止めた）')
-  tr.onunmute = () => mark('🔊 トラックが unmute された（＝戻った）')
-  tr.onended = () => mark('❌ トラックが ended（復帰不能）')
+  track = stream.getAudioTracks()[0]
+  $('s1').textContent = '取得しました：' + track.label
+  log('マイク取得: ' + track.label, 'ok')
+  track.onmute = () => mark('🔇 トラックが mute された')
+  track.onunmute = () => mark('🔊 トラックが unmute された')
+  track.onended = () => mark('❌ トラックが ended')
 
-  ctx = new (window.AudioContext || window.webkitAudioContext)()
-  if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
-  srcNode = ctx.createMediaStreamSource(stream)
-  // **音声スレッドで動くものを心拍にする。**背面では setInterval が間引かれるので、
-  // タイマーで測ると「止まった」のか「間引かれた」のか区別できない。
-  node = ctx.createScriptProcessor ? ctx.createScriptProcessor(4096, 1, 1) : null
-  if (!node) { log('ScriptProcessor が無い環境です', 'ng'); return }
-  let last = 0
-  node.onaudioprocess = e => {
-    const d = e.inputBuffer.getChannelData(0)
-    let sum = 0
-    for (let i = 0; i < d.length; i++) sum += d[i] * d[i]
-    const now = Date.now() - t0
-    if (now - last < 400) return       // 0.4秒に1回だけ記録する（配列を太らせない）
-    last = now
-    beats.push([now, Math.sqrt(sum / d.length)])
-  }
-  const sink = ctx.createGain(); sink.gain.value = 0    // 出力はしない（ハウリング防止）
-  srcNode.connect(node); node.connect(sink); sink.connect(ctx.destination)
-  log('心拍を開始（音声スレッド。止まれば時刻に穴が空く）', 'ok')
-  await preparePip()      // PiP を「押した瞬間に同期で」出せるよう、素材はここで作っておく
+  pc1 = new RTCPeerConnection(); pc2 = new RTCPeerConnection()
+  pc1.onicecandidate = e => e.candidate && pc2.addIceCandidate(e.candidate)
+  pc2.onicecandidate = e => e.candidate && pc1.addIceCandidate(e.candidate)
+  const got = new Promise(res => { pc2.ontrack = e => res(e.streams[0]) })
+  stream.getTracks().forEach(t => pc1.addTrack(t, stream))
+  const offer = await pc1.createOffer()
+  await pc1.setLocalDescription(offer); await pc2.setRemoteDescription(offer)
+  const ans = await pc2.createAnswer()
+  await pc2.setLocalDescription(ans); await pc1.setRemoteDescription(ans)
+  const remote = await got
+  // ★受信側を**どこにも再生しない**とデコードされず、届いた秒数が 0 のままになる（実際そうなった）。
+  //   <audio> に繋いで鳴らす。ただし自分の声が返ってくるので muted にする
+  //   （iOS では .volume が効かないので、絞るのではなく muted にするしかない）。
+  const sink = document.createElement('audio')
+  sink.srcObject = remote; sink.autoplay = true; sink.playsInline = true; sink.muted = true
+  document.body.appendChild(sink)
+  await sink.play().catch(e => log('受信側の再生に失敗: ' + e.name, 'ng'))
+  log('送受信を作った（本物の RTCPeerConnection。ここを流れた秒数とパケットを数える）', 'ok')
+
+  tickTimer = setInterval(() => ticks.push(Date.now()), 500)
+  await preparePip()
   $('b3').disabled = false
 }
 
+// ─ 統計の読み取り ────────────────────────────────────
+// **累積カウンタは凍っている間も進む。**だから前後の差を取れば、凍結中に何が起きたかが分かる。
+const snap = async () => {
+  const o = { wall: Date.now(), sent: 0, recv: 0, micSec: 0, gotSec: 0, energy: 0 }
+  try {
+    ;(await pc1.getStats()).forEach(r => {
+      if (r.type === 'outbound-rtp' && (r.kind === 'audio' || r.mediaType === 'audio')) o.sent = r.packetsSent || 0
+      // media-source ＝ **マイクが実際に作った音**。ここが進んでいれば捕り続けていた
+      if (r.type === 'media-source' && (r.kind === 'audio' || r.mediaType === 'audio')) o.micSec = r.totalSamplesDuration || 0
+    })
+    ;(await pc2.getStats()).forEach(r => {
+      if (r.type === 'inbound-rtp' && (r.kind === 'audio' || r.mediaType === 'audio')) {
+        o.recv = r.packetsReceived || 0
+        o.gotSec = r.totalSamplesDuration || 0      // **届いた音の秒数**
+        o.energy = r.totalAudioEnergy || 0
+      }
+    })
+  } catch (e) { mark('統計の取得に失敗: ' + e.name) }
+  return o
+}
+
 // ─ 生かし方 ───────────────────────────────────────────
-// ★PiP の素材（canvas → 映像トラック → <video>）は**マイク許可の時点で作って再生まで済ませる**。
-//   PiP の要求は「押した瞬間」に**同期で**呼ばないと NotAllowedError で弾かれる＝ await を
-//   1つでも挟むとユーザー操作の文脈が切れる（実際それで落ちた）。
 const preparePip = async () => {
   const cv = document.createElement('canvas')
   cv.width = 320; cv.height = 180
   const g = cv.getContext('2d')
   const draw = () => {
-    const s = ((Date.now() - t0) / 1000).toFixed(1)
     g.fillStyle = '#0a1120'; g.fillRect(0, 0, 320, 180)
     g.fillStyle = '#00e5cc'; g.font = 'bold 28px -apple-system,sans-serif'
     g.fillText('🎤 計測中', 20, 70)
     g.fillStyle = '#eef2f8'; g.font = '22px ui-monospace,monospace'
-    g.fillText(s + ' 秒', 20, 120)
-    rafPip = requestAnimationFrame(draw)      // 背面では止まるが、絵が止まっても計測には影響しない
+    g.fillText(((Date.now() - t0) / 1000).toFixed(1) + ' 秒', 20, 120)
+    rafPip = requestAnimationFrame(draw)
   }
   draw()
-  if (!cv.captureStream) { log('canvas.captureStream が無い＝この端末では動画PiPを試せません', 'ng'); return }
+  if (!cv.captureStream) { log('canvas.captureStream が無い＝動画PiPは試せません', 'ng'); return }
   pipStream = cv.captureStream(10)
   const v = $('pipv')
   v.hidden = false; v.srcObject = pipStream; v.muted = true; v.playsInline = true
   await v.play().catch(e => log('PiP用の再生に失敗: ' + e.name, 'ng'))
 }
-// **押した瞬間に同期で呼ぶ**（await 禁止）。戻り値の Promise だけ後で拾う。
+// ★PiP は**押した瞬間に同期で**要求する（await を挟むと NotAllowedError で弾かれる）
 const enterPip = () => {
   const v = $('pipv')
   if (!pipStream) { mark('🖼 PiPの素材が無い'); return }
-  if (v.readyState < 1) mark('🖼 映像がまだ準備できていない（readyState=' + v.readyState + '）')
   try {
     if (v.requestPictureInPicture) {
-      v.requestPictureInPicture().then(() => mark('🖼 PiPに入った'))
-        .catch(e => mark('🖼 PiP失敗: ' + e.name + ' ' + (e.message || '')))
-    } else if (v.webkitSetPresentationMode) {
-      v.webkitSetPresentationMode('picture-in-picture'); mark('🖼 PiPに入った（webkit式）')
-    } else mark('🖼 PiPに入れない（APIが無い）')
-  } catch (e) { mark('🖼 PiP失敗: ' + e.name + ' ' + (e.message || '')) }
+      v.requestPictureInPicture().then(() => mark('🖼 PiPに入った')).catch(e => mark('🖼 PiP失敗: ' + e.name))
+    } else if (v.webkitSetPresentationMode) { v.webkitSetPresentationMode('picture-in-picture'); mark('🖼 PiPに入った（webkit式）') }
+    else mark('🖼 PiPに入れない（APIが無い）')
+  } catch (e) { mark('🖼 PiP失敗: ' + e.name) }
 }
 const startSilent = () => {
-  // ほぼ無音の音を鳴らし続ける（0だと「鳴っていない」と判定される環境があるので極小の値にする）
+  ctx = ctx || new (window.AudioContext || window.webkitAudioContext)()
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {})
   const o = ctx.createOscillator(), g = ctx.createGain()
   o.frequency.value = 30; g.gain.value = 0.0008
   o.connect(g); g.connect(ctx.destination); o.start()
@@ -204,79 +230,78 @@ const startSilent = () => {
   mark('🔈 無音の再生を開始')
 }
 
-$('b3').onclick = () => {
+// ─ ③ 計測開始 ───────────────────────────────────────
+$('b3').onclick = async () => {
   if (measuring) return
   const mode = [...document.querySelectorAll('input[name=mode]')].find(r => r.checked).value
-  measuring = true; startedAt = Date.now(); hidTotal = 0; hidAt = 0
-  beats = []; events = []
-  $('b3').disabled = true
-  $('big').textContent = '計測中… いますぐ背面へ（' + (MIN_HIDDEN / 1000) + '秒以上、できれば30秒）'
-  log('── 計測開始（' + mode + '）' + new Date().toLocaleTimeString() + ' ──', 'ok')
-  if (mode === 'pip' || mode === 'both') enterPip()     // ★同期で（await を挟むと弾かれる）
+  if (mode === 'pip' || mode === 'both') enterPip()          // ★同期で
   if (mode === 'silent' || mode === 'both') startSilent()
+  measuring = true
+  $('b3').disabled = true; $('b4').disabled = false
+  ticks = []
+  baseline = await snap()
+  log('── 計測開始（' + mode + '）' + new Date().toLocaleTimeString() + ' ──', 'ok')
+  log('  開始時点: マイク ' + baseline.micSec.toFixed(1) + '秒 / 受信 ' + baseline.gotSec.toFixed(1) + '秒 / パケット ' + baseline.recv, 'dim')
+  $('big').textContent = '計測中… いますぐ背面へ（30秒ほど）'
 }
 
-// 背面に行った／戻ったを記録する。**戻った瞬間に判定する**
+// 戻ってきたら判定。**visibilitychange は当てにしない**（画面ロックで飛ばないことがある）ので、
+// 実時間の飛びで凍結を測り、④のボタンでも判定できるようにしてある。
 document.addEventListener('visibilitychange', () => {
   mark('画面: ' + document.visibilityState)
-  if (!measuring) return
-  if (document.visibilityState === 'hidden') { hidAt = Date.now() }
-  else if (hidAt) {
-    hidTotal += Date.now() - hidAt; hidAt = 0
-    if (hidTotal >= MIN_HIDDEN) setTimeout(finish, 600)   // 十分な時間 背面にいたら判定
-    else {
-      // ★案内は**記録にも残す**。画面にだけ出すと、コピーした記録から「なぜ結果が無いのか」が
-      //   分からない（2026-09-10 の Mac での初回テストが実際にそうなった）
-      const msg = '⏳ 背面が短すぎます（' + (hidTotal / 1000).toFixed(1) + '秒）。'
-        + 'あと ' + ((MIN_HIDDEN - hidTotal) / 1000).toFixed(0) + '秒以上、続けて背面にしてください（合計で数えます）'
-      log(msg, 'ng'); $('big').textContent = msg
-    }
-  }
+  if (measuring && document.visibilityState === 'visible') setTimeout(finish, 800)
 })
 addEventListener('pagehide', () => mark('pagehide'))
 addEventListener('freeze', () => mark('freeze（タブが凍結された）'))
 addEventListener('resume', () => mark('resume'))
+$('b4').onclick = () => finish()
 
-const finish = () => {
+const finish = async () => {
   if (!measuring) return
   measuring = false
   const mode = [...document.querySelectorAll('input[name=mode]')].find(r => r.checked).value
-  // 心拍の穴を探す。**1秒以上あいたら「その間 音声が止まっていた」**
-  let gaps = [], prev = null, lastBeat = 0
-  beats.forEach(([ms]) => {
-    if (prev !== null && ms - prev > 1000) gaps.push([prev, ms])
-    prev = ms; lastBeat = ms
-  })
-  const back = Date.now() - t0
-  if (back - lastBeat > 1000) gaps.push([lastBeat, back])
-  const gapMs = gaps.reduce((a, [s, e]) => a + (e - s), 0)
-  const alive = Math.max(0, hidTotal - gapMs)
-  const rmsAfter = beats.filter(([ms]) => ms > back - 3000).map(([, r]) => r)
-  const gotSound = rmsAfter.some(r => r > 0.0005)
+  const now = await snap()
+  const wall = (now.wall - baseline.wall) / 1000          // 実際に経った時間
+  const mic = now.micSec - baseline.micSec                // マイクが作った音の秒数
+  const got = now.gotSec - baseline.gotSec                // 届いた音の秒数
+  const pkt = now.recv - baseline.recv
+
+  // JS が止まっていた時間＝見張りが刻めなかった穴の合計
+  let frozen = 0, prev = baseline.wall
+  ticks.forEach(t => { if (t - prev > 1500) frozen += (t - prev); prev = t })
+  if (now.wall - prev > 1500) frozen += (now.wall - prev)
 
   log('── 結果（' + mode + '）──', 'ok')
-  log('背面にいた時間: ' + (hidTotal / 1000).toFixed(1) + '秒')
-  log('音声が止まっていた合計: ' + (gapMs / 1000).toFixed(1) + '秒' + (gaps.length ? '（穴 ' + gaps.length + '個）' : ''))
-  gaps.slice(0, 6).forEach(([s, e]) =>
-    log('  穴: ' + (s / 1000).toFixed(1) + 's → ' + (e / 1000).toFixed(1) + 's（' + ((e - s) / 1000).toFixed(1) + '秒）', 'ng'))
-  log('戻ったあとマイクが動いている: ' + (gotSound ? 'はい' : 'いいえ'), gotSound ? 'ok' : 'ng')
-  events.forEach(([ms, s]) => log('  ' + (ms / 1000).toFixed(1) + 's ' + s, 'dim'))
+  log('経過（実時間）: ' + wall.toFixed(1) + '秒')
+  log('JS が止まっていた時間: ' + (frozen / 1000).toFixed(1) + '秒' + (frozen > 1500 ? '（＝画面や処理は確実に凍っていた）' : ''))
+  log('🎤 マイクが作った音: ' + mic.toFixed(1) + '秒（実時間の ' + (wall > 0 ? (mic / wall * 100).toFixed(0) : '0') + '%）',
+      mic > wall * 0.8 ? 'ok' : 'ng')
+  log('📨 相手に届いた音（参考）: ' + got.toFixed(1) + '秒（実時間の ' + (wall > 0 ? (got / wall * 100).toFixed(0) : '0') + '%）',
+      got > wall * 0.8 ? 'ok' : 'ng')
+  log('📦 パケット: ' + pkt + '個 / 満点 ' + Math.round(wall * 50) + '個（実時間の '
+      + (wall > 0 ? (pkt / (wall * 50) * 100).toFixed(0) : '0') + '%）',
+      pkt > wall * 50 * 0.8 ? 'ok' : 'ng')
+  log('   トラック: muted=' + (track ? track.muted : '?') + ' / ' + (track ? track.readyState : '?'))
 
-  const verdict = gapMs < 1500 ? '✅ 背面でもマイクは生きていた'
-    : alive < 1500 ? '❌ 背面に回った直後に止まった'
-    : '⚠️ 途中まで生きていて止まった（' + (alive / 1000).toFixed(0) + '秒もった）'
-  log(verdict, gapMs < 1500 ? 'ok' : 'ng')
+  // ★判定は**マイクが作った秒数**と**パケット数**で行う。「届いた秒数」は再生側の事情
+  //   （muted な要素ではサンプルが進まない環境がある）で 0 になりうるので参考扱いにする。
+  const micR = wall > 0 ? mic / wall : 0
+  const pktR = wall > 0 ? pkt / (wall * 50) : 0
+  const ratio = Math.max(micR, pktR)
+  const verdict = ratio > 0.8
+      ? '✅ 背面でも通話の音は流れ続けた（' + (frozen > 1500 ? 'JS は凍っていたが音は生きていた' : '凍りもしなかった') + '）'
+      : ratio > 0.3 ? '⚠️ 途中まで流れて止まった（マイク ' + (micR * 100).toFixed(0) + '% / パケット ' + (pktR * 100).toFixed(0) + '%）'
+      : '❌ 背面で音が止まった'
+  log(verdict, ratio > 0.8 ? 'ok' : 'ng')
   $('big').textContent = verdict
 
-  // 後片付け（次の計測に前の手が残らないように）
   if (rafPip) cancelAnimationFrame(rafPip)
   if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {})
   const v = $('pipv')
   if (v.webkitSetPresentationMode && !document.pictureInPictureElement) { try { v.webkitSetPresentationMode('inline') } catch (e) {} }
-  if (pipStream) { pipStream.getTracks().forEach(t => t.stop()); pipStream = null; v.srcObject = null; v.hidden = true }
   if (silent) { try { silent[0].stop() } catch (e) {} ; silent = null }
   if ('mediaSession' in navigator) { try { navigator.mediaSession.playbackState = 'none' } catch (e) {} }
-  $('b3').disabled = false
+  $('b3').disabled = false; $('b4').disabled = true
 }
 
 $('copy').onclick = async () => {
