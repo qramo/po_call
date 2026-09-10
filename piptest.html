@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
+<!-- ★ホーム画面から**独立したアプリとして**起動させるための宣言。これが無いと
+     「ホーム画面に追加」しても Safari のタブとして開き、**PWA の計測にならない**
+     （iOS の PWA は背面の扱いがタブと違うので、別条件として測る意味がある）。 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="背面計測">
 <title>背面マイク計測（ぽっと通話）</title>
 <!--
   背面で「通話の音が流れ続けているか」の計測ページ（ベータ路のみ・恒久設置しない）
@@ -107,7 +114,7 @@ const at = () => ((Date.now() - t0) / 1000).toFixed(1) + 's'
 
 const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true
 log('UA: ' + navigator.userAgent, 'dim')
-log('起動: ' + (standalone ? 'ホーム画面から（PWA）' : 'ブラウザのタブ') + ' / 画面: ' + innerWidth + 'x' + innerHeight, 'dim')
+log((standalone ? '★起動: ホーム画面から（PWA）' : '起動: ブラウザのタブ') + ' / 画面: ' + innerWidth + 'x' + innerHeight, 'dim')
 log('Document PiP（任意のDOMの小窓）: ' + ('documentPictureInPicture' in window ? 'この環境では使える' : 'この環境では使えない'),
     'documentPictureInPicture' in window ? 'ok' : 'ng')
 log('動画PiP: ' + (document.pictureInPictureEnabled ? '使える'
