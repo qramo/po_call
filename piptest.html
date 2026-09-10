@@ -139,9 +139,25 @@ $('b1').onclick = async () => {
   track.onunmute = () => mark('🔊 トラックが unmute された')
   track.onended = () => mark('❌ トラックが ended')
 
-  pc1 = new RTCPeerConnection(); pc2 = new RTCPeerConnection()
-  pc1.onicecandidate = e => e.candidate && pc2.addIceCandidate(e.candidate)
-  pc2.onicecandidate = e => e.candidate && pc1.addIceCandidate(e.candidate)
+  // ★ICE サーバーを何も渡さないと、**モバイル回線では折り返しすら繋がらない**ことがある
+  //   （2026-09-10・iPhone の 4G で実際に繋がらなかった）。アプリ本体と同じ Cloudflare TURN を
+  //   取りに行き、取れなければ公開 STUN に落とす。これで実際の通話に近い条件にもなる。
+  let ice = null
+  try {
+    const r = await fetch('https://pot-turn.itsuma-kuramoto.workers.dev/')
+    ice = (await r.json()).iceServers
+    log('TURN を取得できた（アプリ本体と同じもの）', 'ok')
+  } catch (e) {
+    ice = [{ urls: 'stun:stun.l.google.com:19302' }]
+    log('TURN を取れなかったので公開 STUN を使う: ' + e.name, 'ng')
+  }
+  const cfg = { iceServers: ice }
+  pc1 = new RTCPeerConnection(cfg); pc2 = new RTCPeerConnection(cfg)
+  let cand = 0
+  pc1.onicecandidate = e => { if (e.candidate) cand++ }
+  pc1.oniceconnectionstatechange = () => mark('ICE: ' + pc1.iceConnectionState)
+  pc1.addEventListener('icecandidate', e => e.candidate && pc2.addIceCandidate(e.candidate))
+  pc2.addEventListener('icecandidate', e => e.candidate && pc1.addIceCandidate(e.candidate))
   const got = new Promise(res => { pc2.ontrack = e => res(e.streams[0]) })
   stream.getTracks().forEach(t => pc1.addTrack(t, stream))
   const offer = await pc1.createOffer()
@@ -162,16 +178,20 @@ $('b1').onclick = async () => {
   await preparePip()
   // ★**パケットが流れ始めるまで ③ を押させない。**0個から始めた回は「流れなかった」のか
   //   「最初から繋がっていなかった」のか区別できず、判定できない（実際その回が出た）。
-  $('s1').textContent = '送受信の確立を待っています…'
   let ready = false
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 50; i++) {                       // 最大20秒待つ（モバイル回線は遅い）
     const o = await snap()
     if (o.recv > 0) { ready = true; break }
+    $('s1').textContent = '送受信の確立を待っています… ' + (i * 0.4).toFixed(0) + '秒（候補 ' + cand + '個・' + pc1.iceConnectionState + '）'
     await new Promise(r => setTimeout(r, 400))
   }
-  log(ready ? '送受信が流れ始めた（ここから計測できる）' : '⚠️ 送受信が繋がらない（リロードしてやり直してください）', ready ? 'ok' : 'ng')
-  $('s1').textContent = ready ? '準備できました：' + track.label : '⚠️ 送受信が繋がりませんでした。リロードしてください'
-  $('b3').disabled = !ready
+  // ★繋がらなくても**マイクの計測はできる**（media-source は接続と無関係に進む）。
+  //   ここで止めると利用者の時間を無駄にするので、「マイクだけ測る」に落として続行する。
+  log(ready ? '送受信が流れ始めた（マイクも送受信も測れる）'
+    : '⚠️ 送受信が繋がらなかった（候補 ' + cand + '個・' + pc1.iceConnectionState + '）＝**マイクだけ測ります**', ready ? 'ok' : 'ng')
+  $('s1').textContent = ready ? '準備できました：' + track.label
+    : '⚠️ 送受信は繋がりませんでした。マイクだけ測ります（' + track.label + '）'
+  $('b3').disabled = false
 }
 
 // ─ 統計の読み取り ────────────────────────────────────
@@ -312,12 +332,13 @@ const finish = async () => {
   const started = baseline.recv > 0            // 開始時点で流れていたか＝計測できる状態だったか
   const micOk = micR > 0.8, pktOk = pktR > 0.8
   const verdict = !started
-      ? '❓ 判定できません（開始時点で送受信が繋がっていなかった）。リロードしてやり直してください'
+      ? (micOk ? '🎤 マイクは生きていた（送受信は繋がっていないので未検証）'
+               : '❌ マイクが止まった（送受信は繋がっていないので未検証）')
       : (micOk && pktOk) ? '✅ マイクも送受信も生きていた（' + (frozen > 1500 ? 'JS は凍っていたが音は流れた' : 'JS も凍らなかった') + '）'
       : (micOk && !pktOk) ? '⚠️ マイクは捕っていたが、相手に流れていなかった（送受信 ' + (pktR * 100).toFixed(0) + '%）'
       : (!micOk && pktOk) ? '⚠️ 送受信は動いていたが、マイクが止まっていた（マイク ' + (micR * 100).toFixed(0) + '%）'
       : '❌ どちらも止まった'
-  log(verdict, (started && micOk && pktOk) ? 'ok' : 'ng')
+  log(verdict, (micOk && (!started || pktOk)) ? 'ok' : 'ng')
   $('big').textContent = verdict
 
   if (rafPip) cancelAnimationFrame(rafPip)
