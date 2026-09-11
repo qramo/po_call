@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.8.9
+  ぽっと通話〈実験版〉 v0.9.0
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1036,7 +1036,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.8.9'
+const APP_VERSION = 'v0.9.0'
 
 const $ = id => document.getElementById(id)
 
@@ -1893,7 +1893,9 @@ const accumulateTalk = active => {
 const resetTalk = () => { talkLevel = 0; talkSpokeMs = 0; talkTotalMs = 0; talkLastTs = 0 }
 const ensureAudioCtx = () => {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)()
-  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {})
+  // ★`suspended` だけを見てはいけない。**iOS は他アプリへ切り替えると `interrupted` にする**
+  //   （WebKit 固有の状態。2026-09-12 に実機の記録で確認）。`!== 'running'` で両方拾う。
+  if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {})
   return audioCtx
 }
 
@@ -2117,6 +2119,21 @@ const renderBgm = () => {
   }
   renderBgm()
 }
+
+// ★中断からの復帰。**iOS は他アプリへ切り替えると AudioContext を `interrupted` にする**が、
+//   戻ってきても**誰も起こし直していなかった**（2026-09-12 発見）。そのままだと：
+//   ・BGM は止まったきり復活しない（次に効果音が鳴るまで）
+//   ・音量が100%未満なら**相手の声も無音のまま**（`<audio>` を muted にして Web Audio 経由に
+//     しているため）＝「背面で聞こえない」より悪い「**戻っても聞こえない**」になる。
+//   なお **Safari 内のタブ切り替えでは中断されない**。止まるのは他アプリへの切り替え。
+const wakeAudio = () => {
+  if (!audioCtx || audioCtx.state === 'running') return
+  audioCtx.resume().then(() => {
+    applyVolume()                                        // 音量の経路を張り直す
+    if (bgmKind !== 'off' && call.joinedId) startBgm()   // BGM は作り直す（中断明けの状態に頼らない）
+  }).catch(() => {})
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeAudio() })
 
 // ─ 通知音 ─ 音声ファイルもCDNも使わず WebAudio で合成する（単一ファイルのまま）。
 // 入室・退出音は既定オン／新しい部屋の音は既定オフ（オプトイン）。設定は localStorage に保存。
