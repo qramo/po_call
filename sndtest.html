@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="音の計測">
+<title>背面で効果音・BGMは鳴るか（ぽっと通話）</title>
+<!--
+  背面で Web Audio（BGM・効果音）が生き残るかの計測（ベータ路のみ・恒久設置しない）
+
+  2026-09-12：実機で分かっていること＝**背面では効果音も BGM も鳴らない**（Web Audio が止まる）。
+  一方、**相手の声は鳴る**（<audio> の再生は生きる）。出口が2本あって権限が違う。
+
+  ★ここで試す仮説：**小窓（PiP）を出している間はページが前面扱いのまま生きる**ので、
+    AudioContext も止まらないのではないか。さらに、**音声トラックを小窓のストリームに載せて
+    <video> で鳴らす**と、「再生」側の出口に回せるのではないか。
+
+  ★測り方：耳だけに頼らない。**AudioContext.currentTime は止まると進まない**ので、
+    実時間と比べれば「Web Audio が生きていたか」が数字で出る（累積カウンタと同じ考え方）。
+-->
+<style>
+  :root{ color-scheme: dark }
+  body{ margin:0; padding:16px 16px 40px; background:#0a1120; color:#eef2f8;
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif; line-height:1.75 }
+  h1{ font-size:19px; margin:0 0 4px }
+  p.lead{ margin:0 0 14px; font-size:13.5px; color:#9fb0c7 }
+  .card{ background:#111b2e; border-radius:14px; padding:14px; margin-bottom:12px }
+  .card h2{ font-size:15px; margin:0 0 8px }
+  .ask{ font-size:13px; color:#ffd24d; margin:6px 0 0 }
+  button{ width:100%; margin-top:8px; padding:14px; border:0; border-radius:12px;
+    font-size:16px; font-weight:700; background:#1d2740; color:#cfe }
+  button.go{ background:#00e5cc; color:#04202b }
+  button:disabled{ opacity:.45 }
+  label.mode{ display:flex; align-items:center; gap:9px; margin-top:10px; font-size:14px; color:#cfe }
+  label.mode input{ width:auto; margin:0; accent-color:#00e5cc; flex:none }
+  .note{ font-size:12px; color:#6f7f96; margin:2px 0 0 27px }
+  #big{ font-size:15px; font-weight:700; color:#00e5cc; margin-top:10px }
+  #log{ background:#060c17; border-radius:12px; padding:12px; font-size:12px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre-wrap; word-break:break-all }
+  .ok{ color:#8fe9de } .ng{ color:#ff8f6e } .dim{ color:#9fb0c7 }
+  video{ position:fixed; left:-9999px; width:160px; height:90px }
+</style>
+</head>
+<body>
+<h1>🎵 背面で効果音・BGMは鳴るか</h1>
+<p class="lead">アプリの効果音と BGM は <b>Web Audio</b> で作っていて、<b>背面では止まります</b>
+（相手の声は別経路なので鳴る）。<b>小窓を出しておけば止まらないのでは？</b>を確かめます。<br>
+①で音を出す → ②で条件を選ぶ → ③押して<b>背面へ30秒</b> → 戻って④。<br>
+<b>耳でも聞いてください</b>：ずっと「ポーン…ポーン」と鳴り続けているのが正常です。</p>
+
+<div class="card">
+  <h2>① 音を鳴らす</h2>
+  <button id="b1" class="go">🔊 音を鳴らし始める</button>
+  <p class="ask" id="s1">まだ鳴っていません</p>
+</div>
+
+<div class="card">
+  <h2>② 条件を選ぶ</h2>
+  <label class="mode"><input type="radio" name="mode" value="none" checked> ⬜️ 何もしない（基準）</label>
+  <p class="note">いまのアプリと同じ。背面で止まるはず。</p>
+  <label class="mode"><input type="radio" name="mode" value="pip"> 🖼 小窓を出す</label>
+  <p class="note">小窓の間はページが前面扱いのまま生きる、という仮説の検証。</p>
+  <label class="mode"><input type="radio" name="mode" value="pipaudio"> 🖼🔊 小窓に<b>音声も載せる</b></label>
+  <p class="note">★本命。音を <b>小窓のストリームの音声トラック</b>として流し、
+    <code>&lt;video&gt;</code> の再生に乗せる＝<b>背面で生きる側の出口</b>に回す。</p>
+  <video id="v" playsinline></video>
+</div>
+
+<div class="card">
+  <h2>③ 計測</h2>
+  <button id="b3" class="go" disabled>▶️ 計測を始める（このあと背面へ30秒）</button>
+  <div id="big"></div>
+</div>
+
+<div class="card">
+  <h2>④ 戻ってきたら</h2>
+  <button id="b4" disabled>🏁 結果を見る</button>
+  <p class="ask">自動でも判定しますが、画面ロックで働かないことがあるので、そのときはこれを。</p>
+</div>
+
+<div class="card">
+  <h2>記録（そのまま送ってください）</h2>
+  <div id="log">…</div>
+  <button id="copy">📋 この記録をコピー</button>
+</div>
+
+<script>
+const $ = id => document.getElementById(id)
+const lines = []
+const log = (s, cls) => {
+  lines.push(s)
+  const el = document.createElement('div')
+  if (cls) el.className = cls
+  el.textContent = s
+  if ($('log').textContent === '…') $('log').textContent = ''
+  $('log').appendChild(el)
+}
+const t0 = Date.now()
+const at = () => ((Date.now() - t0) / 1000).toFixed(1) + 's'
+const mark = s => log('  ' + at() + ' ' + s, 'dim')
+
+const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true
+log('UA: ' + navigator.userAgent, 'dim')
+log((standalone ? '★起動: ホーム画面から（PWA）' : '起動: ブラウザのタブ'), 'dim')
+log('動画PiP: ' + (document.pictureInPictureEnabled ? '使える'
+    : (HTMLVideoElement.prototype.webkitSetPresentationMode ? '使える（webkit式）' : '使えない')))
+
+let ctx = null, master = null, drone = null, blipTimer = null
+let pipStream = null, rafId = null, dest = null
+let measuring = false, base = null, hidTotal = 0, hidAt = 0, states = []
+
+// ─ ① 音を作る ───────────────────────────────────────
+// BGM 相当（鳴りっぱなしの低い音）＋ リアクション相当（3秒ごとのピコン）。
+// **アプリと同じで Web Audio だけで合成する**（ここが背面で止まるかを見たい）。
+$('b1').onclick = async () => {
+  $('b1').disabled = true
+  ctx = new (window.AudioContext || window.webkitAudioContext)()
+  ctx.addEventListener('statechange', () => { states.push([at(), ctx.state]); mark('AudioContext: ' + ctx.state) })
+  if (ctx.state === 'suspended') await ctx.resume().catch(() => {})
+  master = ctx.createGain(); master.gain.value = 0.5
+  // BGM 相当：ゆっくり上下する持続音（止まれば耳ですぐ分かる）
+  const o = ctx.createOscillator(), g = ctx.createGain(), lfo = ctx.createOscillator(), la = ctx.createGain()
+  o.type = 'sine'; o.frequency.value = 220; g.gain.value = 0.05
+  lfo.frequency.value = 0.4; la.gain.value = 0.04
+  lfo.connect(la); la.connect(g.gain); lfo.start()
+  o.connect(g); g.connect(master); o.start()
+  drone = [o, lfo]
+  // リアクション相当：3秒ごとのピコン
+  const blip = () => {
+    if (!ctx) return
+    const t = ctx.currentTime + 0.01
+    ;[[880, 0], [1319, 0.09]].forEach(([f, s]) => {
+      const oo = ctx.createOscillator(), gg = ctx.createGain()
+      oo.type = 'sine'; oo.frequency.value = f
+      gg.gain.setValueAtTime(0.0001, t + s)
+      gg.gain.exponentialRampToValueAtTime(0.12, t + s + 0.012)
+      gg.gain.exponentialRampToValueAtTime(0.0001, t + s + 0.16)
+      oo.connect(gg); gg.connect(master); oo.start(t + s); oo.stop(t + s + 0.2)
+    })
+  }
+  blipTimer = setInterval(blip, 3000); blip()
+  // 出口は2本用意しておく。**小窓のストリームには最初から音声トラックを入れておく**
+  // （後から addTrack して srcObject を繋ぎ直すと、映像の準備が一度リセットされて
+  //  PiP の要求が InvalidStateError で弾かれる。実際それで落ちた）。
+  // 既定は ctx.destination から鳴らし、<video> は muted にしておく＝二重に鳴らさない。
+  dest = ctx.createMediaStreamDestination()
+  master.connect(dest)
+  master.connect(ctx.destination)
+  log('鳴らし始めた（持続音＋3秒ごとのピコン）', 'ok')
+  $('s1').textContent = '鳴っています。聞こえますか？'
+  preparePip()
+  $('b3').disabled = false
+}
+
+// ─ 小窓の素材（押した瞬間に同期で PiP を要求できるよう、先に再生まで済ませる）─
+const preparePip = () => {
+  const cv = document.createElement('canvas')
+  cv.width = 320; cv.height = 180
+  const g2 = cv.getContext('2d')
+  const draw = () => {
+    g2.fillStyle = '#0a1120'; g2.fillRect(0, 0, 320, 180)
+    g2.fillStyle = '#00e5cc'; g2.font = 'bold 26px -apple-system,sans-serif'
+    g2.fillText('🎵 計測中', 20, 70)
+    g2.fillStyle = '#eef2f8'; g2.font = '20px ui-monospace,monospace'
+    g2.fillText(((Date.now() - t0) / 1000).toFixed(1) + '秒 / ctx ' + (ctx ? ctx.currentTime.toFixed(1) : '-'), 20, 120)
+    rafId = requestAnimationFrame(draw)
+  }
+  draw()
+  if (!cv.captureStream) { log('canvas.captureStream が無い＝小窓は試せません', 'ng'); return }
+  pipStream = cv.captureStream(5)
+  const atr = dest && dest.stream.getAudioTracks()[0]
+  if (atr) pipStream.addTrack(atr)        // ★繋ぐ前に足しておく
+  const v = $('v')
+  v.srcObject = pipStream; v.muted = true; v.playsInline = true
+  v.play().catch(e => log('小窓用の再生に失敗: ' + e.name, 'ng'))
+}
+const enterPip = () => {
+  const v = $('v')
+  const legacy = () => {
+    if (!v.webkitSetPresentationMode) { mark('🖼 小窓を出せない（APIが無い）'); return }
+    try { v.webkitSetPresentationMode('picture-in-picture')
+      setTimeout(() => mark('🖼 古い方式: ' + (v.webkitPresentationMode || '不明')), 600)
+    } catch (e) { mark('🖼 古い方式も失敗: ' + e.name) }
+  }
+  try {
+    if (v.requestPictureInPicture) {
+      v.requestPictureInPicture().then(() => mark('🖼 小窓に入った'))
+        .catch(e => { mark('🖼 標準方式が拒否: ' + e.name + ' → 古い方式へ'); legacy() })
+    } else legacy()
+  } catch (e) { mark('🖼 失敗: ' + e.name); legacy() }
+}
+
+// ─ ③ 計測開始 ───────────────────────────────────────
+$('b3').onclick = () => {
+  if (measuring) return
+  const mode = [...document.querySelectorAll('input[name=mode]')].find(r => r.checked).value
+  if (mode === 'pipaudio') {
+    // ★本命：**ctx.destination を外して、<video> 側（小窓のストリーム）で鳴らす**。
+    //   ストリームには最初から音声トラックが入っているので、ここでは出口の付け替えだけ。
+    try {
+      master.disconnect(ctx.destination)
+      const v = $('v')
+      v.muted = false                    // ★ここで鳴らす（小窓の音）
+      v.play().catch(e => mark('音声つき再生に失敗: ' + e.name))
+      mark('🔊 出口を小窓の音声トラックに切り替えた（ctx.destination は外した）')
+    } catch (e) { mark('切り替えに失敗: ' + e.name) }
+  }
+  if (mode === 'pip' || mode === 'pipaudio') enterPip()      // ★同期で
+  measuring = true; hidTotal = 0; hidAt = 0
+  base = { wall: Date.now(), ct: ctx.currentTime }
+  $('b3').disabled = true; $('b4').disabled = false
+  log('── 計測開始（' + mode + '）' + new Date().toLocaleTimeString() + ' ──', 'ok')
+  $('big').textContent = '計測中… いますぐ背面へ（30秒ほど）。音が鳴り続けるか耳でも聞いてください'
+}
+
+document.addEventListener('visibilitychange', () => {
+  mark('画面: ' + document.visibilityState)
+  if (document.visibilityState === 'hidden') hidAt = Date.now()
+  else if (hidAt) { hidTotal += Date.now() - hidAt; hidAt = 0 }
+  if (measuring && document.visibilityState === 'visible') setTimeout(finish, 800)
+})
+$('b4').onclick = () => finish()
+
+const finish = () => {
+  if (!measuring) return
+  measuring = false
+  const mode = [...document.querySelectorAll('input[name=mode]')].find(r => r.checked).value
+  const wall = (Date.now() - base.wall) / 1000
+  const ct = ctx.currentTime - base.ct          // ★止まっている間は進まない
+  const ratio = wall > 0 ? ct / wall : 0
+  log('── 結果（' + mode + '）──', 'ok')
+  log('経過（実時間）: ' + wall.toFixed(1) + '秒')
+  log('画面が hidden だった時間: ' + (hidTotal / 1000).toFixed(1) + '秒'
+      + (hidTotal < 8000 ? '  ⚠️ 短い（背面にしていないか、小窓で前面扱いのまま）' : ''),
+      hidTotal < 8000 ? 'ng' : 'dim')
+  log('🎵 AudioContext が進んだ時間: ' + ct.toFixed(1) + '秒（実時間の ' + (ratio * 100).toFixed(0) + '%）',
+      ratio > 0.9 ? 'ok' : 'ng')
+  log('   いまの state: ' + ctx.state + ' / 遷移: ' + (states.length ? states.map(x => x[0] + ':' + x[1]).join(' → ') : 'なし'))
+  log('   小窓: ' + (document.pictureInPictureElement ? '出ていた'
+      : ($('v').webkitPresentationMode || '出ていない')))
+  const verdict = ratio > 0.9 ? '✅ Web Audio は背面でも動いていた（＝効果音も BGM も鳴らせる）'
+      : ratio > 0.3 ? '⚠️ 途中まで動いて止まった（' + ct.toFixed(0) + '秒ぶん）'
+      : '❌ Web Audio は止まっていた（＝いまのアプリと同じ）'
+  log(verdict, ratio > 0.9 ? 'ok' : 'ng')
+  log('※ 数字が ✅ でも、**耳で聞こえていたか**を必ず添えてください（鳴っているが出口が無い場合もある）', 'dim')
+  $('big').textContent = verdict
+  if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {})
+  const v = $('v')
+  try { if (v.webkitSetPresentationMode && v.webkitPresentationMode === 'picture-in-picture') v.webkitSetPresentationMode('inline') } catch (e) {}
+  // 出口を既定（ctx.destination）へ戻す＝次の計測に前の条件を持ち越さない
+  if (mode === 'pipaudio') {
+    try { $('v').muted = true; master.connect(ctx.destination) } catch (e) {}
+  }
+  $('b3').disabled = false; $('b4').disabled = true
+}
+
+$('copy').onclick = async () => {
+  try { await navigator.clipboard.writeText(lines.join('\n')); $('copy').textContent = '✅ コピーしました' }
+  catch (e) { $('copy').textContent = '手で選択してコピーしてください' }
+}
+</script>
+</body>
+</html>
