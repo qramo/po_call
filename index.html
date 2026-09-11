@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.8.8
+  ぽっと通話〈実験版〉 v0.8.9
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1036,7 +1036,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.8.8'
+const APP_VERSION = 'v0.8.9'
 
 const $ = id => document.getElementById(id)
 
@@ -2375,6 +2375,23 @@ const render = () => {
 // 通話の途中で圏外になった／戻ったときにも表示を追従させる（通話中のみ render が中身を持つ）
 addEventListener('online', render)
 addEventListener('offline', render)
+// マイクの取得条件。**必ず明示する**（`{audio:true}` の既定任せだと端末やブラウザで挙動が変わる）。
+// ・echoCancellation … 相手の声が自分のマイクへ回り込むのを打ち消す。**ハウリングの主防御**
+// ・noiseSuppression … 環境ノイズを抑える
+// この2つはブラウザ既定と同じなので、書いても挙動は変わらない＝**明示することが目的**。
+//
+// ★autoGainControl は**既定のまま（true）**にしてある。切ると「入力が小さいと持ち上げる」動作が
+//   止まり、**弱いエコーを増幅して発振の引き金を引く**のを防げる見込みだが、代わりに
+//   **声が小さい人はそのまま小さく**届く。効くかどうかは実機で確かめてから決める。
+//   **`?agc=off` を付けて開くと切って比べられる**（Android の回り込み検証用。決着したら消す）。
+const MIC_CONSTRAINTS = {
+  audio: {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: !/[?&]agc=off(&|$)/.test(location.search)
+  }
+}
+
 // 相手の音声を鳴らす。失敗の理由で扱いを分ける：
 //  NotAllowedError … 本当に自動再生を止められた＝ユーザーの操作が要る。ボタンを出す。
 //  AbortError      … 退出時に dropAudios が srcObject を外して再生要求を中断させただけ。
@@ -2896,7 +2913,7 @@ const startSpeaking = async () => {
   if (call.stream || !call.joinedId || !call.room) return
   $('speak').disabled = true
   try {
-    call.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    call.stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS)
   } catch (e) {
     showPeerNotice('🎙 ' + micErrText(e))
     return
@@ -3145,7 +3162,7 @@ const runJoin = async () => {
   if (wantMic) {
     setState('マイクを準備しています…（「許可」を押してください）', 'busy')
     try {
-      call.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      call.stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS)
       // 参加が成立する前に効かせる。こうすると相手へ最初に配るプロフィールも、ロビーの
       // ハートビートも、最初からミュートとして出る（あとから切り替えるとズレる瞬間ができる）。
       if (muteOnJoin) { call.muted = true; call.stream.getAudioTracks().forEach(t => t.enabled = false); renderMute() }
