@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.9.5
+  ぽっと通話〈実験版〉 v0.9.6
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1078,7 +1078,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.9.5'
+const APP_VERSION = 'v0.9.6'
 
 const $ = id => document.getElementById(id)
 
@@ -3706,6 +3706,12 @@ const resetJoinedUI = () => {
   $('sndReactRow').style.display = 'none'
   $('retry').hidden = true
   $('pip').hidden = true
+  // ★退出したら URL から部屋を落とす。参加時に焼き付けたままだと、**次に開いたとき
+  //   「共有リンクから来た人」と区別がつかない**（＝最初の画面で「部屋を作る」が開いてしまう。
+  //   2026-09-12 に利用者が遭遇）。URL としても、居ない部屋を指したままなのは嘘。
+  //   replaceState を使うのは、hashchange を起こさず履歴も増やさないため
+  //   （`location.hash = ''` だと hashchange が飛び、β の「安定版へ」の追従処理まで動く）。
+  try { history.replaceState(null, '', location.pathname + location.search) } catch {}
   roomInput.disabled = false; lockProfile(false); syncCreateBox()
   $('setupFields').classList.remove('collapsed')   // join で畳んだ入力欄を戻す
 }
