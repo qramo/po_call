@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.9.6
+  ぽっと通話〈実験版〉 v0.9.7
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1078,7 +1078,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.9.6'
+const APP_VERSION = 'v0.9.7'
 
 const $ = id => document.getElementById(id)
 
@@ -1674,10 +1674,14 @@ window.__potRelays = () => {
 }
 
 // 状態表示。kind は 'idle'|'busy'|'ok'|'warn'|'error' でドットの色に対応する（文字側に絵文字は置かない）
+// いまの状態の種類を覚えておく。**文言ではなく kind で見る**こと（文言は変わりうる）。
+// 'idle' ＝ 未参加／退出しました の2つだけ。それ以外（busy/warn/error/ok）は
+// 「いま何か起きている」なので、状態カードを必ず出す。
+let stateKind = 'idle'
 const setState = (t, kind = 'idle') => {
   $('state').textContent = t; $('dot').className = 'dot' + (kind === 'idle' ? '' : ' ' + kind)
-  // ★文言が「未参加」から動いたら状態カードを必ず出す（失敗の知らせが出る場所なので）。
-  //   syncIdleChrome は後ろで定義されるので、初期化の途中で呼ばれても落ちないようにする。
+  stateKind = kind
+  // syncIdleChrome は後ろで定義されるので、初期化の途中で呼ばれても落ちないようにする
   try { syncIdleChrome() } catch {}
 }
 const setCount = () => { $('count').textContent = call.peers.size }
@@ -3656,12 +3660,15 @@ const runJoin = async () => {
 // ★「未参加」以外の文言（つなぎ中・失敗・退出しました）になったら必ず出すこと。
 //   一律に隠すと、**参加に失敗したときのエラーが出る場所ごと消える**。
 const syncIdleChrome = () => {
-  const idle = !call.joinedId && $('state').textContent === '未参加'
-  $('statusCard').hidden = idle
-  // 招待リンクは、通話中か「部屋を作る」を開いている間だけ（作る前の人には用が無い）
   const box = $('createBox')
-  if (!roomInput.value.trim()) $('shareWrap').hidden = true
-  else $('shareWrap').hidden = !call.joinedId && !(box && box.open)
+  const open = !!(box && box.open)
+  // ★状態カードと招待リンクは「部屋を作る」の中身と**一蓮托生**：開けば全部出て、閉じれば全部消える。
+  //   閉じたときに「退出しました／0人」だけ残るのを避けるため（2026-09-12・利用者の指摘）。
+  //   ただし**参加中と、つなぎ中・失敗のときは必ず出す**：
+  //   ロビーからタップして入るときはトグルを開かないので、閉じたままだと手応えが無くなり、
+  //   **失敗の知らせが出る場所ごと消える**。
+  $('statusCard').hidden = !(call.joinedId || stateKind !== 'idle' || open)
+  $('shareWrap').hidden = !roomInput.value.trim() || !(call.joinedId || open)
 }
 const syncCreateBox = () => {
   const box = $('createBox')
