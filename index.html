@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.9.4
+  ぽっと通話〈実験版〉 v0.9.5
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -254,13 +254,16 @@
   @media (prefers-reduced-motion:reduce){ .collapsible{ transition:none } }
   .profile{ margin-top:4px }
   /* 「部屋を作る」トグル。プロフィールと同じ見た目にそろえる（同じ役割の行なので） */
-  .create{ margin-top:10px }
-  .create > summary{ list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px;
-    padding:12px 14px; border-radius:12px; background:#0d1526; border:1px solid rgba(255,255,255,.12) }
+  /* ★枠（カード）にしないこと。**開いたときの「部屋名」ラベルと同じ素のテキスト行**にする
+     （利用者の指定・2026-09-12）。プロフィールは身元を示すカードなので枠があってよいが、
+     こちらは「畳んである見出し」なので、枠があると同じ重さの選択肢に見えてしまう */
+  .create{ margin-top:12px }
+  .create > summary{ list-style:none; cursor:pointer; display:flex; align-items:center; gap:6px;
+    padding:4px 2px; font-size:13px; color:#9fb0c7 }
   .create > summary::-webkit-details-marker{ display:none }
-  .cr-ic{ font-size:18px; line-height:1 }
-  .cr-label{ font-weight:700; font-size:15px }
-  .cr-arrow{ font-size:12px; color:#00e5cc }
+  .cr-ic{ font-size:15px; line-height:1 }
+  .cr-label{ font-weight:700; font-size:13.5px; color:#cfe }
+  .cr-arrow{ font-size:11px; color:#00e5cc }   /* 文字のすぐ後ろ（右端へ飛ばさない） */
   .create[open] .cr-arrow{ transform:rotate(90deg) }
   /* 開いている間は見出しを「部屋名」ラベルに変身させる（プロフィールの summary と同じ作法）。
      枠を外して入力欄に繋げる＝独立した行を作らず、ラベルとして一体に見せる */
@@ -268,9 +271,7 @@
   .create[open] .cr-ic, .create[open] .cr-label{ display:none }
   .create[open] .cr-open-label{ display:inline }
   .create > summary .char-count{ display:none }
-  .create[open] > summary .char-count{ display:inline }
-  .create > summary .cr-arrow{ margin-left:auto }
-  .create[open] > summary{ background:transparent; border-color:transparent; padding:4px 2px; gap:8px }
+  .create[open] > summary .char-count{ display:inline; margin-left:auto }   /* 文字数だけ右端 */
   .cr-body > div{ padding-top:2px }
   .create[hidden]{ display:none }
   .profile > summary{ list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px;
@@ -1077,7 +1078,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.9.4'
+const APP_VERSION = 'v0.9.5'
 
 const $ = id => document.getElementById(id)
 
