@@ -82,12 +82,23 @@
   <div class="res" id="resD"></div>
 </div>
 
+<div class="card" id="cardE">
+  <h2>E：録画した動画ファイルを小窓に出す（MediaRecorder）</h2>
+  <p class="note">★未検証の筋。A〜D は「ストリーム」だったが、これは <b>Blob（ファイルに近い動画）</b>。
+    iOS の PiP が本来描ける形なので、映る可能性がある。<br>
+    引き換えに<b>録画した固定の絵</b>になる（人数や時間など生の情報は出せない）。</p>
+  <button class="go" id="recE">E：4秒ぶん録って用意する</button>
+  <button data-pip="E">E で小窓を出す</button>
+  <div class="res" id="resE"></div>
+</div>
+
 <!-- ★4つぶんの <video> を**最初から繋いで再生しておく**。押した瞬間に srcObject を
      差し替えると readyState が戻り、PiP の要求が弾かれる（計測ページで踏んだのと同じ罠）。 -->
 <video id="vA" playsinline muted></video>
 <video id="vB" playsinline muted></video>
 <video id="vC" playsinline muted></video>
 <video id="vD" playsinline muted></video>
+<video id="vE" playsinline muted loop></video>
 
 <div class="card">
   <h2>記録（そのまま送ってください）</h2>
@@ -155,6 +166,40 @@ const streams = {}
     log('D: ループバックの受信ストリームを用意した', 'ok')
   } catch (e) { log('D: 用意できなかった ' + e.name, 'ng') }
 })()
+
+// E：canvas の映像を MediaRecorder で録って Blob にし、**ファイルとして** <video> に渡す。
+// A〜D（ストリーム）と違い、iOS の PiP が本来描ける形。対応コーデックは端末で違うので、
+// **使えるものを探してから**録る（Safari は webm を持たない）。
+$('recE').onclick = () => {
+  const out = $('resE')
+  const types = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9',
+                 'video/webm;codecs=vp8', 'video/webm']
+  const usable = types.filter(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t))
+  log('E: 使えるコーデック = ' + (usable.join(' / ') || 'なし'), usable.length ? 'ok' : 'ng')
+  if (!usable.length) { out.textContent = 'MediaRecorder が使えません'; out.className = 'res ng'; return }
+  const src = $('cvB').captureStream(10)      // 画面に出ている canvas から録る
+  let rec
+  try { rec = new MediaRecorder(src, { mimeType: usable[0] }) }
+  catch (e) { out.textContent = '録画を開始できません: ' + e.name; out.className = 'res ng'; return }
+  const chunks = []
+  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data) }
+  rec.onstop = () => {
+    const blob = new Blob(chunks, { type: usable[0] })
+    const url = URL.createObjectURL(blob)
+    const v = $('vE')
+    v.src = url; v.loop = true; v.muted = true; v.playsInline = true
+    v.play().then(() => {
+      const msg = 'E: ' + Math.round(blob.size / 1024) + 'KB / ' + usable[0] + ' を再生中'
+      out.textContent = msg; out.className = 'res ok'; log(msg, 'ok')
+    }).catch(e => {
+      out.textContent = '再生できません: ' + e.name; out.className = 'res ng'
+      log('E: 再生できません ' + e.name, 'ng')
+    })
+  }
+  out.textContent = '4秒ぶん録っています…'; out.className = 'res'
+  rec.start()
+  setTimeout(() => rec.stop(), 4000)
+}
 
 // ①ストリームに絵が乗っているか＝**画面を見ずに判定できる**
 const inspect = async k => {
