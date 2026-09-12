@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.10.0
+  ぽっと通話〈実験版〉 v0.10.1
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -946,6 +946,7 @@
       <li>🔔 音：入室・退出や新しい部屋を音で知らせる（それぞれオン/オフ。新しい部屋の音はタブを開いている間だけ）</li>
       <li>🔊 音量：通話中の ⚙️ 設定タブで、<b>この通話の音だけ</b>を下げられる（動画や音楽と一緒に聞くとき用。他のアプリの音はそのまま）</li>
       <li>🎵 BGM：⚙️ 設定タブで <b>軽快な音楽</b> か <b>アンビエント空間</b> を選べる（既定はオフ。<b>自分にだけ鳴り</b>、曲は部屋名で決まります。イヤホン推奨）</li>
+      <li>📱 iPhone の注意：<b>音を出す他のアプリ（写真・動画など）に切り替えると、通話の音が一時的に止まります</b>（iOS の仕様で、こちらからは防げません。ふつうの音声配信サイトでも同じです）。そのアプリの音が止まれば自動で鳴り直します</li>
       <li>📱 小窓：通話中に <b>📱 小窓</b> を押すと、部屋名・人数・経過時間の小さな窓が最前面に浮きます（ながら通話で「いま通話中」が分かるため）。<b>iPhone では中身が黒く表示されます</b>（iOS の制限）。ホーム画面に追加したアプリでは使えません</li>
       <li>👥 人数：ふつうの部屋は <b>8人</b>、📣 配信部屋は <b>15人</b>まで（全員が全員に繋がる仕組みなので、多いと音が途切れます）</li>
     </ul>
@@ -1084,7 +1085,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.10.0'
+const APP_VERSION = 'v0.10.1'
 
 const $ = id => document.getElementById(id)
 
@@ -2097,14 +2098,23 @@ const stopBgm = () => {
 }
 // 先読みスケジューラ：25ms ごとに起きて 100ms 先までを**絶対時刻で**予約する。
 // 発火した瞬間に鳴らす作りだと、タイマーの揺れがそのままリズムの揺れになる（タブを裏に回すと露骨）。
+// ★先読みは**長く**取ること（1.5秒）。25ms ごとに起きて 100ms 先までを予約する作りだと、
+//   **背面でタイマーが間引かれた瞬間に譜面が尽きて音が途切れる**（2026-09-13・実機で
+//   「小窓が無いと BGM が乱れる」として現れた。小窓を出すと前面扱いでタイマーが戻るため直る）。
+//   1.5秒ぶん積んでおけば、タイマーが毎秒1回まで絞られても間に合う。
+//   止めるときは stopBgm が発振器ごと止めるので、予約が残っていても鳴り続けない。
+const BGM_AHEAD = 1.5
 const bgmSchedule = (stepSec, onStep) => {
   let next = ctx0().currentTime + 0.06, step = 0
   const tick = () => {
     if (!bgm) return
-    while (next < ctx0().currentTime + 0.1) { onStep(step++, next); next += stepSec }
+    const now = ctx0().currentTime
+    // 遅れを取り戻そうとすると**過去の時刻の音を大量に予約して一斉に鳴る**ので、現在に合わせ直す
+    if (next < now) next = now + 0.06
+    while (next < now + BGM_AHEAD) { onStep(step++, next); next += stepSec }
   }
   tick()
-  bgm.timers.push(setInterval(tick, 25))
+  bgm.timers.push(setInterval(tick, 400))
 }
 const ctx0 = () => audioCtx
 const bgmPing = (t, freq, dur, type, gain, pan) => {
@@ -2230,6 +2240,21 @@ const wakeAudio = () => {
   }).catch(() => {})
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeAudio() })
+// ★**音を出す他のアプリ（写真・動画など）に切り替えると、iOS は AudioContext を中断する。**
+//   これは web の天井で、こちらからは防げない（2026-09-13 に実測：**小窓を出しても防げず**、
+//   ふつうの音声配信サイトの `<audio>` 再生も同じように止まる）。
+//   ただ**相手が音を手放せば戻せる**ので、通話中は定期的に resume を試みる。
+//   ここが無いと、アプリに戻ってくるまで無音のままになる（配信サイトはそうなる）。
+let wakeTimer = null
+const startWakeWatch = () => {
+  clearInterval(wakeTimer)
+  wakeTimer = setInterval(() => { if (call.joinedId) wakeAudio() }, 3000)
+}
+const stopWakeWatch = () => { clearInterval(wakeTimer); wakeTimer = null }
+// ★再生ボタンを押したときにも直るようにする。**止まっているのは AudioContext のほう**なので、
+//   要素を再生させるだけでは無音のまま＝「押しても何も起きない」に見える（実機でそうなった）。
+$('appAudio').addEventListener('play', wakeAudio)
+$('pipVideo').addEventListener('play', wakeAudio)
 
 // ─ 小窓（ピクチャーインピクチャー） ──────────────────────────
 // ★この機能の理由は2回変わった。いまの姿だけ信じること：
@@ -2237,6 +2262,8 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) wake
 //   ②「背面でも音を鳴らすための出口」→ **効いていたのは小窓ではなくメディア要素**だった。
 //      いまは出口を appAudio（<audio>）に常時繋いでいるので、**小窓と音は無関係**。
 //   ③ いまの役割＝**通話中だと分かる小窓**（部屋名・人数・ミュート・経過時間）。
+//      ※ **音の盾にはならない**：音を出す他のアプリに切り替えると、小窓を出していても
+//        AudioContext は中断される（2026-09-13・実機で確認）。復帰は startWakeWatch が担当。
 //      ※ **iPhone では中身が必ず黒い**（iOS は MediaStream の映像を PiP に描けない＝4条件で実測）。
 //      ※ **PWA では小窓自体を出せない**（NotSupportedError）。
 // ★**Document PiP（任意のDOMを小窓にする）はスマホでは使えない**（Chrome Android も
@@ -3634,6 +3661,7 @@ const runJoin = async () => {
   //   そのときはもうユーザー操作の文脈が切れていて play() が弾かれ、**iPhone で音が細る側**
   //   （ctx.destination）へ落ちてしまう。
   try { ensureOut() } catch {}
+  startWakeWatch()                // 中断されても、相手が音を手放したら戻す（見張り）
   startBgm()                      // BGM（選ばれていれば）。部屋名から曲を決めるので通信は増えない
   startPipFeed(); renderPip()     // 小窓（PiP）の映像を用意してボタンを出す。**押す前に再生しておく**
   stopAudioWatch(); call.audioWatch = setInterval(checkAudioArrival, 2000)   // 音が来ない相手に送り直しを頼む監視を開始
@@ -3829,6 +3857,7 @@ const leaveCall = () => {
   stopAudioWatch()   // 音声到着の監視を停止＋待ち時間と催促回数の記憶を捨てる
   stopBgm()                          // BGM を止める（**stopVad より先に**＝AudioContext を閉じる前に畳む）
   stopPipFeed()                      // 小窓を閉じて映像トラックも止める（join/leave の対称）
+  stopWakeWatch()                    // 復帰の見張りも止める（join/leave の対称）
   stopVad(); resetTalk(); stopEq()   // 解析ループ停止＋AudioContext破棄（join が確保したものを全て解放）
   stopHeartbeat()  // ロビーへ「退出した」を通知＋定期発信を停止（ロビー部屋自体は閲覧用に残す）
   // 公開Nostrへの署名鍵を捨てる。**同じ鍵を使い続けると、リレーを見ている人に「同じ人が
