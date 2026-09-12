@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.9.0
+  ぽっと通話〈実験版〉 v0.9.1
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -220,6 +220,8 @@
   .retry-btn{ flex:none; width:auto; margin:0 0 0 auto; padding:5px 11px; font-size:12px; font-weight:700;
     background:#1d2740; color:#cfe; border:1px solid rgba(255,255,255,.12); border-radius:999px; white-space:nowrap }
   .retry-btn:disabled{ opacity:.5 }
+  /* 小窓に映す映像。画面には見せないが、**display:none だと PiP に入れられない**ので画面外へ逃がす */
+  .pip-video{ position:fixed; left:-9999px; top:0; width:160px; height:90px; pointer-events:none }
   /* 状態はこのドットの色だけで表す（文字側に絵文字は置かない）。既定＝グレー＝未参加／退出後 */
   .dot{ display:inline-block; width:9px; height:9px; border-radius:50%; background:#48507a; margin-right:7px; vertical-align:middle }
   .dot.busy { background:#4da3ff; animation:dot-pulse 1.2s ease-in-out infinite }  /* 準備中 */
@@ -709,6 +711,7 @@
   <div class="status">
     <div class="status-head">
       <span><span class="dot" id="dot"></span><span id="state">未参加</span></span>
+      <button id="pip" class="retry-btn" type="button" hidden>📱 小窓</button>
       <button id="retry" class="retry-btn" type="button" hidden>🔄 つなぎ直す</button>
     </div>
     <div style="margin-top:8px">いま一緒にいる人：<span class="peers" id="count">0</span> 人</div>
@@ -802,6 +805,9 @@
          本物の回線障害でも出るが、**集団で無視されたときに「自分の回線のせい」と
          思い込まされないため**でもある（HANDOFF「無視」の項の"秘密の部屋"参照） -->
     <div id="peerNotice" class="audio-warn" hidden></div>
+    <!-- 小窓（PiP）の中身。canvas に描いた絵を映像トラックにして、この <video> を PiP に入れる。
+         **display:none にしないこと**（消えている要素は PiP に入れられない）。画面外に置く。 -->
+    <video id="pipVideo" class="pip-video" playsinline muted aria-hidden="true"></video>
     <div id="eq" class="eq" hidden aria-hidden="true"></div>
     <div style="margin-top:10px" id="shareWrap" hidden>
       <div id="qrBox" class="qr-inline" hidden>
@@ -899,6 +905,7 @@
       <li>🔔 音：入室・退出や新しい部屋を音で知らせる（それぞれオン/オフ。新しい部屋の音はタブを開いている間だけ）</li>
       <li>🔊 音量：通話中の ⚙️ 設定タブで、<b>この通話の音だけ</b>を下げられる（動画や音楽と一緒に聞くとき用。他のアプリの音はそのまま）</li>
       <li>🎵 BGM：⚙️ 設定タブで <b>軽快な音楽</b> か <b>アンビエント空間</b> を選べる（既定はオフ。<b>自分にだけ鳴り</b>、曲は部屋名で決まります。イヤホン推奨）</li>
+      <li>📱 小窓：通話中に <b>📱 小窓</b> を押すと、部屋名・人数・経過時間の小さな窓が最前面に浮きます。<b>iPhone では、これを出しておくと他のアプリを見ている間や画面を消している間も BGM・効果音が鳴り続けます</b>（出していないと止まります）。ホーム画面に追加したアプリでは使えません</li>
       <li>👥 人数：ふつうの部屋は <b>8人</b>、📣 配信部屋は <b>15人</b>まで（全員が全員に繋がる仕組みなので、多いと音が途切れます）</li>
     </ul>
   </details>
@@ -1036,7 +1043,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.9.0'
+const APP_VERSION = 'v0.9.1'
 
 const $ = id => document.getElementById(id)
 
@@ -1907,6 +1914,16 @@ const VOL_KEY = 'pot-call-vol'
 const clampVol = v => (v >= 0 && v <= 1 ? v : 1)
 let masterVol = clampVol(parseFloat(localStorage.getItem(VOL_KEY)))
 let masterGain = null   // 「各ピア → マスターGain → 出力」。100% のときは張らない
+// ★このアプリが Web Audio で鳴らす音（音量調整・BGM・効果音）は**全部ここを通してから出す**。
+//   出口が1つにまとまっていれば、**小窓を開いたときに接続先を差し替えるだけ**で全部が移る。
+//   なぜ移すのか：**iOS は他アプリへ切り替えると AudioContext を中断する**が、
+//   **音を小窓（<video>）の再生として流すと中断されない**（2026-09-12・175秒・実機で確定）。
+let appOut = null
+const ensureOut = () => {
+  const ctx = ensureAudioCtx()
+  if (!appOut) { appOut = ctx.createGain(); appOut.connect(ctx.destination) }
+  return appOut
+}
 
 // ★**`audio.volume` は当てにしない**（2026-08-19・iPhone 実機で確定）。iOS 18.7 / Safari 26.6 は
 // **代入がプロパティには反映されるのに音は変わらない**＝「代入して読み返す」では見分けられない
@@ -1916,7 +1933,7 @@ let masterGain = null   // 「各ピア → マスターGain → 出力」。100
 const gainOn = () => masterVol !== 1
 const ensureMasterGain = () => {
   const ctx = ensureAudioCtx()
-  if (!masterGain) { masterGain = ctx.createGain(); masterGain.connect(ctx.destination) }
+  if (!masterGain) { masterGain = ctx.createGain(); masterGain.connect(ensureOut()) }
   masterGain.gain.value = masterVol
   return masterGain
 }
@@ -2088,7 +2105,7 @@ const startBgm = () => {
   if (!ctx) return
   const gain = ctx.createGain()
   gain.gain.value = bgmLevel()
-  gain.connect(ctx.destination)
+  gain.connect(ensureOut())
   bgm = { nodes: [gain], timers: [], gain }
   try { (bgmKind === 'tune' ? bgmTune : bgmAmbient)(bgmSeed(call.joinedId)) } catch { stopBgm() }
 }
@@ -2135,6 +2152,122 @@ const wakeAudio = () => {
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeAudio() })
 
+// ─ 小窓（ピクチャーインピクチャー） ──────────────────────────
+// ★当初は「マイクが止まるのを防ぐ手」として作ったが、**それは誤りだった**（2026-09-10）。
+//   Safari のタブなら小窓が無くてもマイクは止まらない＝小窓は要らなかった（対照実験で判明）。
+// ★本当の値打ちは別にあった（2026-09-12・実機で確定）：**Web Audio の出口を小窓の音声トラックに
+//   載せると、他アプリ中でも画面ロック中でも AudioContext が中断されない**（175秒・中断ゼロ）。
+//   小窓だけ出しても守れない（17秒で interrupted）＝**音を <video> の再生として流すことが肝**。
+//   ＝小窓は「通話中だと分かる飾り」ではなく、**背面でも鳴らせる音の出口**にできる。
+//   ※ その配線（appOut → MediaStreamDestination → 小窓の音声トラック）は**まだ入れていない**。
+//   ※ **PWA では小窓を出せない**（NotSupportedError）ので、効くのは Safari のタブだけ。
+// ★**Document PiP（任意のDOMを小窓にする）はスマホでは使えない**（Chrome Android も
+//   iOS Safari も非対応）。使えるのは `<video>` の従来型 PiP だけなので、
+//   canvas に描いた絵を映像トラックにして流し込む。「筋が悪い」どころか唯一の道。
+let pipDest = null      // 小窓へ流すための音声の受け口（MediaStreamDestination）
+const pipCanvas = document.createElement('canvas')
+pipCanvas.width = 480; pipCanvas.height = 270
+const pipG = pipCanvas.getContext('2d')
+let pipStream = null, pipTimer = null
+const pipOn = () => !!document.pictureInPictureElement || $('pipVideo').webkitPresentationMode === 'picture-in-picture'
+const pipCan = () => !!(document.pictureInPictureEnabled || $('pipVideo').webkitSetPresentationMode)
+
+// 小窓の中身。**画面の縮小版ではなく「離れている間に知りたいこと」だけ**を大きく描く：
+// 部屋名・人数・自分のマイクの状態・経過時間。文字は大きく、色数は少なく。
+const drawPip = () => {
+  const w = pipCanvas.width, h = pipCanvas.height
+  pipG.fillStyle = '#0a1120'; pipG.fillRect(0, 0, w, h)
+  pipG.fillStyle = call.muted ? '#ff8f6e' : '#00e5cc'
+  pipG.fillRect(0, 0, 8, h)                      // 左端の帯＝ミュート中は色が変わる（遠目で分かる）
+  pipG.fillStyle = '#eef2f8'
+  pipG.font = 'bold 30px -apple-system, sans-serif'
+  const name = (call.joinedId || '').split('~pk~')[0] || '通話中'
+  pipG.fillText(name.length > 13 ? name.slice(0, 12) + '…' : name, 26, 58)
+  pipG.fillStyle = '#9fb0c7'; pipG.font = '24px -apple-system, sans-serif'
+  pipG.fillText('👥 ' + (call.peers.size + 1) + '人', 26, 104)
+  pipG.fillStyle = call.muted ? '#ff8f6e' : '#8fe9de'
+  pipG.font = 'bold 26px -apple-system, sans-serif'
+  pipG.fillText(call.muted ? '🔇 ミュート中' : (micOff() ? '🎧 聞き役' : '🎤 通話中'), 26, 152)
+  const sec = mySeconds()
+  pipG.fillStyle = '#6f7f96'; pipG.font = '22px ui-monospace, monospace'
+  pipG.fillText(String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0'), 26, 196)
+  // 誰かが話していると下の帯が伸びる（音が来ているかが、小窓を見るだけで分かる）
+  pipG.fillStyle = '#132038'; pipG.fillRect(26, 222, w - 52, 10)
+  pipG.fillStyle = '#00e5cc'; pipG.fillRect(26, 222, Math.min(1, roomRms * 6) * (w - 52), 10)
+}
+// 映像トラックは**通話中だけ**作る（電池）。2コマ/秒で十分＝時計が動けばよい。
+const startPipFeed = () => {
+  if (pipTimer) return
+  drawPip()
+  if (!pipCanvas.captureStream) return
+  pipStream = pipCanvas.captureStream(2)
+  // ★音声トラックは**繋ぐ前に**足しておくこと。あとから addTrack して srcObject を繋ぎ直すと、
+  //   映像の準備が一度リセットされ、PiP の要求が InvalidStateError で弾かれる（計測時に踏んだ）。
+  try {
+    const ctx = ensureAudioCtx()
+    ensureOut()
+    if (!pipDest) pipDest = ctx.createMediaStreamDestination()
+    const atr = pipDest.stream.getAudioTracks()[0]
+    if (atr) pipStream.addTrack(atr)
+  } catch {}
+  const v = $('pipVideo')
+  v.srcObject = pipStream; v.muted = true; v.playsInline = true
+  v.play().catch(() => {})
+  pipTimer = setInterval(drawPip, 500)
+}
+const stopPipFeed = () => {
+  pipAudio(false)                    // 出口を戻してから畳む（戻し忘れると音が行き場を失う）
+  clearInterval(pipTimer); pipTimer = null
+  if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {})
+  const v = $('pipVideo')
+  try { if (v.webkitSetPresentationMode && v.webkitPresentationMode === 'picture-in-picture') v.webkitSetPresentationMode('inline') } catch {}
+  if (pipStream) { pipStream.getTracks().forEach(t => t.stop()); pipStream = null }
+  v.srcObject = null
+  renderPip()
+}
+// 小窓が開いている間だけ、**音の出口を小窓の音声トラックへ移す**。
+// これで BGM も効果音も、そして音量を下げているときの相手の声も、**背面で鳴り続ける**
+// （iOS は「メディア再生」として扱うので AudioContext を中断しない）。
+// 二重に鳴らさないよう、移したら ctx.destination からは外す。
+const pipAudio = on => {
+  if (!appOut || !audioCtx || !pipDest) return
+  try {
+    if (on) {
+      appOut.disconnect(audioCtx.destination)
+      appOut.connect(pipDest)
+      $('pipVideo').muted = false          // ★ここで小窓が音を鳴らす側になる
+      $('pipVideo').play().catch(() => {})
+    } else {
+      appOut.disconnect(pipDest)
+      appOut.connect(audioCtx.destination)
+      $('pipVideo').muted = true
+    }
+  } catch {}
+}
+const renderPip = () => {
+  const b = $('pip')
+  b.hidden = !call.joinedId || !pipCan()
+  b.textContent = pipOn() ? '📱 小窓をとじる' : '📱 小窓'
+}
+// ★PiP の要求は**押した瞬間に同期で**呼ぶこと。await を1つ挟むだけでユーザー操作の文脈が
+//   切れて NotAllowedError になる（計測ページで実際に踏んだ）。映像は join の時点で
+//   再生済みにしてあるので、ここでは要求だけを出す。
+$('pip').onclick = () => {
+  const v = $('pipVideo')
+  if (pipOn()) { stopPipFeed(); startPipFeed(); return }   // 閉じる（通話は続くので映像は作り直す）
+  try {
+    if (v.requestPictureInPicture) v.requestPictureInPicture().then(renderPip).catch(e => setState('小窓を出せませんでした（' + e.name + '）', 'warn'))
+    else if (v.webkitSetPresentationMode) { v.webkitSetPresentationMode('picture-in-picture'); renderPip() }
+  } catch (e) { setState('小窓を出せませんでした', 'warn') }
+}
+$('pipVideo').addEventListener('enterpictureinpicture', () => { pipAudio(true); renderPip() })
+// ★OS 側の × で閉じられることがあるので、**必ずイベントで戻す**（押した側だけで戻すと戻し損ねる）
+$('pipVideo').addEventListener('leavepictureinpicture', () => { pipAudio(false); renderPip() })
+// Safari（iOS）は上のイベントではなくこちらを投げる
+$('pipVideo').addEventListener('webkitpresentationmodechanged', () => {
+  pipAudio($('pipVideo').webkitPresentationMode === 'picture-in-picture'); renderPip()
+})
+
 // ─ 通知音 ─ 音声ファイルもCDNも使わず WebAudio で合成する（単一ファイルのまま）。
 // 入室・退出音は既定オン／新しい部屋の音は既定オフ（オプトイン）。設定は localStorage に保存。
 // キーは定数にしておく（生文字列を読み書き2箇所ずつに散らすと、片方だけ直して設定が
@@ -2160,7 +2293,7 @@ const playTones = (notes, vol = 0.11) => {
     g.gain.setValueAtTime(0.0001, st)
     g.gain.exponentialRampToValueAtTime(vol, st + 0.012)        // やわらかいアタック
     g.gain.exponentialRampToValueAtTime(0.0001, st + d)         // 減衰
-    o.connect(g); g.connect(ctx.destination)
+    o.connect(g); g.connect(ensureOut())
     o.start(st); o.stop(st + d + 0.03)
   })
 }
@@ -2202,6 +2335,7 @@ const stopVad = () => {
   analysers.forEach((_, uid) => removeAnalyser(uid))
   if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null }
   masterGain = null   // ctx と寿命を合わせる（閉じた ctx のノードは次の join では使えない）
+  appOut = null; pipDest = null   // 同上（出口も作り直す）
 }
 let roomRms = 0   // 部屋の中でいちばん大きい音量（EQの高さを駆動する）。速く上がり・ゆっくり下がる
 const vadTick = () => {
@@ -2551,7 +2685,7 @@ const noiseHit = (ctx, { at, dur, freq, q = 1, gain = 0.05, type = 'bandpass' })
   const g = ctx.createGain()
   g.gain.setValueAtTime(gain * REACT_VOL, at)
   g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
-  s.connect(f); f.connect(g); g.connect(ctx.destination)
+  s.connect(f); f.connect(g); g.connect(ensureOut())
   s.start(at); s.stop(at + dur + 0.02)
 }
 // 音程のある粒。to を渡すと滑らせる（驚き・上昇・下降に使う）
@@ -2562,7 +2696,7 @@ const toneHit = (ctx, { at, dur, freq, to, gain = 0.05, type = 'sine' }) => {
   g.gain.setValueAtTime(0.0001, at)
   g.gain.exponentialRampToValueAtTime(gain * REACT_VOL, at + 0.008)
   g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
-  o.connect(g); g.connect(ctx.destination)
+  o.connect(g); g.connect(ensureOut())
   o.start(at); o.stop(at + dur + 0.03)
 }
 // FM の粒。**キャリアを非整数比のモジュレータで深く変調する**と、倍音が整数列から外れて
@@ -2578,7 +2712,7 @@ const fmHit = (ctx, { at, dur, carrier, ratio, index, gain = 0.05 }) => {
   const g = ctx.createGain()
   g.gain.setValueAtTime(gain * REACT_VOL, at)
   g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
-  c.connect(g); g.connect(ctx.destination)
+  c.connect(g); g.connect(ensureOut())
   m.start(at); c.start(at); m.stop(at + dur + 0.02); c.stop(at + dur + 0.02)
 }
 // REACTIONS と**同じ並び**であること（添字で引いている）
@@ -3433,6 +3567,7 @@ const runJoin = async () => {
   addAnalyser('self', call.stream)   // 自分のマイク音量でも絵文字を跳ねさせる（ミュート中は無反応）
   startEq()                       // 点字EQの飾りを開始（音量で下から伸びる）
   startBgm()                      // BGM（選ばれていれば）。部屋名から曲を決めるので通信は増えない
+  startPipFeed(); renderPip()     // 小窓（PiP）の映像を用意してボタンを出す。**押す前に再生しておく**
   stopAudioWatch(); call.audioWatch = setInterval(checkAudioArrival, 2000)   // 音が来ない相手に送り直しを頼む監視を開始
   clearInterval(call.iceTimer)   // 長い通話の途中で資格情報が切れないよう、定期的に入れ替える
   call.iceTimer = setInterval(refreshIce, ICE_REFRESH_MS)
@@ -3486,6 +3621,7 @@ const resetJoinedUI = () => {
   $('sndPeerRow').style.display = 'none'
   $('sndReactRow').style.display = 'none'
   $('retry').hidden = true
+  $('pip').hidden = true
   roomInput.disabled = false; lockProfile(false)
   $('setupFields').classList.remove('collapsed')   // join で畳んだ入力欄を戻す
 }
@@ -3588,6 +3724,7 @@ const leaveCall = () => {
   clearTimeout(call.capTimer)                                  // 満室判定の待ちも捨てる
   stopAudioWatch()   // 音声到着の監視を停止＋待ち時間と催促回数の記憶を捨てる
   stopBgm()                          // BGM を止める（**stopVad より先に**＝AudioContext を閉じる前に畳む）
+  stopPipFeed()                      // 小窓を閉じて映像トラックも止める（join/leave の対称）
   stopVad(); resetTalk(); stopEq()   // 解析ループ停止＋AudioContext破棄（join が確保したものを全て解放）
   stopHeartbeat()  // ロビーへ「退出した」を通知＋定期発信を停止（ロビー部屋自体は閲覧用に残す）
   // 公開Nostrへの署名鍵を捨てる。**同じ鍵を使い続けると、リレーを見ている人に「同じ人が
