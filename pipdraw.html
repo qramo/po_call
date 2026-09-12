@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>小窓が黒い問題の切り分け（ぽっと通話）</title>
+<!--
+  小窓（PiP）が iPhone で真っ黒になる件の切り分け（ベータ路のみ・恒久設置しない）
+
+  ★切り分けたいのは2つ。混ぜると直しようがない：
+    ① canvas → captureStream の時点で黒い（＝描画されていないと iOS にみなされている）
+    ② ストリームには絵があるのに、PiP の表示だけ黒い（＝iOS の PiP が MediaStream を描けない）
+  ①は**端末の画面を見なくても判定できる**：流れている映像を1フレーム取り出して色数を数える。
+  ②は人が小窓を見るしかない。
+-->
+<style>
+  :root{ color-scheme: dark }
+  body{ margin:0; padding:16px; background:#0a1120; color:#eef2f8;
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif; line-height:1.7 }
+  h1{ font-size:18px; margin:0 0 6px }
+  p.lead{ margin:0 0 14px; font-size:13px; color:#9fb0c7 }
+  .card{ background:#111b2e; border-radius:14px; padding:14px; margin-bottom:12px }
+  .card h2{ font-size:15px; margin:0 0 4px }
+  .note{ font-size:12px; color:#6f7f96; margin:2px 0 8px }
+  button{ width:100%; margin-top:6px; padding:13px; border:0; border-radius:12px;
+    font-size:15px; font-weight:700; background:#1d2740; color:#cfe }
+  button.go{ background:#00e5cc; color:#04202b }
+  .res{ font-size:13px; margin-top:8px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace }
+  .ok{ color:#8fe9de } .ng{ color:#ff8f6e }
+  #log{ background:#060c17; border-radius:12px; padding:12px; font-size:12px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre-wrap; word-break:break-all }
+  /* A：本来の大きさで描かせ、外側で1pxに切り抜く（いまアプリに入れた形） */
+  .clip{ position:fixed; right:0; bottom:0; width:1px; height:1px; overflow:hidden; opacity:.01; pointer-events:none }
+  .clip canvas{ display:block; width:480px; height:270px }
+  /* B：画面にそのまま出す（いちばん確実に描かれるはず） */
+  .shown canvas{ display:block; width:100%; max-width:320px; border-radius:10px }
+  /* C：画面外へ飛ばす（以前の壊れていた形＝対照） */
+  .off{ position:fixed; left:-9999px; top:0 }
+  video{ position:fixed; left:-9999px; width:160px; height:90px }
+</style>
+</head>
+<body>
+<h1>🖼 小窓が黒い問題の切り分け</h1>
+<p class="lead">3つの置き方で canvas を流し、<b>①ストリームに絵が乗っているか</b>（自動判定）と
+<b>②小窓に絵が出るか</b>（目で確認）を分けて見ます。<br>
+各ボタンを押すと自動判定が出ます。<b>「小窓を出す」を押したら、実際の小窓が黒いかどうか</b>を教えてください。</p>
+
+<div class="card" id="cardA">
+  <h2>A：本来の大きさで描き、1pxに切り抜く</h2>
+  <p class="note">いまアプリに入れた形。潰さずに「隠す」。</p>
+  <div class="clip"><canvas id="cvA" width="480" height="270"></canvas></div>
+  <button class="go" data-k="A">A を調べる</button>
+  <button data-pip="A">A で小窓を出す</button>
+  <div class="res" id="resA"></div>
+</div>
+
+<div class="card" id="cardB">
+  <h2>B：画面にそのまま出す</h2>
+  <p class="note">いちばん確実に描かれるはずの形（基準）。</p>
+  <div class="shown"><canvas id="cvB" width="480" height="270"></canvas></div>
+  <button class="go" data-k="B">B を調べる</button>
+  <button data-pip="B">B で小窓を出す</button>
+  <div class="res" id="resB"></div>
+</div>
+
+<div class="card" id="cardC">
+  <h2>C：画面外へ飛ばす（対照）</h2>
+  <p class="note">以前の壊れていた形。ここが黒いなら「描かれていないと黒くなる」が確定。</p>
+  <div class="off"><canvas id="cvC" width="480" height="270"></canvas></div>
+  <button class="go" data-k="C">C を調べる</button>
+  <button data-pip="C">C で小窓を出す</button>
+  <div class="res" id="resC"></div>
+</div>
+
+<!-- ★3つぶんの <video> を**最初から繋いで再生しておく**。押した瞬間に srcObject を
+     差し替えると readyState が戻り、PiP の要求が弾かれる（計測ページで踏んだのと同じ罠）。 -->
+<video id="vA" playsinline muted></video>
+<video id="vB" playsinline muted></video>
+<video id="vC" playsinline muted></video>
+
+<div class="card">
+  <h2>記録（そのまま送ってください）</h2>
+  <div id="log">…</div>
+  <button id="copy">📋 コピー</button>
+</div>
+
+<script>
+const $ = id => document.getElementById(id)
+const lines = []
+const log = (s, cls) => {
+  lines.push(s)
+  const el = document.createElement('div')
+  if (cls) el.className = cls
+  el.textContent = s
+  if ($('log').textContent === '…') $('log').textContent = ''
+  $('log').appendChild(el)
+}
+log('UA: ' + navigator.userAgent)
+log('動画PiP: ' + (document.pictureInPictureEnabled ? '使える'
+  : (HTMLVideoElement.prototype.webkitSetPresentationMode ? '使える（webkit式）' : '使えない')))
+
+const streams = {}
+// 3つとも同じ絵を描き続ける（色数で判定するので、単色にならない絵にする）
+;['A', 'B', 'C'].forEach(k => {
+  const cv = $('cv' + k), g = cv.getContext('2d')
+  const draw = () => {
+    g.fillStyle = '#0a1120'; g.fillRect(0, 0, 480, 270)
+    g.fillStyle = '#00e5cc'; g.fillRect(0, 0, 10, 270)
+    g.fillStyle = '#eef2f8'; g.font = 'bold 40px -apple-system,sans-serif'
+    g.fillText(k + ' ' + new Date().toLocaleTimeString(), 30, 90)
+    g.fillStyle = '#ffd24d'; g.font = '28px -apple-system,sans-serif'
+    g.fillText('🫖 ぽっと通話', 30, 160)
+    g.fillStyle = '#9fb0c7'; g.fillRect(30, 200, 200 + (Date.now() / 40 % 200), 14)
+    requestAnimationFrame(draw)
+  }
+  draw()
+  if (cv.captureStream) {
+    streams[k] = cv.captureStream(10)
+    const v = $('v' + k)
+    v.srcObject = streams[k]; v.muted = true; v.playsInline = true
+    v.play().catch(() => {})
+  }
+})
+
+// ①ストリームに絵が乗っているか＝**画面を見ずに判定できる**
+const inspect = async k => {
+  const s = streams[k]
+  const out = $('res' + k)
+  if (!s) { out.textContent = 'captureStream が使えません'; out.className = 'res ng'; return }
+  const v = document.createElement('video')
+  v.srcObject = s; v.muted = true; v.playsInline = true
+  await v.play().catch(() => {})
+  await new Promise(r => setTimeout(r, 800))
+  const w = v.videoWidth, h = v.videoHeight
+  if (!w) { out.textContent = '映像が来ていません（videoWidth=0）'; out.className = 'res ng'
+    log(k + ': videoWidth=0 ＝ ストリームに映像が乗っていない', 'ng'); return }
+  const c = document.createElement('canvas'); c.width = w; c.height = h
+  c.getContext('2d').drawImage(v, 0, 0)
+  const d = c.getContext('2d').getImageData(0, 0, w, h).data
+  const seen = new Set()
+  for (let i = 0; i < d.length; i += 4 * 97) seen.add(d[i] + ',' + d[i + 1] + ',' + d[i + 2])
+  const msg = k + ': ' + w + '×' + h + ' / 色数 ' + seen.size + (seen.size >= 3 ? '（絵が乗っている）' : '（**黒い**）')
+  out.textContent = msg
+  out.className = 'res ' + (seen.size >= 3 ? 'ok' : 'ng')
+  log(msg, seen.size >= 3 ? 'ok' : 'ng')
+  v.srcObject = null
+}
+document.querySelectorAll('[data-k]').forEach(b => { b.onclick = () => inspect(b.dataset.k) })
+
+// ②小窓に絵が出るか＝人が見るしかない
+document.querySelectorAll('[data-pip]').forEach(b => {
+  b.onclick = () => {
+    const k = b.dataset.pip
+    const v = $('v' + k)                 // ★押した瞬間に繋ぎ替えない（もう再生済み）
+    const legacy = () => {
+      if (!v.webkitSetPresentationMode) { log(k + ': 小窓を出せない（APIが無い）', 'ng'); return }
+      try { v.webkitSetPresentationMode('picture-in-picture'); log(k + ': 小窓を出した（webkit式）') }
+      catch (e) { log(k + ': webkit式も失敗 ' + e.name, 'ng') }
+    }
+    try {
+      if (v.requestPictureInPicture) {
+        v.requestPictureInPicture().then(() => log(k + ': 小窓を出した'))
+          .catch(e => { log(k + ': 標準方式が拒否 ' + e.name + ' → 古い方式へ'); legacy() })
+      } else legacy()
+    } catch (e) { log(k + ': 失敗 ' + e.name, 'ng'); legacy() }
+  }
+})
+
+$('copy').onclick = async () => {
+  try { await navigator.clipboard.writeText(lines.join('\n')); $('copy').textContent = '✅ コピーしました' }
+  catch (e) { $('copy').textContent = '手で選択してコピーしてください' }
+}
+</script>
+</body>
+</html>
