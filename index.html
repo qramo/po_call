@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.9.3
+  ぽっと通話〈実験版〉 v0.9.4
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -260,9 +260,17 @@
   .create > summary::-webkit-details-marker{ display:none }
   .cr-ic{ font-size:18px; line-height:1 }
   .cr-label{ font-weight:700; font-size:15px }
-  .cr-arrow{ margin-left:auto; font-size:12px; color:#00e5cc }
+  .cr-arrow{ font-size:12px; color:#00e5cc }
   .create[open] .cr-arrow{ transform:rotate(90deg) }
-  .create[open] > summary{ background:transparent; border-color:transparent; padding:4px 2px }
+  /* 開いている間は見出しを「部屋名」ラベルに変身させる（プロフィールの summary と同じ作法）。
+     枠を外して入力欄に繋げる＝独立した行を作らず、ラベルとして一体に見せる */
+  .cr-open-label{ display:none; font-size:13px; color:#9fb0c7 }
+  .create[open] .cr-ic, .create[open] .cr-label{ display:none }
+  .create[open] .cr-open-label{ display:inline }
+  .create > summary .char-count{ display:none }
+  .create[open] > summary .char-count{ display:inline }
+  .create > summary .cr-arrow{ margin-left:auto }
+  .create[open] > summary{ background:transparent; border-color:transparent; padding:4px 2px; gap:8px }
   .cr-body > div{ padding-top:2px }
   .create[hidden]{ display:none }
   .profile > summary{ list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px;
@@ -701,11 +709,10 @@
        そのつぎなので、**既定では畳んでおく**（2026-09-12・利用者の指定）。
        共有リンクから来た人は部屋名が入っているので、その場合だけ自動で開く。 -->
   <details id="createBox" class="create">
-    <summary><span class="cr-ic">🏠</span><span class="cr-label">部屋を作る</span><span class="cr-arrow">▸</span></summary>
+    <summary><span class="cr-ic">🏠</span><span class="cr-label">部屋を作る</span><span class="cr-open-label">部屋名</span><span id="roomCount" class="char-count"></span><span class="cr-arrow">▸</span></summary>
     <div class="cr-body"><div>
   <div id="roomField">
-    <label for="room" class="label-row">部屋名<span id="roomCount" class="char-count"></span></label>
-    <input id="room" placeholder="◯◯の部屋" autocomplete="off">
+    <input id="room" placeholder="◯◯の部屋" autocomplete="off" aria-label="部屋名">
     <!-- 部屋の種類。**既定は雑談部屋**（今までの部屋と同じ）。配信部屋を選んだ瞬間に鍵を作って
          共有リンクを確定させる（＝先に配ってから入れる）。
          他人の配信部屋のリンクを開いている間は JS がこの2つごと隠す（部屋の正体はURLで決まっているため） -->
@@ -1070,7 +1077,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.9.3'
+const APP_VERSION = 'v0.9.4'
 
 const $ = id => document.getElementById(id)
 
