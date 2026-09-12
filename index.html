@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.9.1
+  ぽっと通話〈実験版〉 v0.9.2
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -222,6 +222,9 @@
   .retry-btn:disabled{ opacity:.5 }
   /* 小窓に映す映像。画面には見せないが、**display:none だと PiP に入れられない**ので画面外へ逃がす */
   .pip-video{ position:fixed; left:-9999px; top:0; width:160px; height:90px; pointer-events:none }
+  /* 小窓に映す canvas。**画面外に飛ばすと iOS で描画されず真っ黒のまま流れる**ことがあるので、
+     画面の隅に極小・ほぼ透明で置いて「描かれている」状態を保つ（2026-09-12 に踏んだ） */
+  .pip-src{ position:fixed; right:0; bottom:0; width:2px; height:2px; opacity:.02; pointer-events:none }
   /* 状態はこのドットの色だけで表す（文字側に絵文字は置かない）。既定＝グレー＝未参加／退出後 */
   .dot{ display:inline-block; width:9px; height:9px; border-radius:50%; background:#48507a; margin-right:7px; vertical-align:middle }
   .dot.busy { background:#4da3ff; animation:dot-pulse 1.2s ease-in-out infinite }  /* 準備中 */
@@ -1043,7 +1046,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.9.1'
+const APP_VERSION = 'v0.9.2'
 
 const $ = id => document.getElementById(id)
 
@@ -1941,6 +1944,10 @@ const ensureMasterGain = () => {
 // Safari はストリームを繋いだ要素が生きていないと Web Audio 側で鳴らない、という癖がある。
 // 音源は VAD が既に作っている createMediaStreamSource を使い回す（同じ流れを二重に読まない）。
 const routePeer = uid => {
+  // ★'self'（自分のマイク）は**絶対に出口へ繋がない**。analysers には自分の絵文字を跳ねさせる
+  //   ための 'self' が入っているので、素直に全部回すと**自分の声がスピーカーから返る**。
+  //   2026-09-12 に利用者が発見（音量を下げると自分の声が即座に聞こえる／v0.8.7 からの実バグ）。
+  if (uid === 'self') return
   const a = analysers.get(uid)
   if (!a) return
   const els = call.audios.get(uid) || []
@@ -2168,7 +2175,7 @@ let pipDest = null      // 小窓へ流すための音声の受け口（MediaStr
 const pipCanvas = document.createElement('canvas')
 pipCanvas.width = 480; pipCanvas.height = 270
 const pipG = pipCanvas.getContext('2d')
-let pipStream = null, pipTimer = null
+let pipStream = null, pipTimer = null, pipRaf = null
 const pipOn = () => !!document.pictureInPictureElement || $('pipVideo').webkitPresentationMode === 'picture-in-picture'
 const pipCan = () => !!(document.pictureInPictureEnabled || $('pipVideo').webkitSetPresentationMode)
 
@@ -2198,9 +2205,13 @@ const drawPip = () => {
 // 映像トラックは**通話中だけ**作る（電池）。2コマ/秒で十分＝時計が動けばよい。
 const startPipFeed = () => {
   if (pipTimer) return
+  // ★**canvas を DOM に置く**。iOS は描画されていない要素の captureStream が
+  //   真っ黒のまま流れることがある（2026-09-12・実機で小窓が真っ暗だった）。
+  //   画面外へ逃がすが、レイアウトには入れておく。
+  if (!pipCanvas.isConnected) { pipCanvas.className = 'pip-src'; document.body.appendChild(pipCanvas) }
   drawPip()
   if (!pipCanvas.captureStream) return
-  pipStream = pipCanvas.captureStream(2)
+  pipStream = pipCanvas.captureStream(10)   // 2fps だと取りこぼす端末がある。10 でも負荷は小さい
   // ★音声トラックは**繋ぐ前に**足しておくこと。あとから addTrack して srcObject を繋ぎ直すと、
   //   映像の準備が一度リセットされ、PiP の要求が InvalidStateError で弾かれる（計測時に踏んだ）。
   try {
@@ -2212,12 +2223,20 @@ const startPipFeed = () => {
   } catch {}
   const v = $('pipVideo')
   v.srcObject = pipStream; v.muted = true; v.playsInline = true
+  // ★対応していれば**背面に回った時に自動で小窓へ入る**（WebKit の提案属性。Safari が実装）。
+  //   効かない環境では無視されるだけなので、付けておいて損はない。**効くかは実機で確認**。
+  try { v.autoPictureInPicture = true; v.setAttribute('autopictureinpicture', '') } catch {}
   v.play().catch(() => {})
+  // 描き直しは **rAF と setInterval の両方**で回す。rAF は滑らかだが**背面では止まる**、
+  // setInterval は粗いが背面でも動く（Safari のタブなら）。どちらかが生きていればよい。
+  const loop = () => { if (!pipTimer) return; drawPip(); pipRaf = requestAnimationFrame(loop) }
   pipTimer = setInterval(drawPip, 500)
+  pipRaf = requestAnimationFrame(loop)
 }
 const stopPipFeed = () => {
   pipAudio(false)                    // 出口を戻してから畳む（戻し忘れると音が行き場を失う）
   clearInterval(pipTimer); pipTimer = null
+  if (pipRaf) { cancelAnimationFrame(pipRaf); pipRaf = null }
   if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {})
   const v = $('pipVideo')
   try { if (v.webkitSetPresentationMode && v.webkitPresentationMode === 'picture-in-picture') v.webkitSetPresentationMode('inline') } catch {}
