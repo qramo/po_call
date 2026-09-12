@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.10.1
+  ぽっと通話〈実験版〉 v0.10.2
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -32,6 +32,8 @@
      入れており注入口はほぼ無いので、これは念のための層＋「ここ以外へ送っていない」の証明。
      ★WebRTC は CSP の管轄外。音声の宛先（Cloudflare TURN／直結時は相手の生IP）はここに書けない
      ＝将来 P2P モードを足してもこの行は変わらない。
+     ★media-src の blob: は**小窓に出す動画**のため（録画して Blob にしたものを <video> に渡す）。
+     無いと default-src 'none' に落ちて塞がれ、**小窓が空のまま**になる（T21 が捕まえた）。
      ★列挙した wss: は TRYSTERO_BASE.relayConfig.urls と**同じもの**。Trystero を上げたときに
      設定キー名が変わると黙って既定リレーへ落ちるが、それはここでブロックされて全滅する
      （静かな設定ドリフトが派手な失敗に変わる）。上げたら必ず2台で疎通確認すること。 -->
@@ -40,6 +42,7 @@
   script-src 'self' 'unsafe-inline' https://esm.sh https://static.cloudflareinsights.com;
   style-src 'self' 'unsafe-inline';
   img-src 'self' data:;
+  media-src 'self' blob:;
   connect-src 'self' https://esm.sh https://pot-turn.itsuma-kuramoto.workers.dev https://cloudflareinsights.com wss://relay.primal.net wss://purplerelay.com wss://bucket.coracle.social wss://yabu.me/v2 wss://x.kojira.io wss://relay.notoshi.win wss://relay.mostr.pub;
   manifest-src 'self';
   base-uri 'self';
@@ -947,7 +950,7 @@
       <li>🔊 音量：通話中の ⚙️ 設定タブで、<b>この通話の音だけ</b>を下げられる（動画や音楽と一緒に聞くとき用。他のアプリの音はそのまま）</li>
       <li>🎵 BGM：⚙️ 設定タブで <b>軽快な音楽</b> か <b>アンビエント空間</b> を選べる（既定はオフ。<b>自分にだけ鳴り</b>、曲は部屋名で決まります。イヤホン推奨）</li>
       <li>📱 iPhone の注意：<b>音を出す他のアプリ（写真・動画など）に切り替えると、通話の音が一時的に止まります</b>（iOS の仕様で、こちらからは防げません。ふつうの音声配信サイトでも同じです）。そのアプリの音が止まれば自動で鳴り直します</li>
-      <li>📱 小窓：通話中に <b>📱 小窓</b> を押すと、部屋名・人数・経過時間の小さな窓が最前面に浮きます（ながら通話で「いま通話中」が分かるため）。<b>iPhone では中身が黒く表示されます</b>（iOS の制限）。ホーム画面に追加したアプリでは使えません</li>
+      <li>📱 小窓：通話中に <b>📱 小窓</b> を押すと、部屋名を書いた小さな窓が最前面に浮きます。他のアプリを見ている間も<b>通話中だと分かり、タップで一発で戻れます</b>。ホーム画面に追加したアプリでは使えません</li>
       <li>👥 人数：ふつうの部屋は <b>8人</b>、📣 配信部屋は <b>15人</b>まで（全員が全員に繋がる仕組みなので、多いと音が途切れます）</li>
     </ul>
   </details>
@@ -1085,7 +1088,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.10.1'
+const APP_VERSION = 'v0.10.2'
 
 const $ = id => document.getElementById(id)
 
@@ -2280,25 +2283,74 @@ const pipCan = () => !!(document.pictureInPictureEnabled || $('pipVideo').webkit
 // 部屋名・人数・自分のマイクの状態・経過時間。文字は大きく、色数は少なく。
 const drawPip = () => {
   const w = pipCanvas.width, h = pipCanvas.height
+  // ★中身は**録った時点で固定**になる（3秒の動画をループさせるため）。だから
+  //   **古くなる情報は描かない**：人数・経過時間・ミュート状態は、開いた瞬間のまま
+  //   居座って嘘になる。出すのは「どの部屋にいるか」と「通話中であること」だけ。
+  //   代わりに**脈打つ点**を入れてある（静止画に見えないように。3秒でちょうど1周する）。
   pipG.fillStyle = '#0a1120'; pipG.fillRect(0, 0, w, h)
-  pipG.fillStyle = call.muted ? '#ff8f6e' : '#00e5cc'
-  pipG.fillRect(0, 0, 8, h)                      // 左端の帯＝ミュート中は色が変わる（遠目で分かる）
+  pipG.fillStyle = '#00e5cc'; pipG.fillRect(0, 0, 8, h)
   pipG.fillStyle = '#eef2f8'
-  pipG.font = 'bold 30px -apple-system, sans-serif'
+  pipG.font = 'bold 34px -apple-system, sans-serif'
   const name = (call.joinedId || '').split('~pk~')[0] || '通話中'
-  pipG.fillText(name.length > 13 ? name.slice(0, 12) + '…' : name, 26, 58)
+  pipG.fillText(name.length > 12 ? name.slice(0, 11) + '…' : name, 30, 120)
+  pipG.fillStyle = '#8fe9de'; pipG.font = '26px -apple-system, sans-serif'
+  pipG.fillText('🫖 ぽっと通話', 30, 70)
+  // 脈打つ点＋「通話中」
+  const t = (Date.now() % 3000) / 3000
+  const r = 7 + Math.sin(t * Math.PI * 2) * 3
+  pipG.fillStyle = '#00e5cc'
+  pipG.beginPath(); pipG.arc(40, 175, r, 0, Math.PI * 2); pipG.fill()
   pipG.fillStyle = '#9fb0c7'; pipG.font = '24px -apple-system, sans-serif'
-  pipG.fillText('👥 ' + (call.peers.size + 1) + '人', 26, 104)
-  pipG.fillStyle = call.muted ? '#ff8f6e' : '#8fe9de'
-  pipG.font = 'bold 26px -apple-system, sans-serif'
-  pipG.fillText(call.muted ? '🔇 ミュート中' : (micOff() ? '🎧 聞き役' : '🎤 通話中'), 26, 152)
-  const sec = mySeconds()
-  pipG.fillStyle = '#6f7f96'; pipG.font = '22px ui-monospace, monospace'
-  pipG.fillText(String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0'), 26, 196)
-  // 誰かが話していると下の帯が伸びる（音が来ているかが、小窓を見るだけで分かる）
-  pipG.fillStyle = '#132038'; pipG.fillRect(26, 222, w - 52, 10)
-  pipG.fillStyle = '#00e5cc'; pipG.fillRect(26, 222, Math.min(1, roomRms * 6) * (w - 52), 10)
+  pipG.fillText('通話中', 62, 184)
+  pipG.fillStyle = '#4a5a72'; pipG.font = '18px -apple-system, sans-serif'
+  pipG.fillText('タップで戻る', 30, 232)
 }
+
+// ★**録って Blob にしてから渡す**。iPhone の小窓は
+//   **ストリーム（canvas の captureStream も、WebRTC の受信映像も）を描けない**が、
+//   **MediaRecorder で作った動画（ファイルに近いもの）なら描ける**（2026-09-13・実機で確定。
+//   A〜D 全滅、E だけ成功）。**録画は参加した時点で済ませておく**こと：ボタンを押してから
+//   録ると、その数秒でユーザー操作の文脈が切れて PiP の要求が弾かれる。
+//   引き換えに**中身は録った時点で固定**になる（人数や経過時間は動かない）。部屋名は入る。
+let pipUrl = null
+const recordPipVideo = () => {
+  if (!window.MediaRecorder || !pipStream) return
+  const types = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm']
+  const type = types.find(t => { try { return MediaRecorder.isTypeSupported(t) } catch { return false } })
+  if (!type) return                       // 使えない環境ではストリームのまま（デスクトップは映る）
+  let rec
+  try { rec = new MediaRecorder(pipStream, { mimeType: type }) } catch { return }
+  const chunks = []
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data) }
+  rec.onstop = () => {
+    if (!pipStream) return                // 録り終わる前に退出していた
+    try {
+      const url = URL.createObjectURL(new Blob(chunks, { type }))
+      const v = $('pipVideo')
+      if (pipUrl) URL.revokeObjectURL(pipUrl)
+      pipUrl = url
+      v.srcObject = null
+      v.src = url; v.loop = true; v.muted = true; v.playsInline = true; v.autoplay = true
+      // ★**読み込みが終わってから再生する**。src を差し替えた直後の play() は
+      //   まだ中身が無いので失敗し、**止まったままの映像では PiP に入れない**（実際そうなった）。
+      v.addEventListener('loadeddata', () => {
+        v.play().catch(() => {})
+        clearInterval(pipTimer); pipTimer = null   // 録り終えたら描き直しは要らない（中身は固定）
+      }, { once: true })
+      v.load()
+      // ★保険：録れた動画が再生できなければ**ストリームに戻す**（デスクトップは元々それで映る）。
+      //   ここが無いと、録画に失敗した端末で小窓が空になり、PiP にも入れなくなる。
+      setTimeout(() => {
+        if (!pipStream || v.readyState >= 2) return
+        v.removeAttribute('src'); v.load()
+        v.srcObject = pipStream; v.play().catch(() => {})
+        if (pipUrl) { URL.revokeObjectURL(pipUrl); pipUrl = null }
+      }, 4000)
+    } catch {}
+  }
+  try { rec.start(); setTimeout(() => { try { rec.stop() } catch {} }, 3000) } catch {}
+}
+
 // 映像トラックは**通話中だけ**作る（電池）。2コマ/秒で十分＝時計が動けばよい。
 const startPipFeed = () => {
   if (pipTimer) return
@@ -2314,7 +2366,9 @@ const startPipFeed = () => {
   }
   drawPip()
   if (!pipCanvas.captureStream) return
-  pipStream = pipCanvas.captureStream(2)    // 秒1回描くので 2fps で足りる
+  // ★録画に使うので 10fps 取る。2fps だと3秒で6コマしか無く、**再生できない動画**になった。
+  //   録り終えたら描き直しを止めるので、継続的な負荷にはならない。
+  pipStream = pipCanvas.captureStream(10)
   // ★小窓は**映像だけ**。音は appAudio（出口の <audio>）が常に受け持つので、
   //   小窓を開いているかどうかと音は無関係になった（2026-09-12）。
   const v = $('pipVideo')
@@ -2323,11 +2377,12 @@ const startPipFeed = () => {
   //   効かない環境では無視されるだけなので、付けておいて損はない。**効くかは実機で確認**。
   try { v.autoPictureInPicture = true; v.setAttribute('autopictureinpicture', '') } catch {}
   v.play().catch(() => {})
+  recordPipVideo()          // ★3秒ぶん録って Blob に差し替える（iPhone の小窓はこれでないと映らない）
   // ★描き直しは**1秒に1回**で十分（出しているのは人数と mm:ss だから）。
   //   **iPhone では小窓の中身が誰にも見えない**（iOS は MediaStream の映像を PiP に描けない＝
   //   2026-09-12 に4条件で実測）ので、細かく描くのは電池のむだ。見えるのはデスクトップと
   //   Safari のタブだけ。rAF は背面で止まるので使わない（setInterval なら背面でも動く）。
-  pipTimer = setInterval(drawPip, 1000)
+  pipTimer = setInterval(drawPip, 120)   // 録っている3秒だけ動く（録り終えたら止める）
 }
 const stopPipFeed = () => {
   clearInterval(pipTimer); pipTimer = null
@@ -2337,6 +2392,8 @@ const stopPipFeed = () => {
   try { if (v.webkitSetPresentationMode && v.webkitPresentationMode === 'picture-in-picture') v.webkitSetPresentationMode('inline') } catch {}
   if (pipStream) { pipStream.getTracks().forEach(t => t.stop()); pipStream = null }
   v.srcObject = null
+  v.removeAttribute('src'); v.load()
+  if (pipUrl) { URL.revokeObjectURL(pipUrl); pipUrl = null }
   renderPip()
 }
 const renderPip = () => {
