@@ -73,11 +73,21 @@
   <div class="res" id="resC"></div>
 </div>
 
-<!-- ★3つぶんの <video> を**最初から繋いで再生しておく**。押した瞬間に srcObject を
+<div class="card" id="cardD">
+  <h2>D：ループバック通話を通して「相手の映像」に化けさせる</h2>
+  <p class="note">★本命。iOS は**ビデオ通話の相手の映像**なら小窓に描ける（PiP はそれ用に作られている）。
+    canvas の映像を RTCPeerConnection で折り返し、<b>受信側のストリーム</b>を小窓に出す。</p>
+  <button class="go" data-k="D">D を調べる</button>
+  <button data-pip="D">D で小窓を出す</button>
+  <div class="res" id="resD"></div>
+</div>
+
+<!-- ★4つぶんの <video> を**最初から繋いで再生しておく**。押した瞬間に srcObject を
      差し替えると readyState が戻り、PiP の要求が弾かれる（計測ページで踏んだのと同じ罠）。 -->
 <video id="vA" playsinline muted></video>
 <video id="vB" playsinline muted></video>
 <video id="vC" playsinline muted></video>
+<video id="vD" playsinline muted></video>
 
 <div class="card">
   <h2>記録（そのまま送ってください）</h2>
@@ -122,6 +132,29 @@ const streams = {}
     v.play().catch(() => {})
   }
 })
+
+// D：canvas の映像を RTCPeerConnection で折り返し、**受信側のストリーム**を小窓に出す。
+// iOS の PiP は「相手の映像」を描く前提で作られているので、同じ形にしてやれば描けるかもしれない。
+;(async () => {
+  try {
+    const src = $('cvA').captureStream ? $('cvA').captureStream(10) : null
+    if (!src) return
+    const pc1 = new RTCPeerConnection(), pc2 = new RTCPeerConnection()
+    pc1.addEventListener('icecandidate', e => e.candidate && pc2.addIceCandidate(e.candidate))
+    pc2.addEventListener('icecandidate', e => e.candidate && pc1.addIceCandidate(e.candidate))
+    const got = new Promise(res => { pc2.ontrack = e => res(e.streams[0]) })
+    src.getTracks().forEach(t => pc1.addTrack(t, src))
+    const offer = await pc1.createOffer()
+    await pc1.setLocalDescription(offer); await pc2.setRemoteDescription(offer)
+    const ans = await pc2.createAnswer()
+    await pc2.setLocalDescription(ans); await pc1.setRemoteDescription(ans)
+    streams.D = await got
+    const v = $('vD')
+    v.srcObject = streams.D; v.muted = true; v.playsInline = true
+    await v.play().catch(() => {})
+    log('D: ループバックの受信ストリームを用意した', 'ok')
+  } catch (e) { log('D: 用意できなかった ' + e.name, 'ng') }
+})()
 
 // ①ストリームに絵が乗っているか＝**画面を見ずに判定できる**
 const inspect = async k => {
