@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.9.8
+  ぽっと通話〈実験版〉 v0.9.9
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -222,9 +222,9 @@
   .retry-btn:disabled{ opacity:.5 }
   /* 小窓に映す映像。画面には見せないが、**display:none だと PiP に入れられない**ので画面外へ逃がす */
   .pip-video{ position:fixed; left:-9999px; top:0; width:160px; height:90px; pointer-events:none }
-  /* 小窓に映す canvas。**画面外に飛ばしたり極小に潰したりすると、iOS は「描かれていない」と
-     みなして真っ黒のまま流す**。そこで **canvas は本来の大きさのまま描かせ、外側の枠で
-     1px に切り抜く**（overflow:hidden）。潰すのではなく隠す、が要点。 */
+  /* 小窓に映す canvas。★**置き方は黒さの原因ではなかった**（2026-09-12 に4条件で実測。
+     画面にそのまま出しても iPhone の小窓は黒い＝iOS は MediaStream の映像を PiP に描けない）。
+     とはいえ本来の大きさで描かせて枠で切り抜くのが素直なので、この形のまま残す。 */
   .pip-clip{ position:fixed; right:0; bottom:0; width:1px; height:1px; overflow:hidden;
     opacity:.01; pointer-events:none }
   .pip-src{ display:block; width:480px; height:270px }
@@ -1081,7 +1081,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.9.8'
+const APP_VERSION = 'v0.9.9'
 
 const $ = id => document.getElementById(id)
 
@@ -2262,7 +2262,7 @@ const startPipFeed = () => {
   }
   drawPip()
   if (!pipCanvas.captureStream) return
-  pipStream = pipCanvas.captureStream(10)   // 2fps だと取りこぼす端末がある。10 でも負荷は小さい
+  pipStream = pipCanvas.captureStream(2)    // 秒1回描くので 2fps で足りる
   // ★音声トラックは**繋ぐ前に**足しておくこと。あとから addTrack して srcObject を繋ぎ直すと、
   //   映像の準備が一度リセットされ、PiP の要求が InvalidStateError で弾かれる（計測時に踏んだ）。
   try {
@@ -2278,11 +2278,11 @@ const startPipFeed = () => {
   //   効かない環境では無視されるだけなので、付けておいて損はない。**効くかは実機で確認**。
   try { v.autoPictureInPicture = true; v.setAttribute('autopictureinpicture', '') } catch {}
   v.play().catch(() => {})
-  // 描き直しは **rAF と setInterval の両方**で回す。rAF は滑らかだが**背面では止まる**、
-  // setInterval は粗いが背面でも動く（Safari のタブなら）。どちらかが生きていればよい。
-  const loop = () => { if (!pipTimer) return; drawPip(); pipRaf = requestAnimationFrame(loop) }
-  pipTimer = setInterval(drawPip, 500)
-  pipRaf = requestAnimationFrame(loop)
+  // ★描き直しは**1秒に1回**で十分（出しているのは人数と mm:ss だから）。
+  //   **iPhone では小窓の中身が誰にも見えない**（iOS は MediaStream の映像を PiP に描けない＝
+  //   2026-09-12 に4条件で実測）ので、細かく描くのは電池のむだ。見えるのはデスクトップと
+  //   Safari のタブだけ。rAF は背面で止まるので使わない（setInterval なら背面でも動く）。
+  pipTimer = setInterval(drawPip, 1000)
 }
 const stopPipFeed = () => {
   pipAudio(false)                    // 出口を戻してから畳む（戻し忘れると音が行き場を失う）
