@@ -63,9 +63,15 @@
   <label class="mode"><input type="radio" name="mode" value="pip"> 🖼 小窓を出す</label>
   <p class="note">小窓の間はページが前面扱いのまま生きる、という仮説の検証。</p>
   <label class="mode"><input type="radio" name="mode" value="pipaudio"> 🖼🔊 小窓に<b>音声も載せる</b></label>
+  <p class="note">※ ここまでで判明：これだけが背面でも生き残った（175秒・中断ゼロ）。</p>
+  <label class="mode"><input type="radio" name="mode" value="elaudio"> 🔊 <b>音を &lt;audio&gt; に流すだけ（小窓なし）</b></label>
+  <p class="note">★未検証の本命。成功した回は「音を &lt;video&gt; に載せ、その &lt;video&gt; を小窓に出した」ので、
+    <b>効いたのが「小窓」なのか「メディア要素に載せたこと」なのか</b>を切り分けていない。
+    ここが通るなら<b>小窓は要らない</b>（＝黒い窓を出さずに済む）。</p>
   <p class="note">★本命。音を <b>小窓のストリームの音声トラック</b>として流し、
     <code>&lt;video&gt;</code> の再生に乗せる＝<b>背面で生きる側の出口</b>に回す。</p>
   <video id="v" playsinline></video>
+  <audio id="elA" playsinline></audio>
 </div>
 
 <div class="card">
@@ -207,6 +213,17 @@ $('b3').onclick = () => {
       mark('🔊 出口を小窓の音声トラックに切り替えた（ctx.destination は外した）')
     } catch (e) { mark('切り替えに失敗: ' + e.name) }
   }
+  if (mode === 'elaudio') {
+    // ★小窓を出さずに、音だけ**メディア要素（<audio>）**へ流す。
+    //   ctx.destination は外す（二重に鳴らさないため）。
+    try {
+      master.disconnect(ctx.destination)
+      const a = $('elA')
+      a.srcObject = dest.stream; a.muted = false; a.playsInline = true
+      a.play().then(() => mark('🔊 音を <audio> に流した（小窓なし）'))
+        .catch(e => mark('<audio> の再生に失敗: ' + e.name))
+    } catch (e) { mark('切り替えに失敗: ' + e.name) }
+  }
   if (mode === 'pip' || mode === 'pipaudio') enterPip()      // ★同期で
   measuring = true; hidTotal = 0; hidAt = 0
   base = { wall: Date.now(), ct: ctx.currentTime }
@@ -252,6 +269,9 @@ const finish = () => {
   // 出口を既定（ctx.destination）へ戻す＝次の計測に前の条件を持ち越さない
   if (mode === 'pipaudio') {
     try { $('v').muted = true; master.connect(ctx.destination) } catch (e) {}
+  }
+  if (mode === 'elaudio') {
+    try { const a = $('elA'); a.pause(); a.srcObject = null; master.connect(ctx.destination) } catch (e) {}
   }
   $('b3').disabled = false; $('b4').disabled = true
 }
