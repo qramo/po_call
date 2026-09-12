@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.9.7
+  ぽっと通話〈実験版〉 v0.9.8
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -222,9 +222,12 @@
   .retry-btn:disabled{ opacity:.5 }
   /* 小窓に映す映像。画面には見せないが、**display:none だと PiP に入れられない**ので画面外へ逃がす */
   .pip-video{ position:fixed; left:-9999px; top:0; width:160px; height:90px; pointer-events:none }
-  /* 小窓に映す canvas。**画面外に飛ばすと iOS で描画されず真っ黒のまま流れる**ことがあるので、
-     画面の隅に極小・ほぼ透明で置いて「描かれている」状態を保つ（2026-09-12 に踏んだ） */
-  .pip-src{ position:fixed; right:0; bottom:0; width:2px; height:2px; opacity:.02; pointer-events:none }
+  /* 小窓に映す canvas。**画面外に飛ばしたり極小に潰したりすると、iOS は「描かれていない」と
+     みなして真っ黒のまま流す**。そこで **canvas は本来の大きさのまま描かせ、外側の枠で
+     1px に切り抜く**（overflow:hidden）。潰すのではなく隠す、が要点。 */
+  .pip-clip{ position:fixed; right:0; bottom:0; width:1px; height:1px; overflow:hidden;
+    opacity:.01; pointer-events:none }
+  .pip-src{ display:block; width:480px; height:270px }
   /* 状態はこのドットの色だけで表す（文字側に絵文字は置かない）。既定＝グレー＝未参加／退出後 */
   .dot{ display:inline-block; width:9px; height:9px; border-radius:50%; background:#48507a; margin-right:7px; vertical-align:middle }
   .dot.busy { background:#4da3ff; animation:dot-pulse 1.2s ease-in-out infinite }  /* 準備中 */
@@ -1078,7 +1081,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.9.7'
+const APP_VERSION = 'v0.9.8'
 
 const $ = id => document.getElementById(id)
 
@@ -2250,7 +2253,13 @@ const startPipFeed = () => {
   // ★**canvas を DOM に置く**。iOS は描画されていない要素の captureStream が
   //   真っ黒のまま流れることがある（2026-09-12・実機で小窓が真っ暗だった）。
   //   画面外へ逃がすが、レイアウトには入れておく。
-  if (!pipCanvas.isConnected) { pipCanvas.className = 'pip-src'; document.body.appendChild(pipCanvas) }
+  if (!pipCanvas.isConnected) {
+    pipCanvas.className = 'pip-src'
+    const clip = document.createElement('div')
+    clip.className = 'pip-clip'
+    clip.appendChild(pipCanvas)
+    document.body.appendChild(clip)
+  }
   drawPip()
   if (!pipCanvas.captureStream) return
   pipStream = pipCanvas.captureStream(10)   // 2fps だと取りこぼす端末がある。10 でも負荷は小さい
