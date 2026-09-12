@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.9.9
+  ぽっと通話〈実験版〉 v0.10.0
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -843,6 +843,9 @@
     <div id="peerNotice" class="audio-warn" hidden></div>
     <!-- 小窓（PiP）の中身。canvas に描いた絵を映像トラックにして、この <video> を PiP に入れる。
          **display:none にしないこと**（消えている要素は PiP に入れられない）。画面外に置く。 -->
+    <!-- このアプリが合成する音（BGM・効果音・音量調整を通した相手の声）の出口。
+         **スピーカーへ直接ではなく、この要素に流す**（iPhone で音量が確保でき、背面でも中断されない） -->
+    <audio id="appAudio" playsinline aria-hidden="true"></audio>
     <video id="pipVideo" class="pip-video" playsinline muted aria-hidden="true"></video>
     <div id="eq" class="eq" hidden aria-hidden="true"></div>
     <div style="margin-top:10px" id="shareWrap" hidden>
@@ -943,7 +946,7 @@
       <li>🔔 音：入室・退出や新しい部屋を音で知らせる（それぞれオン/オフ。新しい部屋の音はタブを開いている間だけ）</li>
       <li>🔊 音量：通話中の ⚙️ 設定タブで、<b>この通話の音だけ</b>を下げられる（動画や音楽と一緒に聞くとき用。他のアプリの音はそのまま）</li>
       <li>🎵 BGM：⚙️ 設定タブで <b>軽快な音楽</b> か <b>アンビエント空間</b> を選べる（既定はオフ。<b>自分にだけ鳴り</b>、曲は部屋名で決まります。イヤホン推奨）</li>
-      <li>📱 小窓：通話中に <b>📱 小窓</b> を押すと、部屋名・人数・経過時間の小さな窓が最前面に浮きます。<b>iPhone では、これを出しておくと他のアプリを見ている間や画面を消している間も BGM・効果音が鳴り続けます</b>（出していないと止まります）。ホーム画面に追加したアプリでは使えません</li>
+      <li>📱 小窓：通話中に <b>📱 小窓</b> を押すと、部屋名・人数・経過時間の小さな窓が最前面に浮きます（ながら通話で「いま通話中」が分かるため）。<b>iPhone では中身が黒く表示されます</b>（iOS の制限）。ホーム画面に追加したアプリでは使えません</li>
       <li>👥 人数：ふつうの部屋は <b>8人</b>、📣 配信部屋は <b>15人</b>まで（全員が全員に繋がる仕組みなので、多いと音が途切れます）</li>
     </ul>
   </details>
@@ -1081,7 +1084,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.9.9'
+const APP_VERSION = 'v0.10.0'
 
 const $ = id => document.getElementById(id)
 
@@ -1967,9 +1970,33 @@ let masterGain = null   // 「各ピア → マスターGain → 出力」。100
 //   なぜ移すのか：**iOS は他アプリへ切り替えると AudioContext を中断する**が、
 //   **音を小窓（<video>）の再生として流すと中断されない**（2026-09-12・175秒・実機で確定）。
 let appOut = null
+// ★**出口はスピーカー（ctx.destination）ではなく、いつも `<audio>` 要素にする**。
+//   2026-09-12・iPhone 実機で分かったこと：
+//   ・`ctx.destination` から鳴らすと **iPhone ではほとんど聞こえない**（耳を近づけて
+//     「チリチリ」程度。BGM も効果音もずっとこれだった）
+//   ・**メディア要素に載せると普通の音量で鳴る**（iOS は再生の音量で扱うため）
+//   ・おまけに**他アプリへ切り替えても AudioContext が中断されない**（背面でも鳴り続ける）
+//   小窓（PiP）でも同じ効果が出ていたが、**効いていたのは小窓ではなくメディア要素**だった。
+//   ＝黒い小窓を出さなくても、BGM・効果音・音量調整が背面で生きる。
+let outDest = null
 const ensureOut = () => {
   const ctx = ensureAudioCtx()
-  if (!appOut) { appOut = ctx.createGain(); appOut.connect(ctx.destination) }
+  if (appOut) return appOut
+  appOut = ctx.createGain()
+  try {
+    outDest = ctx.createMediaStreamDestination()
+    appOut.connect(outDest)
+    const el = $('appAudio')
+    el.srcObject = outDest.stream; el.playsInline = true; el.muted = false
+    el.play().catch(() => {
+      // 自動再生を止められた＝鳴らす先が無い。**素のスピーカーに繋ぎ直して**音を失わない
+      // ようにしつつ、解錠ボタンを出す（押されたら wakeAudio がやり直す）。
+      try { appOut.connect(ctx.destination) } catch {}
+      $('unlock').style.display = 'block'
+    })
+  } catch {
+    appOut.connect(ctx.destination)   // 作れない環境では従来どおり
+  }
   return appOut
 }
 
@@ -2205,18 +2232,16 @@ const wakeAudio = () => {
 document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeAudio() })
 
 // ─ 小窓（ピクチャーインピクチャー） ──────────────────────────
-// ★当初は「マイクが止まるのを防ぐ手」として作ったが、**それは誤りだった**（2026-09-10）。
-//   Safari のタブなら小窓が無くてもマイクは止まらない＝小窓は要らなかった（対照実験で判明）。
-// ★本当の値打ちは別にあった（2026-09-12・実機で確定）：**Web Audio の出口を小窓の音声トラックに
-//   載せると、他アプリ中でも画面ロック中でも AudioContext が中断されない**（175秒・中断ゼロ）。
-//   小窓だけ出しても守れない（17秒で interrupted）＝**音を <video> の再生として流すことが肝**。
-//   ＝小窓は「通話中だと分かる飾り」ではなく、**背面でも鳴らせる音の出口**にできる。
-//   ※ その配線（appOut → MediaStreamDestination → 小窓の音声トラック）は**まだ入れていない**。
-//   ※ **PWA では小窓を出せない**（NotSupportedError）ので、効くのは Safari のタブだけ。
+// ★この機能の理由は2回変わった。いまの姿だけ信じること：
+//   ①「マイクが止まるのを防ぐ手」→ **誤り**。Safari のタブなら小窓が無くてもマイクは止まらない。
+//   ②「背面でも音を鳴らすための出口」→ **効いていたのは小窓ではなくメディア要素**だった。
+//      いまは出口を appAudio（<audio>）に常時繋いでいるので、**小窓と音は無関係**。
+//   ③ いまの役割＝**通話中だと分かる小窓**（部屋名・人数・ミュート・経過時間）。
+//      ※ **iPhone では中身が必ず黒い**（iOS は MediaStream の映像を PiP に描けない＝4条件で実測）。
+//      ※ **PWA では小窓自体を出せない**（NotSupportedError）。
 // ★**Document PiP（任意のDOMを小窓にする）はスマホでは使えない**（Chrome Android も
 //   iOS Safari も非対応）。使えるのは `<video>` の従来型 PiP だけなので、
 //   canvas に描いた絵を映像トラックにして流し込む。「筋が悪い」どころか唯一の道。
-let pipDest = null      // 小窓へ流すための音声の受け口（MediaStreamDestination）
 const pipCanvas = document.createElement('canvas')
 pipCanvas.width = 480; pipCanvas.height = 270
 const pipG = pipCanvas.getContext('2d')
@@ -2263,15 +2288,8 @@ const startPipFeed = () => {
   drawPip()
   if (!pipCanvas.captureStream) return
   pipStream = pipCanvas.captureStream(2)    // 秒1回描くので 2fps で足りる
-  // ★音声トラックは**繋ぐ前に**足しておくこと。あとから addTrack して srcObject を繋ぎ直すと、
-  //   映像の準備が一度リセットされ、PiP の要求が InvalidStateError で弾かれる（計測時に踏んだ）。
-  try {
-    const ctx = ensureAudioCtx()
-    ensureOut()
-    if (!pipDest) pipDest = ctx.createMediaStreamDestination()
-    const atr = pipDest.stream.getAudioTracks()[0]
-    if (atr) pipStream.addTrack(atr)
-  } catch {}
+  // ★小窓は**映像だけ**。音は appAudio（出口の <audio>）が常に受け持つので、
+  //   小窓を開いているかどうかと音は無関係になった（2026-09-12）。
   const v = $('pipVideo')
   v.srcObject = pipStream; v.muted = true; v.playsInline = true
   // ★対応していれば**背面に回った時に自動で小窓へ入る**（WebKit の提案属性。Safari が実装）。
@@ -2285,7 +2303,6 @@ const startPipFeed = () => {
   pipTimer = setInterval(drawPip, 1000)
 }
 const stopPipFeed = () => {
-  pipAudio(false)                    // 出口を戻してから畳む（戻し忘れると音が行き場を失う）
   clearInterval(pipTimer); pipTimer = null
   if (pipRaf) { cancelAnimationFrame(pipRaf); pipRaf = null }
   if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {})
@@ -2294,25 +2311,6 @@ const stopPipFeed = () => {
   if (pipStream) { pipStream.getTracks().forEach(t => t.stop()); pipStream = null }
   v.srcObject = null
   renderPip()
-}
-// 小窓が開いている間だけ、**音の出口を小窓の音声トラックへ移す**。
-// これで BGM も効果音も、そして音量を下げているときの相手の声も、**背面で鳴り続ける**
-// （iOS は「メディア再生」として扱うので AudioContext を中断しない）。
-// 二重に鳴らさないよう、移したら ctx.destination からは外す。
-const pipAudio = on => {
-  if (!appOut || !audioCtx || !pipDest) return
-  try {
-    if (on) {
-      appOut.disconnect(audioCtx.destination)
-      appOut.connect(pipDest)
-      $('pipVideo').muted = false          // ★ここで小窓が音を鳴らす側になる
-      $('pipVideo').play().catch(() => {})
-    } else {
-      appOut.disconnect(pipDest)
-      appOut.connect(audioCtx.destination)
-      $('pipVideo').muted = true
-    }
-  } catch {}
 }
 const renderPip = () => {
   const b = $('pip')
@@ -2330,13 +2328,9 @@ $('pip').onclick = () => {
     else if (v.webkitSetPresentationMode) { v.webkitSetPresentationMode('picture-in-picture'); renderPip() }
   } catch (e) { setState('小窓を出せませんでした', 'warn') }
 }
-$('pipVideo').addEventListener('enterpictureinpicture', () => { pipAudio(true); renderPip() })
-// ★OS 側の × で閉じられることがあるので、**必ずイベントで戻す**（押した側だけで戻すと戻し損ねる）
-$('pipVideo').addEventListener('leavepictureinpicture', () => { pipAudio(false); renderPip() })
-// Safari（iOS）は上のイベントではなくこちらを投げる
-$('pipVideo').addEventListener('webkitpresentationmodechanged', () => {
-  pipAudio($('pipVideo').webkitPresentationMode === 'picture-in-picture'); renderPip()
-})
+$('pipVideo').addEventListener('enterpictureinpicture', renderPip)
+$('pipVideo').addEventListener('leavepictureinpicture', renderPip)
+$('pipVideo').addEventListener('webkitpresentationmodechanged', renderPip)   // Safari はこちら
 
 // ─ 通知音 ─ 音声ファイルもCDNも使わず WebAudio で合成する（単一ファイルのまま）。
 // 入室・退出音は既定オン／新しい部屋の音は既定オフ（オプトイン）。設定は localStorage に保存。
@@ -2405,7 +2399,7 @@ const stopVad = () => {
   analysers.forEach((_, uid) => removeAnalyser(uid))
   if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null }
   masterGain = null   // ctx と寿命を合わせる（閉じた ctx のノードは次の join では使えない）
-  appOut = null; pipDest = null   // 同上（出口も作り直す）
+  appOut = null; outDest = null   // 同上（出口も作り直す）
 }
 let roomRms = 0   // 部屋の中でいちばん大きい音量（EQの高さを駆動する）。速く上がり・ゆっくり下がる
 const vadTick = () => {
@@ -2624,7 +2618,7 @@ const dropAudios = id => {
   call.audios.delete(id)
 }
 
-$('unlock').onclick = () => { if (audioCtx) audioCtx.resume().then(applyVolume).catch(() => {}); allAudios().forEach(a => a.play().catch(() => {})); $('unlock').style.display = 'none' }
+$('unlock').onclick = () => { if (audioCtx) audioCtx.resume().then(applyVolume).catch(() => {}); $('appAudio').play().catch(() => {}); allAudios().forEach(a => a.play().catch(() => {})); $('unlock').style.display = 'none' }
 
 // 音が届いていない相手を見張る。まず黙って「送り直して」と頼み（相手の入り直しと同じ効果）、
 // それでも来なければ本人に知らせる。無音のまま本人が理由に気づけないのが一番まずいので、
@@ -3636,6 +3630,10 @@ const runJoin = async () => {
   syncShare()   // call.joinedId が入ったのでラベルを「共有リンク」に切り替える（冒頭の呼び出しは未参加のまま）
   addAnalyser('self', call.stream)   // 自分のマイク音量でも絵文字を跳ねさせる（ミュート中は無反応）
   startEq()                       // 点字EQの飾りを開始（音量で下から伸びる）
+  // ★音の出口（<audio>）は**参加のタップの流れの中で**用意する。最初の音が鳴るときに作ると、
+  //   そのときはもうユーザー操作の文脈が切れていて play() が弾かれ、**iPhone で音が細る側**
+  //   （ctx.destination）へ落ちてしまう。
+  try { ensureOut() } catch {}
   startBgm()                      // BGM（選ばれていれば）。部屋名から曲を決めるので通信は増えない
   startPipFeed(); renderPip()     // 小窓（PiP）の映像を用意してボタンを出す。**押す前に再生しておく**
   stopAudioWatch(); call.audioWatch = setInterval(checkAudioArrival, 2000)   // 音が来ない相手に送り直しを頼む監視を開始
