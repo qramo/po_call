@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.9.2
+  ぽっと通話〈実験版〉 v0.9.3
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -253,6 +253,18 @@
   .collapsible.collapsed{ grid-template-rows:0fr; opacity:0 }
   @media (prefers-reduced-motion:reduce){ .collapsible{ transition:none } }
   .profile{ margin-top:4px }
+  /* 「部屋を作る」トグル。プロフィールと同じ見た目にそろえる（同じ役割の行なので） */
+  .create{ margin-top:10px }
+  .create > summary{ list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px;
+    padding:12px 14px; border-radius:12px; background:#0d1526; border:1px solid rgba(255,255,255,.12) }
+  .create > summary::-webkit-details-marker{ display:none }
+  .cr-ic{ font-size:18px; line-height:1 }
+  .cr-label{ font-weight:700; font-size:15px }
+  .cr-arrow{ margin-left:auto; font-size:12px; color:#00e5cc }
+  .create[open] .cr-arrow{ transform:rotate(90deg) }
+  .create[open] > summary{ background:transparent; border-color:transparent; padding:4px 2px }
+  .cr-body > div{ padding-top:2px }
+  .create[hidden]{ display:none }
   .profile > summary{ list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px;
     padding:12px 14px; border-radius:12px; background:#0d1526; border:1px solid rgba(255,255,255,.12);
     transition:padding .28s ease, background-color .28s ease, border-color .28s ease }
@@ -685,6 +697,12 @@
     </div></div>
   </details>
 
+  <!-- ★導線の優先順位：**名前を決める → ロビーから部屋を選ぶ**。部屋を新しく作るのは
+       そのつぎなので、**既定では畳んでおく**（2026-09-12・利用者の指定）。
+       共有リンクから来た人は部屋名が入っているので、その場合だけ自動で開く。 -->
+  <details id="createBox" class="create">
+    <summary><span class="cr-ic">🏠</span><span class="cr-label">部屋を作る</span><span class="cr-arrow">▸</span></summary>
+    <div class="cr-body"><div>
   <div id="roomField">
     <label for="room" class="label-row">部屋名<span id="roomCount" class="char-count"></span></label>
     <input id="room" placeholder="◯◯の部屋" autocomplete="off">
@@ -696,13 +714,17 @@
       <label class="snd-opt"><input type="radio" name="kind" id="kindChat" checked> 🏠 雑談部屋にする（全員で話せます）</label>
     </div>
   </div>
+      <!-- 参加ボタンもこの中。**部屋名と対で使うもの**なので、畳んだときに一緒に消えるのが素直
+           （ロビーから入るときはこのボタンを通らない） -->
+  <button id="join"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg><span>参加する</span></button>
+    </div></div>
+  </details>
   </div></div>
 
   <!-- 音声を有効化：出ている間はこれが最優先の操作なので、ボタン群の先頭に置く。
        未参加なら「参加する」の上、通話中なら「ミュート／退出」の上＝どちらの状態でも必ず一番上に来る。
        （参加ボタンの後ろに置くと、参加中は上・未参加時は下、と位置が入れ替わって見えてしまう） -->
   <button id="unlock">🔊 音声を有効化（タップ）</button>
-  <button id="join"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg><span>参加する</span></button>
   <div class="actions">
     <!-- 配信部屋で登壇を許されたときだけ出る。**押すまでマイクは取らない**（許可ダイアログが
          何の脈絡もなく出るのを避ける＝聞き役でいるつもりの人を驚かせない） -->
@@ -711,7 +733,7 @@
     <button id="leave"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8"/><path d="M14 3v18"/><path d="M18 12h4"/><path d="m19 9 3 3-3 3"/></svg><span>退出</span></button>
   </div>
 
-  <div class="status">
+  <div class="status" id="statusCard">
     <div class="status-head">
       <span><span class="dot" id="dot"></span><span id="state">未参加</span></span>
       <button id="pip" class="retry-btn" type="button" hidden>📱 小窓</button>
@@ -822,11 +844,13 @@
         <button id="copy">🔗 招待リンクをコピー</button>
         <button id="qr" aria-expanded="false">📱 QRコード</button>
       </div>
-      <!-- 版の表示。不具合の報告で「どの版か」が分かるように。中身は APP_VERSION から入れる。
-           β は #ver の**外**に置くこと（中に入れると test/smoke.py の T15 が版番号と誤認する） -->
-      <div class="ver"><span id="ver"></span><span id="chan"></span></div>
     </div>
   </div>
+  <!-- 版の表示。不具合の報告で「どの版か」が分かるように。中身は APP_VERSION から入れる。
+       β は #ver の**外**に置くこと（中に入れると test/smoke.py の T15 が版番号と誤認する）。
+       ★**状態カードの外**に置くこと：初期画面ではそのカードごと畳むので、中に入れると
+       版と「安定版へ」の導線が初回訪問者に見えなくなる（β から来た人の逃げ道が消える） -->
+  <div class="ver"><span id="ver"></span><span id="chan"></span></div>
 </div>
 
 <aside class="lobby">
@@ -1046,7 +1070,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.9.2'
+const APP_VERSION = 'v0.9.3'
 
 const $ = id => document.getElementById(id)
 
@@ -1364,6 +1388,7 @@ const shareUrl = () => { const n = pendingRoom(); return n ? roomUrl(n) : locati
 const syncShare = () => {
   const n = pendingRoom()
   $('shareWrap').hidden = !n
+  try { syncIdleChrome() } catch {}   // 作る前／通話前は畳んだままにする（上書きされるため後から揃える）
   if (!n) return
   const url = roomUrl(n)
   $('share').textContent = url; $('share').href = url
@@ -1641,7 +1666,12 @@ window.__potRelays = () => {
 }
 
 // 状態表示。kind は 'idle'|'busy'|'ok'|'warn'|'error' でドットの色に対応する（文字側に絵文字は置かない）
-const setState = (t, kind = 'idle') => { $('state').textContent = t; $('dot').className = 'dot' + (kind === 'idle' ? '' : ' ' + kind) }
+const setState = (t, kind = 'idle') => {
+  $('state').textContent = t; $('dot').className = 'dot' + (kind === 'idle' ? '' : ' ' + kind)
+  // ★文言が「未参加」から動いたら状態カードを必ず出す（失敗の知らせが出る場所なので）。
+  //   syncIdleChrome は後ろで定義されるので、初期化の途中で呼ばれても落ちないようにする。
+  try { syncIdleChrome() } catch {}
+}
 const setCount = () => { $('count').textContent = call.peers.size }
 
 // ミュート印のマイク斜線SVG。参加者リストとロビーのチップで共用する（ボタンのミュート表示とも同じ形）。
@@ -3606,10 +3636,37 @@ const runJoin = async () => {
   $('sndPeerRow').style.display = 'flex'   // 入室・退出音のトグルは通話中だけ表示（ミュート/退出と同じ）
   $('sndReactRow').style.display = 'flex'
   $('retry').hidden = false
-  roomInput.disabled = true; lockProfile(true); syncKindRow()
+  roomInput.disabled = true; lockProfile(true); syncKindRow(); syncCreateBox()
   // 通話中は名前も部屋名も変えられないので、入力欄ごと畳む（名前は参加者リスト、部屋名は状態表示に出ている）
   $('setupFields').classList.add('collapsed')
 }
+// 「部屋を作る」トグル。**既定は畳む**（名前 → ロビーで部屋を選ぶ、を主導線にするため）。
+// ただし**共有リンクから来た人は部屋名が入っている**ので、その場合は開いた状態で見せる
+// （畳んだままだと「参加する」が隠れて、リンクを踏んだのに入れない画面になる）。
+// 最初の画面を軽くする。**まだ何もしていない間だけ**、状態カード（未参加・0人）と
+// 招待リンクを畳んでおく＝「名前を決める → ロビーで部屋を選ぶ」だけが見えている状態にする。
+// ★「未参加」以外の文言（つなぎ中・失敗・退出しました）になったら必ず出すこと。
+//   一律に隠すと、**参加に失敗したときのエラーが出る場所ごと消える**。
+const syncIdleChrome = () => {
+  const idle = !call.joinedId && $('state').textContent === '未参加'
+  $('statusCard').hidden = idle
+  // 招待リンクは、通話中か「部屋を作る」を開いている間だけ（作る前の人には用が無い）
+  const box = $('createBox')
+  if (!roomInput.value.trim()) $('shareWrap').hidden = true
+  else $('shareWrap').hidden = !call.joinedId && !(box && box.open)
+}
+const syncCreateBox = () => {
+  const box = $('createBox')
+  if (!box) return
+  box.hidden = !!call.joinedId            // 通話中は用が無いので丸ごと隠す
+  // ★開く条件は「**URL に部屋がある**」＝共有リンクから来た人だけ。
+  //   入力欄の中身では判定できない：名前から「◯◯の部屋」が**自動で入っている**ので、
+  //   value を見ると常に開いてしまう（実際そうなった）。
+  if (roomFromHash()) box.open = true
+  syncIdleChrome()
+}
+$('createBox').addEventListener('toggle', syncIdleChrome)
+syncCreateBox()
 $('join').onclick = joinCall
 
 // ミュートボタン。アイコン＝今の状態（マイクに斜線が出る／消える）、文字＝押すと起きること。
@@ -3641,7 +3698,7 @@ const resetJoinedUI = () => {
   $('sndReactRow').style.display = 'none'
   $('retry').hidden = true
   $('pip').hidden = true
-  roomInput.disabled = false; lockProfile(false)
+  roomInput.disabled = false; lockProfile(false); syncCreateBox()
   $('setupFields').classList.remove('collapsed')   // join で畳んだ入力欄を戻す
 }
 
