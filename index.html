@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.10.2
+  ぽっと通話〈実験版〉 v0.10.3
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -219,10 +219,16 @@
   #qr{ background:#1d2740; color:#cfe; margin-top:8px; padding:10px; font-size:14px }
   .status{ margin-top:18px; padding:14px; border-radius:10px; background:#0d1526; font-size:14px; line-height:1.7 }
   /* 状態表示の右に「つなぎ直す」。共通の button{width:100%} を打ち消して小さなチップにする */
-  .status-head{ display:flex; align-items:flex-start; gap:8px }
-  .retry-btn{ flex:none; width:auto; margin:0 0 0 auto; padding:5px 11px; font-size:12px; font-weight:700;
+  /* 状態＝1行／操作＝次の行。部屋名が長くても折り返しがきれいに収まる */
+  .status-head{ display:flex; flex-direction:column; gap:8px }
+  .head-actions{ display:flex; gap:8px; justify-content:flex-end }
+  /* 出すボタンが1つも無いときは行ごと畳む（空の行が余白だけ作るのを防ぐ） */
+  .head-actions:not(:has(button:not([hidden]))){ display:none }
+  .retry-btn{ flex:none; width:auto; margin:0; padding:5px 11px; font-size:12px; font-weight:700;
+    display:inline-flex; align-items:center; gap:5px;
     background:#1d2740; color:#cfe; border:1px solid rgba(255,255,255,.12); border-radius:999px; white-space:nowrap }
   .retry-btn:disabled{ opacity:.5 }
+  .retry-btn svg{ width:14px; height:14px; flex:none }
   /* 小窓に映す映像。画面には見せないが、**display:none だと PiP に入れられない**ので画面外へ逃がす */
   .pip-video{ position:fixed; left:-9999px; top:0; width:160px; height:90px; pointer-events:none }
   /* 小窓に映す canvas。★**置き方は黒さの原因ではなかった**（2026-09-12 に4条件で実測。
@@ -748,10 +754,17 @@
   </div>
 
   <div class="status" id="statusCard">
+    <!-- ★状態は1行まるごと使う。チップと同じ行に入れると、**部屋名が長いときに
+         変なところで折れて不細工になる**（2026-09-13・利用者の指摘）。操作は次の行へ。 -->
     <div class="status-head">
-      <span><span class="dot" id="dot"></span><span id="state">未参加</span></span>
-      <button id="pip" class="retry-btn" type="button" hidden>📱 小窓</button>
-      <button id="retry" class="retry-btn" type="button" hidden>🔄 つなぎ直す</button>
+      <div class="status-line"><span class="dot" id="dot"></span><span id="state">未参加</span></div>
+      <div class="head-actions">
+        <!-- アイコンは**動画プレイヤーで広く使われている PiP の形**（枠の右下に小さい四角）。
+             「ピクチャインピクチャ」という語は表記も揺れていて一般語とは言えないので、
+             **記号だけ借りて、言葉は「小窓」**にしてある（2026-09-13・利用者と検討） -->
+        <button id="pip" class="retry-btn" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="8" height="6" rx="1" fill="currentColor" stroke="none"/></svg><span class="pip-lbl">小窓</span></button>
+        <button id="retry" class="retry-btn" type="button" hidden>🔄 つなぎ直す</button>
+      </div>
     </div>
     <div style="margin-top:8px">いま一緒にいる人：<span class="peers" id="count">0</span> 人</div>
     <!-- 人数が多くなってきたときだけ出る注意（上限に達したら言い方が変わる） -->
@@ -1088,7 +1101,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.10.2'
+const APP_VERSION = 'v0.10.3'
 
 const $ = id => document.getElementById(id)
 
@@ -2399,7 +2412,8 @@ const stopPipFeed = () => {
 const renderPip = () => {
   const b = $('pip')
   b.hidden = !call.joinedId || !pipCan()
-  b.textContent = pipOn() ? '📱 小窓をとじる' : '📱 小窓'
+  // ★textContent で丸ごと書き換えないこと（**アイコンごと消える**）。文字だけ差し替える。
+  b.querySelector('.pip-lbl').textContent = pipOn() ? '小窓をとじる' : '小窓'
 }
 // ★PiP の要求は**押した瞬間に同期で**呼ぶこと。await を1つ挟むだけでユーザー操作の文脈が
 //   切れて NotAllowedError になる（計測ページで実際に踏んだ）。映像は join の時点で
