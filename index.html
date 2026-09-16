@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.11.2
+  ぽっと通話〈実験版〉 v0.11.3
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -91,6 +91,7 @@
     --mute:#2a3550;                                             /* ミュート・閉じる・送信 */
     --border:rgba(255,255,255,.12); --border-soft:rgba(255,255,255,.10); --border-faint:rgba(255,255,255,.08);
     --tab-on:#131d30; --accent-dim:#0c2b2a; --dialog:#111a2e; --log:#0a121f;
+    --glass:rgba(34,47,78,.55); --glass-border:rgba(255,255,255,.18); --glass-shadow:rgba(0,0,0,.3);   /* ヘルプの ❌（ガラス風） */
     --join-bg:#00e5cc;                                          /* 参加する・マイクを使う（昼夜で変えない＝この色が顔） */
     /* 墨 */
     --text:#eef2f8; --sub:#9fb0c7; --note:#6f7f96; --ver:#4a5a72; --tab:#8fa0b8; --body:#cfe0f0; --chip-fg:#cfe;
@@ -130,9 +131,9 @@
     border-radius:999px; font-size:15px; line-height:1 }
   /* ガラス風（背後の本文が透けてぼける）。未対応ブラウザは上の不透明のままなので文字が透けない */
   @supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-    .help-x{ background:rgba(34,47,78,.55); border-color:rgba(255,255,255,.18); color:var(--text);
+    .help-x{ background:var(--glass); border-color:var(--glass-border); color:var(--text);
       -webkit-backdrop-filter:blur(10px) saturate(1.5); backdrop-filter:blur(10px) saturate(1.5);
-      box-shadow:0 2px 10px rgba(0,0,0,.3) }
+      box-shadow:0 2px 10px var(--glass-shadow) }
   }
   .help-dialog h2{ margin:0 0 12px; font-size:18px }
   .help-dialog h3{ margin:22px 0 8px; font-size:14px; color:var(--link) }
@@ -737,6 +738,7 @@
     panel:'#0d1526', chip:'#1d2740', 'chip-hover':'#26324f', 'chip-active':'#2f3d5f', mute:'#2a3550',
     border:'rgba(255,255,255,.12)', 'border-soft':'rgba(255,255,255,.10)', 'border-faint':'rgba(255,255,255,.08)',
     'tab-on':'#131d30', 'accent-dim':'#0c2b2a', dialog:'#111a2e', log:'#0a121f',
+    glass:'rgba(34,47,78,.55)', 'glass-border':'rgba(255,255,255,.18)', 'glass-shadow':'rgba(0,0,0,.3)',
     text:'#eef2f8', sub:'#9fb0c7', note:'#6f7f96', ver:'#4a5a72', tab:'#8fa0b8', body:'#cfe0f0', 'chip-fg':'#ccffee',
     link:'#00e5cc', accent:'#00e5cc', 'accent-soft':'#8fe9de', 'accent-glow':'rgba(0,229,204,.45)',
     warn:'#ffd24d', 'warn-bg':'rgba(255,210,77,.10)', 'warn-border':'rgba(255,210,77,.35)',
@@ -747,6 +749,7 @@
     panel:'#fffdf9', chip:'#eae3d8', 'chip-hover':'#e0d7c9', 'chip-active':'#d5cbbb', mute:'#eae3d8',
     border:'rgba(60,45,25,.14)', 'border-soft':'rgba(60,45,25,.12)', 'border-faint':'rgba(60,45,25,.08)',
     'tab-on':'#fffdf9', 'accent-dim':'#e8f6f2', dialog:'#fffdf9', log:'#f1ebe1',
+    glass:'rgba(255,255,255,.6)', 'glass-border':'rgba(60,45,25,.18)', 'glass-shadow':'rgba(0,0,0,.10)',
     /* 墨は濃緑（2026-09-16・利用者の選択。真っ黒に近い墨は暖かい紙の上で硬く見える。
        ティールのリンクや「話している」枠と同じ家族なので紙になじむ）。注記は比 4.5 を切らない濃さ */
     text:'#1e3a33', sub:'#4c6b61', note:'#5e766d', ver:'#96a49e', tab:'#5e766d', body:'#2c4a42', 'chip-fg':'#22453c',
@@ -759,13 +762,14 @@
     panel:'#ffffff', chip:'#e3ebf5', 'chip-hover':'#d6e2f0', 'chip-active':'#c8d7e8', mute:'#e3ebf5',
     border:'rgba(15,36,56,.14)', 'border-soft':'rgba(15,36,56,.12)', 'border-faint':'rgba(15,36,56,.08)',
     'tab-on':'#ffffff', 'accent-dim':'#e6f6f3', dialog:'#ffffff', log:'#eef3f9',
+    glass:'rgba(255,255,255,.6)', 'glass-border':'rgba(15,36,56,.18)', 'glass-shadow':'rgba(0,0,0,.10)',
     text:'#0f2438', sub:'#395872', note:'#4d6a80', ver:'#8a9bb0', tab:'#5d7690', body:'#23405a', 'chip-fg':'#1d3a5a',
     link:'#00685e', accent:'#00c8b2', 'accent-soft':'#0a7a6b', 'accent-glow':'rgba(0,0,0,0)',
     warn:'#8a4a06', 'warn-bg':'rgba(255,180,0,.14)', 'warn-border':'rgba(200,140,0,.45)',
     red:'#e04f2f', 'red-glow':'rgba(224,79,47,.25)', relay:'#d86a0a',
     placeholder:'#8fa3b8', legal:'#4d6a80', 'legal-link':'#395872', 'dot-idle':'#b5c3d3' }
   const SURF = ['g1','g2','g3','card','card-border','panel','chip','chip-hover','chip-active','mute',
-    'border','border-soft','border-faint','tab-on','accent-dim','dialog','log']
+    'border','border-soft','border-faint','tab-on','accent-dim','dialog','log','glass','glass-border','glass-shadow']
   const INK = Object.keys(NIGHT).filter(k => !SURF.includes(k))
   // h＝分。p＝面の出どころ／ink＝昼側の墨の出どころ。朝焼け・夕焼けは地（g1〜g3）だけ差し替える。
   // ★snap＝その区間は**中間で一気に切り替える**（夜明け 6:00・日没 18:15）。暗い面と明るい面を
@@ -1260,7 +1264,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.11.2'
+const APP_VERSION = 'v0.11.3'
 
 const $ = id => document.getElementById(id)
 
