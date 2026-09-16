@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.11.0
+  ぽっと通話〈実験版〉 v0.11.1
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -396,7 +396,16 @@
          --panel-min:calc(var(--members-min) + 98px) }
   .panel{ min-height:var(--panel-min) }
   .members{ min-height:var(--members-min) }
-  .members.scroll{ height:var(--members-max); overflow-y:auto; overscroll-behavior:contain }
+  .members.scroll{ height:var(--members-max); overflow-y:auto; overscroll-behavior:contain;
+    /* ★はみ出した側の端を溶かす。5.5人ぶんで切ると6人目が**文字の途中でスパッと切れる**。行の背景は
+       カードと同じ色なので「箱が切れている」ではなく「文字が欠けている」ように見えた（2026-09-16・
+       7人の部屋で利用者が指摘）。まだ下に行があるときだけ下端を、上にあるときだけ上端を透明にする
+       （JS が scroll のたびに .more-below / .more-above を付け外し）。端まで送れば最後の行は普通に見える */
+    --fade-top:0px; --fade-bottom:0px;
+    -webkit-mask-image:linear-gradient(to bottom, transparent, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent);
+    mask-image:linear-gradient(to bottom, transparent, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent) }
+  .members.scroll.more-below{ --fade-bottom:34px }
+  .members.scroll.more-above{ --fade-top:22px }
   /* ひとことは**入力欄を下端に置く**（上に向かって流れが伸びる、見慣れた形）。
      ★display を書いたので [hidden] も id で書き直すこと。**.panel[hidden] より id のほうが強い**ので、
        ここを忘れるとタブを切り替えてもひとことが消えない（優先度の罠） */
@@ -737,7 +746,7 @@
     g1:'#e7dfd4', g2:'#f3efe8', g3:'#f8f5f0', card:'rgba(255,255,255,.5)', 'card-border':'rgba(60,45,25,.10)',
     panel:'#fffdf9', chip:'#eae3d8', 'chip-hover':'#e0d7c9', 'chip-active':'#d5cbbb', mute:'#eae3d8',
     border:'rgba(60,45,25,.14)', 'border-soft':'rgba(60,45,25,.12)', 'border-faint':'rgba(60,45,25,.08)',
-    'tab-on':'#fffdf9', 'accent-dim':'#dff4ee', dialog:'#fffdf9', log:'#f1ebe1',
+    'tab-on':'#fffdf9', 'accent-dim':'#e8f6f2', dialog:'#fffdf9', log:'#f1ebe1',
     text:'#2b2520', sub:'#5f554b', note:'#7a6f64', ver:'#a89d90', tab:'#7a6f64', body:'#3b332c', 'chip-fg':'#3b3128',
     link:'#00685e', accent:'#00c9b0', 'accent-soft':'#0a7a6b', 'accent-glow':'rgba(0,0,0,0)',
     warn:'#8a4a06', 'warn-bg':'rgba(255,180,0,.14)', 'warn-border':'rgba(200,140,0,.45)',
@@ -747,7 +756,7 @@
     g1:'#d9e6f5', g2:'#edf2f9', g3:'#f5f8fc', card:'rgba(255,255,255,.55)', 'card-border':'rgba(15,36,56,.10)',
     panel:'#ffffff', chip:'#e3ebf5', 'chip-hover':'#d6e2f0', 'chip-active':'#c8d7e8', mute:'#e3ebf5',
     border:'rgba(15,36,56,.14)', 'border-soft':'rgba(15,36,56,.12)', 'border-faint':'rgba(15,36,56,.08)',
-    'tab-on':'#ffffff', 'accent-dim':'#dcf5f0', dialog:'#ffffff', log:'#eef3f9',
+    'tab-on':'#ffffff', 'accent-dim':'#e6f6f3', dialog:'#ffffff', log:'#eef3f9',
     text:'#0f2438', sub:'#395872', note:'#4d6a80', ver:'#8a9bb0', tab:'#5d7690', body:'#23405a', 'chip-fg':'#1d3a5a',
     link:'#00685e', accent:'#00c8b2', 'accent-soft':'#0a7a6b', 'accent-glow':'rgba(0,0,0,0)',
     warn:'#8a4a06', 'warn-bg':'rgba(255,180,0,.14)', 'warn-border':'rgba(200,140,0,.45)',
@@ -1249,7 +1258,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.11.0'
+const APP_VERSION = 'v0.11.1'
 
 const $ = id => document.getElementById(id)
 
@@ -2042,9 +2051,18 @@ $('tabs').addEventListener('keydown', e => {
 // この人数までは高さの中に収まる。超えたら**スクロールに切り替える**（それまでは切らない＝
 // 吹き出しが先頭の行で切れないため。上の CSS のコメント参照）。
 const MEMBERS_VIEW = 5
+// 6人以上のとき、まだ見えていない行がある側の端を溶かす（CSS の .more-below / .more-above）。
+// 行が増減した直後は高さが確定していないので、renderMembers からは次のフレームで呼ぶ
+const updateMembersFade = () => {
+  const m = membersEl, sc = m.classList.contains('scroll')
+  m.classList.toggle('more-below', sc && m.scrollTop + m.clientHeight < m.scrollHeight - 2)
+  m.classList.toggle('more-above', sc && m.scrollTop > 2)
+}
+membersEl.addEventListener('scroll', updateMembersFade, { passive: true })
 const renderMembers = () => {
   membersEl.replaceChildren(); emojiEls.clear()
   membersEl.classList.toggle('scroll', call.peers.size + 1 > MEMBERS_VIEW)
+  requestAnimationFrame(updateMembersFade)
   renderTabs()                       // タブの出し入れ。**未参加でも通るよう、下の早期 return より前に**
   renderMail(); renderMailNow()      // おたより（配信部屋のみ。未参加なら中で空にする）
   renderCrowd()                      // 人数の注意。**未参加でも通るよう、下の早期 return より前に置く**
