@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.11.3
+  ぽっと通話〈実験版〉 v0.11.4
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -101,6 +101,10 @@
     --warn:#ffd24d; --warn-bg:rgba(255,210,77,.10); --warn-border:rgba(255,210,77,.35);
     --red:#ef5a3c; --red-glow:rgba(239,90,60,.30); --relay:#f6821f;
     --placeholder:#5a6b83; --legal:#5f6f86; --legal-link:#7a90ad; --dot-idle:#48507a }
+  /* 昼夜の切り替えはページ全体のクロスフェード（View Transitions・対応ブラウザだけ。未対応なら瞬時）。
+     出すのは「選び直した」「端末のダークモードが変わった」「夜明け・日没をまたいだ」の3つだけで、
+     1分ごとの小さな変化では出さない（毎分ページを止めるわけにいかない）。判定はエンジン側 */
+  ::view-transition-old(root), ::view-transition-new(root){ animation-duration:.5s }
   *{ box-sizing:border-box }
   body{ margin:0; font-family:system-ui,"Hiragino Sans",sans-serif;
     background:radial-gradient(1000px 700px at 80% -10%,var(--g1),var(--g2) 60%,var(--g3));
@@ -820,19 +824,31 @@
   const pick = (m, min) => m === 'night' ? NIGHT : m === 'day' ? TEA : m === 'auto' ? (mq.matches ? NIGHT : TEA) : at(min)
   const meta = document.querySelector('meta[name="theme-color"]')
   const st = document.documentElement.style
-  // 当てる。引数は試験用（設定と時計を差し替えられる）。普段は無引数で呼ぶ
-  const apply = (m = get(), min = nowMin()) => {
-    const p = pick(m, min)
+  let lastLight = null
+  const put = p => {
     for (const k in p) st.setProperty('--' + k, p[k])
-    st.colorScheme = lum(p.panel) > .3 ? 'light' : 'dark'   // 入力欄・スクロールバーの地色も追従させる
-    if (meta) meta.content = p.g2                            // iPhone の上下の帯
+    lastLight = lum(p.panel) > .3
+    st.colorScheme = lastLight ? 'light' : 'dark'   // 入力欄・スクロールバーの地色も追従させる
+    if (meta) meta.content = p.g2                   // iPhone の上下の帯
+  }
+  // クロスフェードで当てる（対応ブラウザだけ。動きを減らす設定・裏にいる間は瞬時）
+  const fade = p => {
+    const ok = document.startViewTransition && !document.hidden && !matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (ok) document.startViewTransition(() => put(p)); else put(p)
+  }
+  // 当てる。**引数あり＝試験・プレビュー用で同期**（呼んだ直後に変数が読める）。
+  // **引数なし＝実運用**で、明暗の側が入れ替わるとき（夜明け・日没・ロックから戻って一日が進んだ）だけフェード
+  const apply = (m, min) => {
+    const explicit = m !== undefined || min !== undefined
+    const p = pick(m ?? get(), min ?? nowMin())
+    if (explicit || lastLight === null || (lum(p.panel) > .3) === lastLight) put(p); else fade(p)
     return p
   }
   apply()
   setInterval(() => apply(), 60 * 1000)
   document.addEventListener('visibilitychange', () => { if (!document.hidden) apply() })   // ロックから戻ったら前の色を引きずらない
-  mq.addEventListener('change', () => apply())
-  window.__potTheme = { get, set: m => { try { localStorage.setItem(KEY, m) } catch {} apply() }, apply, at }
+  mq.addEventListener('change', () => fade(pick(get(), nowMin())))
+  window.__potTheme = { get, set: m => { try { localStorage.setItem(KEY, m) } catch {} fade(pick(m, nowMin())) }, apply, at }
 })()
 </script>
 </head>
@@ -1264,7 +1280,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.11.3'
+const APP_VERSION = 'v0.11.4'
 
 const $ = id => document.getElementById(id)
 
