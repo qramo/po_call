@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.10.3
+  ぽっと通話〈実験版〉 v0.11.0
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -76,26 +76,49 @@
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "ca6e03b0b9f04cacaee91492f38149d7"}'></script>
 <!-- End Cloudflare Web Analytics -->
 <style>
-  :root{ color-scheme:dark }
+  /* ── 色は全部ここの変数から取る（v0.11.0）。値は**夜＝現行の紺**。
+     昼（ミルクティー／朝の空）と時刻による補間は、この <style> の直後にある小さなスクリプトが
+     documentElement.style に流し込む（最初の描画より前に当てるため、モジュールの外に置いてある）。
+     ★色を直に書かないこと。書いた場所は昼になっても紺のまま残る。
+     ★「墨」（文字・しるし）と「面」（地・パネル・枠）で変数を分けてある。面は時刻で滑らかに
+       混ざるが、墨は面の明るさで一気に入れ替わる（中間の灰色の文字を作らないため）。 */
+  :root{ color-scheme:dark;
+    /* 面 */
+    --g1:#1c2b48; --g2:#0d1424; --g3:#090e1a;                   /* 地（右上の光 → 中 → 端） */
+    --card:rgba(255,255,255,.04); --card-border:rgba(255,255,255,.09);   /* カード・ロビーの膜 */
+    --panel:#0d1526;                                            /* 不透明な面（状態・入力欄・参加者の行・部屋） */
+    --chip:#1d2740; --chip-hover:#26324f; --chip-active:#2f3d5f; /* 小さなボタン（コピー・QR・つなぎ直す・リアクション） */
+    --mute:#2a3550;                                             /* ミュート・閉じる・送信 */
+    --border:rgba(255,255,255,.12); --border-soft:rgba(255,255,255,.10); --border-faint:rgba(255,255,255,.08);
+    --tab-on:#131d30; --accent-dim:#0c2b2a; --dialog:#111a2e; --log:#0a121f;
+    --join-bg:#00e5cc;                                          /* 参加する・マイクを使う（昼夜で変えない＝この色が顔） */
+    /* 墨 */
+    --text:#eef2f8; --sub:#9fb0c7; --note:#6f7f96; --ver:#4a5a72; --tab:#8fa0b8; --body:#cfe0f0; --chip-fg:#cfe;
+    --link:#00e5cc;                                             /* ティールの**文字**（昼は暗くしないと読めない） */
+    --accent:#00e5cc; --accent-soft:#8fe9de; --accent-glow:rgba(0,229,204,.45);   /* ティールの**しるし**（点・下線・枠） */
+    --join-fg:#063;
+    --warn:#ffd24d; --warn-bg:rgba(255,210,77,.10); --warn-border:rgba(255,210,77,.35);
+    --red:#ef5a3c; --red-glow:rgba(239,90,60,.30); --relay:#f6821f;
+    --placeholder:#5a6b83; --legal:#5f6f86; --legal-link:#7a90ad; --dot-idle:#48507a }
   *{ box-sizing:border-box }
   body{ margin:0; font-family:system-ui,"Hiragino Sans",sans-serif;
-    background:radial-gradient(1000px 700px at 80% -10%,#1c2b48,#0d1424 60%,#090e1a);
-    color:#eef2f8; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px }
+    background:radial-gradient(1000px 700px at 80% -10%,var(--g1),var(--g2) 60%,var(--g3));
+    color:var(--text); min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px }
   .banner{ width:100%; max-width:440px; margin-bottom:14px; padding:12px 14px; border-radius:12px;
     background:#4a3a10; border:1px solid #a9871f; color:#ffe9b0; font-size:13px; line-height:1.6 }
   .banner button{ margin-top:8px; width:100%; padding:9px; border:0; border-radius:8px; background:#ffd24d; color:#3a2c00; font-weight:700; cursor:pointer }
-  .card{ width:100%; max-width:440px; background:rgba(255,255,255,.04);
-    border:1px solid rgba(255,255,255,.09); border-radius:18px; padding:28px }
+  .card{ width:100%; max-width:440px; background:var(--card);
+    border:1px solid var(--card-border); border-radius:18px; padding:28px }
   h1{ margin:0 0 4px; font-size:22px }
   h1 span{ white-space:nowrap }  /* 「ぽっと通話」と「〈実験版〉」の境目でだけ折り返す */
-  p.sub{ margin:0 0 20px; color:#9fb0c7; font-size:14px; line-height:1.6 }
+  p.sub{ margin:0 0 20px; color:var(--sub); font-size:14px; line-height:1.6 }
   .head-row{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px }
   .help-btn{ flex:none; width:auto; margin:2px 0 0; padding:6px 12px; font-size:12px; font-weight:700;
-    background:#1d2740; color:#cfe; border-radius:999px }
+    background:var(--chip); color:var(--chip-fg); border-radius:999px }
   /* ヘルプはモーダル（<dialog>）。背景を半透明で覆い、中央にポップアップ。長いので内部スクロール */
   .help-dialog{ border:0; border-radius:16px; padding:22px; width:calc(100% - 36px); max-width:420px;
     max-height:86vh; overflow-y:auto; overscroll-behavior:contain;
-    background:#111a2e; color:#eef2f8; box-shadow:0 24px 70px rgba(0,0,0,.55) }
+    background:var(--dialog); color:var(--text); box-shadow:0 24px 70px rgba(0,0,0,.55) }
     /* overscroll-behavior:contain … 本文の端まで送っても背面ページへスクロールが連鎖しない */
   .help-dialog::backdrop{ background:rgba(5,8,15,.62); backdrop-filter:blur(2px) }
   /* 右上の❌。本文が長く下の「閉じる」まで届かないので、sticky でスクロール中も出しておく。
@@ -103,48 +126,48 @@
   .help-x{ position:sticky; top:6px; float:right; z-index:2;
     width:34px; height:34px; margin:-6px -6px 0 10px; padding:0;
     display:flex; align-items:center; justify-content:center;
-    background:#1d2740; border:1px solid rgba(255,255,255,.08); color:#cfe0f0;
+    background:var(--chip); border:1px solid var(--border-faint); color:var(--body);
     border-radius:999px; font-size:15px; line-height:1 }
   /* ガラス風（背後の本文が透けてぼける）。未対応ブラウザは上の不透明のままなので文字が透けない */
   @supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-    .help-x{ background:rgba(34,47,78,.55); border-color:rgba(255,255,255,.18); color:#eef2f8;
+    .help-x{ background:rgba(34,47,78,.55); border-color:rgba(255,255,255,.18); color:var(--text);
       -webkit-backdrop-filter:blur(10px) saturate(1.5); backdrop-filter:blur(10px) saturate(1.5);
       box-shadow:0 2px 10px rgba(0,0,0,.3) }
   }
   .help-dialog h2{ margin:0 0 12px; font-size:18px }
-  .help-dialog h3{ margin:22px 0 8px; font-size:14px; color:#00e5cc }
-  .help-dialog p{ margin:0 0 12px; font-size:13.5px; color:#cfe0f0; line-height:1.75 }
-  .help-dialog ul, .help-dialog ol{ margin:0 0 12px; padding-left:1.3em; font-size:13.5px; color:#cfe0f0; line-height:1.65 }
+  .help-dialog h3{ margin:22px 0 8px; font-size:14px; color:var(--link) }
+  .help-dialog p{ margin:0 0 12px; font-size:13.5px; color:var(--body); line-height:1.75 }
+  .help-dialog ul, .help-dialog ol{ margin:0 0 12px; padding-left:1.3em; font-size:13.5px; color:var(--body); line-height:1.65 }
   .help-dialog li{ margin:4px 0 }
-  .help-dialog a{ color:#00e5cc }
-  .help-dialog code{ background:#0d1526; padding:1px 5px; border-radius:5px; font-size:12px }
-  .help-dialog p.help-sub{ margin:12px 0 3px; font-size:12px; font-weight:700; color:#9fb0c7 }
-  .help-dialog p.help-tip{ background:#0d1526; border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px 12px; font-size:12.5px; line-height:1.7 }
-  .help-dialog p.help-warn{ color:#ffd24d; font-weight:700; font-size:14.5px }
+  .help-dialog a{ color:var(--link) }
+  .help-dialog code{ background:var(--panel); padding:1px 5px; border-radius:5px; font-size:12px }
+  .help-dialog p.help-sub{ margin:12px 0 3px; font-size:12px; font-weight:700; color:var(--sub) }
+  .help-dialog p.help-tip{ background:var(--panel); border:1px solid var(--border-faint); border-radius:10px; padding:10px 12px; font-size:12.5px; line-height:1.7 }
+  .help-dialog p.help-warn{ color:var(--warn); font-weight:700; font-size:14.5px }
   /* 見出しごとに開閉するアコーディオン（畳んだ状態で開くので「閉じる」も見つけやすい） */
-  .help-sec{ border-top:1px solid rgba(255,255,255,.08) }
+  .help-sec{ border-top:1px solid var(--border-faint) }
   /* 開いた節は本文ごと背景を敷いてカード化。バーが「押せる見出し」だと分かり、もう一度押せば閉じる。
      モーダル余白(22px)ぶん外へ広げて全幅に。角丸のぶん左右にわずかなパディングを戻す */
   /* 開いた節は控えめに外へ広げてカード化。本文の左右パディングは触らない
      （リストの padding-left:1.3em を打ち消すと箇条書きの記号が左端で切れるため） */
-  .help-sec[open]{ background:rgba(255,255,255,.04); border-top-color:transparent;
+  .help-sec[open]{ background:var(--card); border-top-color:transparent;
     margin:0 -12px; padding:0 12px; border-radius:12px }
   .help-sec > summary{ list-style:none; cursor:pointer; display:flex; align-items:center;
-    padding:12px 2px; font-size:14px; font-weight:700; color:#00e5cc }
+    padding:12px 2px; font-size:14px; font-weight:700; color:var(--link) }
   /* 開いた見出しはバーごとハイライト。本文(.04)より濃い帯にして、押せる見出しだと際立たせる。
      パディングを増やしたぶん左右に負マージンを与え、文字位置を閉じたとき(padding 2px)と揃える＝開閉で動かない */
   .help-sec[open] > summary{ padding:12px 12px; margin:0 -10px 6px;
     background:rgba(0,229,204,.14); border-radius:10px }
   .help-sec > summary::-webkit-details-marker{ display:none }
-  .help-sec > summary::after{ content:'▾'; margin-left:auto; font-size:12px; color:#9fb0c7; transition:transform .15s }
+  .help-sec > summary::after{ content:'▾'; margin-left:auto; font-size:12px; color:var(--sub); transition:transform .15s }
   .help-sec[open] > summary::after{ transform:rotate(180deg) }
   .help-sec > *:not(summary):first-of-type{ margin-top:2px }
   .help-sec > *:last-child{ margin-bottom:10px }
   .help-follow{ display:block; width:100%; max-width:240px; margin:6px auto 12px; border-radius:14px }
-  .help-dialog p.help-credit{ font-size:12.5px; color:#9fb0c7 }
-  .help-hide{ display:flex; align-items:center; gap:8px; margin:20px 0 12px; font-size:13px; color:#9fb0c7; cursor:pointer }
-  .help-hide input{ width:auto; margin:0; padding:0; accent-color:#00e5cc }
-  .help-close{ width:100%; margin:0; padding:12px; background:#2a3550; color:#eef2f8; border-radius:10px; font-weight:700 }
+  .help-dialog p.help-credit{ font-size:12.5px; color:var(--sub) }
+  .help-hide{ display:flex; align-items:center; gap:8px; margin:20px 0 12px; font-size:13px; color:var(--sub); cursor:pointer }
+  .help-hide input{ width:auto; margin:0; padding:0; accent-color:var(--accent) }
+  .help-close{ width:100%; margin:0; padding:12px; background:var(--mute); color:var(--text); border-radius:10px; font-weight:700 }
   /* 共有アクション：コピーとQRを横並び */
   .share-actions{ display:flex; gap:8px }
   .share-actions button{ flex:1; width:auto }
@@ -153,30 +176,30 @@
   .qr-img{ background:#fff; border-radius:12px; padding:14px; display:flex; justify-content:center; align-items:center;
     min-height:120px; color:#333; font-size:13px }
   .qr-img svg{ width:min(60vw,200px); height:auto; display:block }
-  .qr-room{ margin-top:8px; text-align:center; font-size:13px; color:#cfe0f0; word-break:break-all }
-  label{ display:block; font-size:13px; color:#9fb0c7; margin:14px 0 6px }
+  .qr-room{ margin-top:8px; text-align:center; font-size:13px; color:var(--body); word-break:break-all }
+  label{ display:block; font-size:13px; color:var(--sub); margin:14px 0 6px }
   /* 文字数カウンタ：ラベルの右端に添える。上限超過は色で知らせる（超えた分は参加時に切られるため） */
   .label-row{ display:flex; align-items:baseline; justify-content:space-between; gap:8px }
-  .char-count{ font-size:12px; color:#6f7f96; font-variant-numeric:tabular-nums }
-  .char-count.over{ color:#ffd24d; font-weight:700 }
-  input{ width:100%; padding:12px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.12);
-    background:#0d1526; color:#eef2f8; font-size:16px }
+  .char-count{ font-size:12px; color:var(--note); font-variant-numeric:tabular-nums }
+  .char-count.over{ color:var(--warn); font-weight:700 }
+  input{ width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border);
+    background:var(--panel); color:var(--text); font-size:16px }
   /* touch-action:manipulation ＝ **ダブルタップによるズームだけを止める**（スクロールや
      ピンチ操作は残る）。素早く2回押せるボタン（リアクション等）で、2回目がズームに
      化けるのを防ぐ。ボタンは元々ズームの対象ではないので全部に効かせてよい。
      ※ viewport の user-scalable=no は使わないこと（拡大できないと困る人がいる） */
   button{ width:100%; margin-top:12px; padding:14px; border:0; border-radius:12px; font-size:16px;
     font-weight:700; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent }
-  #join{ background:#00e5cc; color:#063; display:flex; align-items:center; justify-content:center; gap:9px }
+  #join{ background:var(--join-bg); color:var(--join-fg); display:flex; align-items:center; justify-content:center; gap:9px }
   #join svg{ width:22px; height:22px; flex:none }
   #unlock{ background:#ffd24d; color:#3a2c00; display:none }
-  #mute{ background:#2a3550; color:#eef2f8; display:none }
+  #mute{ background:var(--mute); color:var(--text); display:none }
   /* 配信部屋で登壇を許されたときだけ出る「マイクを使う」。ここで初めて getUserMedia を呼ぶので、
      参加ボタンと同じ色（＝これから許可ダイアログが出る操作）にしてある */
-  #speak{ background:#00e5cc; color:#063; display:none; align-items:center; justify-content:center; gap:9px }
+  #speak{ background:var(--join-bg); color:var(--join-fg); display:none; align-items:center; justify-content:center; gap:9px }
   #speak svg{ width:22px; height:22px; flex:none }
   /* 退出＝朱色（ティールの補色寄りで相性がよい）。少しだけ発光させる */
-  #leave{ background:#ef5a3c; color:#fff; display:none; box-shadow:0 2px 14px rgba(239,90,60,.30) }
+  #leave{ background:var(--red); color:#fff; display:none; box-shadow:0 2px 14px var(--red-glow) }
   /* アイコン＋文字を中央寄せ。参加時に JS が display:flex にする（未参加は none のまま） */
   #mute, #leave{ align-items:center; justify-content:center; gap:9px }
   #mute svg, #leave svg{ width:22px; height:22px; flex:none }   /* 線は currentColor で文字色に追従 */
@@ -190,8 +213,8 @@
   .actions{ display:flex; gap:12px }
   .actions button{ flex:1; width:auto }
   /* 通知音のトグル（入室・退出音＝通話カード／新部屋音＝ロビー）。help-hide と同系の控えめな見た目 */
-  .snd-opt{ display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; color:#9fb0c7; cursor:pointer; user-select:none }
-  .snd-opt input{ width:auto; margin:0; padding:0; accent-color:#00e5cc; flex:none }
+  .snd-opt{ display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; color:var(--sub); cursor:pointer; user-select:none }
+  .snd-opt input{ width:auto; margin:0; padding:0; accent-color:var(--accent); flex:none }
   /* ★display を書いたら [hidden] も書くこと。ブラウザ既定の [hidden]{display:none} より
      クラス指定のほうが強いので、hidden を付けても消えない（2026-08-15 に踏んだ）。
      部屋の種類の2択は hidden で出し入れするので、これが無いと隠れない */
@@ -200,24 +223,30 @@
   /* 音量スライダー。行の形はトグル（.snd-opt）と同じだが、input の扱いが逆
      （.snd-opt input は width:auto 固定、こちらは横いっぱいに伸ばしたい）ので別クラスにする。
      range は共通の input{} が持つ枠・背景・余白を全部剥がさないと太い箱に見える */
-  .vol-opt{ display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; color:#9fb0c7; user-select:none }
+  .vol-opt{ display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; color:var(--sub); user-select:none }
   .vol-opt[hidden]{ display:none }
   .vol-opt input[type=range]{ flex:1; width:auto; min-width:0; margin:0; padding:0; border:0;
-    background:transparent; accent-color:#00e5cc; cursor:pointer }
+    background:transparent; accent-color:var(--accent); cursor:pointer }
   .vol-ic, .vol-lbl{ flex:none }
   .vol-val{ flex:none; width:3.4em; text-align:right; font-variant-numeric:tabular-nums }
-  .vol-note{ margin:4px 0 0; font-size:11.5px; color:#6f7f96; line-height:1.5 }
+  .vol-note{ margin:4px 0 0; font-size:11.5px; color:var(--note); line-height:1.5 }
   .vol-note[hidden]{ display:none }
   .bgm-row{ margin-top:14px }
-  #copy{ background:#1d2740; color:#cfe; margin-top:8px; padding:10px; font-size:14px }
+  #copy{ background:var(--chip); color:var(--chip-fg); margin-top:8px; padding:10px; font-size:14px }
   /* 版の表示。共有ボタンの右下に、目に留まらない濃さで置く（普段は意識させない） */
-  .ver{ margin-top:6px; text-align:right; font-size:10.5px; color:#4a5a72; letter-spacing:.04em }
+  .ver{ margin-top:6px; text-align:right; font-size:10.5px; color:var(--ver); letter-spacing:.04em }
+  /* 見た目の選択＋版表示を1行に。左に選択（目に留まらない濃さ）、右に版 */
+  .ver-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px }
+  .ver-row .ver{ margin-top:0 }
+  .theme-pick{ display:inline-flex; align-items:center; gap:4px; font-size:11px; color:var(--note); margin:0 }
+  .theme-pick select{ font:inherit; font-size:11px; color:var(--sub); background:var(--panel);
+    border:1px solid var(--border-faint); border-radius:8px; padding:3px 6px; margin:0; cursor:pointer }
   /* β（旧URL）にだけ出る安定版への導線。ブログ等から旧URLに来た人が、
      ここが試験用だと気づけるようにする。版表示と同じ濃さで、探せば見つかる程度に。 */
-  .stable-link{ margin-left:8px; color:#6f7f96; text-decoration:underline }
-  .stable-link:hover{ color:#9fb0c7 }
-  #qr{ background:#1d2740; color:#cfe; margin-top:8px; padding:10px; font-size:14px }
-  .status{ margin-top:18px; padding:14px; border-radius:10px; background:#0d1526; font-size:14px; line-height:1.7 }
+  .stable-link{ margin-left:8px; color:var(--note); text-decoration:underline }
+  .stable-link:hover{ color:var(--sub) }
+  #qr{ background:var(--chip); color:var(--chip-fg); margin-top:8px; padding:10px; font-size:14px }
+  .status{ margin-top:18px; padding:14px; border-radius:10px; background:var(--panel); font-size:14px; line-height:1.7 }
   /* 状態表示の右に「つなぎ直す」。共通の button{width:100%} を打ち消して小さなチップにする */
   /* 状態＝1行／操作＝次の行。部屋名が長くても折り返しがきれいに収まる */
   .status-head{ display:flex; flex-direction:column; gap:8px }
@@ -226,7 +255,7 @@
   .head-actions:not(:has(button:not([hidden]))){ display:none }
   .retry-btn{ flex:none; width:auto; margin:0; padding:5px 11px; font-size:12px; font-weight:700;
     display:inline-flex; align-items:center; gap:5px;
-    background:#1d2740; color:#cfe; border:1px solid rgba(255,255,255,.12); border-radius:999px; white-space:nowrap }
+    background:var(--chip); color:var(--chip-fg); border:1px solid var(--border); border-radius:999px; white-space:nowrap }
   .retry-btn:disabled{ opacity:.5 }
   .retry-btn svg{ width:14px; height:14px; flex:none }
   /* 小窓に映す映像。画面には見せないが、**display:none だと PiP に入れられない**ので画面外へ逃がす */
@@ -238,23 +267,23 @@
     opacity:.01; pointer-events:none }
   .pip-src{ display:block; width:480px; height:270px }
   /* 状態はこのドットの色だけで表す（文字側に絵文字は置かない）。既定＝グレー＝未参加／退出後 */
-  .dot{ display:inline-block; width:9px; height:9px; border-radius:50%; background:#48507a; margin-right:7px; vertical-align:middle }
+  .dot{ display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--dot-idle); margin-right:7px; vertical-align:middle }
   .dot.busy { background:#4da3ff; animation:dot-pulse 1.2s ease-in-out infinite }  /* 準備中 */
-  .dot.ok   { background:#00e5cc }   /* 参加・通話中 */
-  .dot.warn { background:#ffd24d }   /* 繋がらない相手がいる */
+  .dot.ok   { background:var(--accent) }   /* 参加・通話中 */
+  .dot.warn { background:var(--warn) }   /* 繋がらない相手がいる */
   .dot.error{ background:#ff5d5d }   /* 失敗 */
   @keyframes dot-pulse{ 50%{ opacity:.35 } }
   @media (prefers-reduced-motion:reduce){ .dot.busy{ animation:none } }
-  .peers{ font-size:26px; font-weight:800; color:#00e5cc }
+  .peers{ font-size:26px; font-weight:800; color:var(--link) }
   /* 共有リンクは長くなりがちなので既定は1行＋末尾を「…」で省略。コピー時とQR表示中だけ全文に開く */
-  a.share{ display:block; color:#00e5cc; font-size:13px;
+  a.share{ display:block; color:var(--link); font-size:13px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
   a.share.full{ white-space:normal; overflow-wrap:anywhere }
   /* アバター選択（絵文字）。共通の button{width:100%} を打ち消して小さなチップにする */
   .avatars{ display:grid; grid-template-columns:repeat(8,1fr); gap:6px; margin-top:6px }
   .avatar{ width:auto; margin:0; padding:8px 0; font-size:20px; line-height:1;
-    background:#0d1526; border:1px solid rgba(255,255,255,.12); border-radius:10px }
-  .avatar[aria-pressed="true"]{ border-color:#00e5cc; background:#0c2b2a }
+    background:var(--panel); border:1px solid var(--border); border-radius:10px }
+  .avatar[aria-pressed="true"]{ border-color:var(--link); background:var(--accent-dim) }
   .avatar:disabled{ opacity:.5; cursor:default }
   /* プロフィール折りたたみ（初回は開く、以降は閉じる） */
   /* 参加中に畳む入力欄（名前・部屋名）。grid-template-rows 1fr→0fr は中身の高さを測らずに
@@ -271,15 +300,15 @@
      こちらは「畳んである見出し」なので、枠があると同じ重さの選択肢に見えてしまう */
   .create{ margin-top:12px }
   .create > summary{ list-style:none; cursor:pointer; display:flex; align-items:center; gap:6px;
-    padding:4px 2px; font-size:13px; color:#9fb0c7 }
+    padding:4px 2px; font-size:13px; color:var(--sub) }
   .create > summary::-webkit-details-marker{ display:none }
   .cr-ic{ font-size:15px; line-height:1 }
-  .cr-label{ font-weight:700; font-size:13.5px; color:#cfe }
-  .cr-arrow{ font-size:11px; color:#00e5cc }   /* 文字のすぐ後ろ（右端へ飛ばさない） */
+  .cr-label{ font-weight:700; font-size:13.5px; color:var(--chip-fg) }
+  .cr-arrow{ font-size:11px; color:var(--link) }   /* 文字のすぐ後ろ（右端へ飛ばさない） */
   .create[open] .cr-arrow{ transform:rotate(90deg) }
   /* 開いている間は見出しを「部屋名」ラベルに変身させる（プロフィールの summary と同じ作法）。
      枠を外して入力欄に繋げる＝独立した行を作らず、ラベルとして一体に見せる */
-  .cr-open-label{ display:none; font-size:13px; color:#9fb0c7 }
+  .cr-open-label{ display:none; font-size:13px; color:var(--sub) }
   .create[open] .cr-ic, .create[open] .cr-label{ display:none }
   .create[open] .cr-open-label{ display:inline }
   .create > summary .char-count{ display:none }
@@ -287,13 +316,13 @@
   .cr-body > div{ padding-top:2px }
   .create[hidden]{ display:none }
   .profile > summary{ list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px;
-    padding:12px 14px; border-radius:12px; background:#0d1526; border:1px solid rgba(255,255,255,.12);
+    padding:12px 14px; border-radius:12px; background:var(--panel); border:1px solid var(--border);
     transition:padding .28s ease, background-color .28s ease, border-color .28s ease }
   .profile > summary::-webkit-details-marker{ display:none }
   .pf-emoji{ font-size:22px; line-height:1 }
   .pf-name{ font-weight:700; font-size:15px }
-  .pf-edit{ margin-left:auto; font-size:12px; color:#00e5cc }
-  .pf-open-label{ display:none; font-size:13px; color:#9fb0c7 }
+  .pf-edit{ margin-left:auto; font-size:12px; color:var(--link) }
+  .pf-open-label{ display:none; font-size:13px; color:var(--sub) }
   /* 開いている間は summary を「あなたの名前」ラベル行に変身させ、右端に「閉じる」を置く。
      枠（背景・境界線）は外し、他のラベルと同じ余白で入力欄に繋げる（独立行を作らず一体化） */
   /* :not(.pf-collapsed) … 閉じるアニメーション中（openはまだtrue）は閉じた見た目に切り替える */
@@ -314,23 +343,23 @@
        （行に並べるボタンを足すたびに踏んでいる罠。2026-08-14 / 08-15 に既出）。
      ★display を書いた要素には [hidden] も書くこと（参加前はタブごと出さない）。 */
   .tabs{ display:flex; align-items:flex-end; gap:4px; margin-top:14px;
-    border-bottom:1px solid rgba(255,255,255,.10) }
+    border-bottom:1px solid var(--border-soft) }
   .tabs[hidden]{ display:none }
   /* ★ラベルは**絶対に折り返さない**。実機（CSS幅390px）で4タブのとき「メンバ／ー」と
      割れた（2026-08-17）。折り返す代わりに、狭い画面では詰めて、最後に設定の文字を落とす。 */
   .tab{ width:auto; margin:0; padding:8px 11px; font-size:13px; font-weight:700; line-height:1.2;
     white-space:nowrap; display:inline-flex; align-items:center; gap:5px;
-    background:transparent; color:#8fa0b8; border-radius:10px 10px 0 0; position:relative }
+    background:transparent; color:var(--tab); border-radius:10px 10px 0 0; position:relative }
   /* ★display を書いたら [hidden] も書くこと。**これを忘れて、普通の部屋でも
      「おたより」タブが出ていた**（2026-08-18・v0.8.2 で display:inline-flex を足したときの見落とし）。
      このファイルで同じ罠を踏むのは3度目。display を足したら必ず対で書く。 */
   .tab[hidden]{ display:none }
   .t-em{ font-size:13px; line-height:1 }
-  .tab:hover{ color:#cfe }
-  .tab[aria-selected="true"]{ color:#eef2f8; background:#131d30 }
+  .tab:hover{ color:var(--chip-fg) }
+  .tab[aria-selected="true"]{ color:var(--text); background:var(--tab-on) }
   /* 選択中の下線。border ではなく擬似要素にして、タブの枠線と1px重ねる */
   .tab[aria-selected="true"]::after{ content:''; position:absolute; left:8px; right:8px; bottom:-1px;
-    height:2px; background:#00e5cc; border-radius:2px }
+    height:2px; background:var(--accent); border-radius:2px }
   .tab-right{ margin-left:auto }
   /* 狭い画面：まず詰める → それでも足りないので**設定はアイコンだけ**にする
      （歯車は単体で意味が通る記号。読み上げ用に aria-label を付けてある）。
@@ -381,36 +410,36 @@
      枠主のときは集まった投稿が伸びるので、本文だけ内部スクロールにする（吹き出しは無いので切れて困らない）。 */
   #panMail{ display:flex; flex-direction:column; height:var(--panel-min) }
   #panMail[hidden]{ display:none }
-  .mail-head{ margin-top:10px; font-size:13px; line-height:1.6; color:#9fb0c7 }
-  .mail-head b{ color:#eef2f8 }
+  .mail-head{ margin-top:10px; font-size:13px; line-height:1.6; color:var(--sub) }
+  .mail-head b{ color:var(--text) }
   .mail-body{ flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:8px;
     display:flex; flex-direction:column; gap:6px }
-  .mail-empty{ color:#6f7f96; font-size:12.5px; line-height:1.6 }
+  .mail-empty{ color:var(--note); font-size:12.5px; line-height:1.6 }
   /* 集まった投稿（枠主だけに見える）。行の右端に「公開」 */
   .mail-item{ display:flex; align-items:flex-start; gap:8px; padding:8px 10px; border-radius:10px;
-    background:#0d1526; font-size:12.5px; line-height:1.5 }
-  .mail-item.shown{ box-shadow:0 0 0 1px #00e5cc inset }
+    background:var(--panel); font-size:12.5px; line-height:1.5 }
+  .mail-item.shown{ box-shadow:0 0 0 1px var(--accent) inset }
   .mail-em{ flex:none; font-size:15px; line-height:1.2 }
-  .mail-who{ flex:none; max-width:6em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#9fb0c7 }
-  .mail-text{ flex:1; min-width:0; color:#eef2f8; word-break:break-word }
+  .mail-who{ flex:none; max-width:6em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--sub) }
+  .mail-text{ flex:1; min-width:0; color:var(--text); word-break:break-word }
   /* 共通 button{} の width と margin を打ち消す（行に並べるボタンの定番の罠） */
   .mail-pick{ flex:none; width:auto; margin:0; padding:4px 9px; font-size:11.5px; font-weight:700;
-    background:#1d2740; color:#cfe; border:1px solid rgba(255,255,255,.12); border-radius:999px; white-space:nowrap }
-  .mail-pick.on{ background:#0c2b2a; color:#00e5cc; border-color:#00e5cc }
+    background:var(--chip); color:var(--chip-fg); border:1px solid var(--border); border-radius:999px; white-space:nowrap }
+  .mail-pick.on{ background:var(--accent-dim); color:var(--link); border-color:var(--link) }
   /* 募集を立てる欄／お便りを書く欄。入力は全幅にしてボタンを中に重ねる
      （**iOS は半端な幅の入力欄にフォーカスすると勝手に拡大する**。2026-08-15 に踏んだ） */
   .mail-form{ position:relative; margin-top:8px }
   .mail-form[hidden]{ display:none }
   .mail-form input{ padding-right:74px }
   .mail-form button{ position:absolute; right:5px; top:50%; transform:translateY(-50%);
-    width:auto; margin:0; padding:7px 12px; font-size:13px; background:#2a3550; color:#eef2f8; border-radius:9px }
+    width:auto; margin:0; padding:7px 12px; font-size:13px; background:var(--mute); color:var(--text); border-radius:9px }
   /* いま読まれているお便り（タブの外・常時表示）。配信部屋の説明と同じ枠だが、
      こちらは「中身」なので少し明るく、送り主が分かる形にする */
   .mail-now{ margin-top:10px; padding:9px 11px; border-radius:10px; font-size:13px; line-height:1.6;
-    background:rgba(0,229,204,.07); border:1px solid rgba(0,229,204,.22); color:#eef2f8 }
+    background:rgba(0,229,204,.07); border:1px solid rgba(0,229,204,.22); color:var(--text) }
   .mail-now[hidden]{ display:none }
-  .mail-now .mn-cap{ display:block; font-size:11.5px; color:#8fe9de; margin-bottom:2px }
-  .mail-now .mn-who{ color:#9fb0c7 }
+  .mail-now .mn-cap{ display:block; font-size:11.5px; color:var(--accent-soft); margin-bottom:2px }
+  .mail-now .mn-who{ color:var(--sub) }
   .mail-now{ cursor:pointer }   /* 押すと下の紙を開き直せる */
   /* ── 公開されたお便りを大きく出す紙 ──
      ★**モーダルにしない。**背面を塞ぐと読み上げ中にミュート・退出が押せなくなる。
@@ -439,41 +468,41 @@
   .members{ margin-top:12px; display:flex; flex-direction:column; gap:6px }
   /* 音が届いていない相手のお知らせ。不具合ではなく「試せることがある」の温度で（黄色＝注意止まり） */
   .audio-warn{ margin-top:10px; padding:9px 11px; border-radius:10px; font-size:13px; line-height:1.5;
-    background:rgba(255,210,77,.10); border:1px solid rgba(255,210,77,.35); color:#ffd24d }
+    background:var(--warn-bg); border:1px solid var(--warn-border); color:var(--warn) }
   /* 配信部屋の説明。注意ではなく状態なので、警告の黄ではなくティール（＝通話中の色）で置く。
      「いま自分は話せるのか」が一番の関心なので、参加者リストより上に出す */
   .bc-note{ margin-top:10px; padding:9px 11px; border-radius:10px; font-size:13px; line-height:1.5;
-    background:rgba(0,229,204,.09); border:1px solid rgba(0,229,204,.30); color:#8fe9de }
+    background:rgba(0,229,204,.09); border:1px solid rgba(0,229,204,.30); color:var(--accent-soft) }
   /* 部屋の種類（部屋名の下の2択）。通知音トグルと同じ控えめな見た目に揃え、行間だけ詰める。
      ★display を書いたので [hidden] も書くこと（他人の配信部屋を開いている間は丸ごと隠す） */
   .kind{ display:grid; gap:2px; margin-top:8px }
   .kind[hidden]{ display:none }
   .kind .snd-opt{ margin-top:0 }
-  .kind .sel{ color:#8fe9de }   /* 選ばれているほうを少しだけ明るく（点だけでは目が滑るため） */
+  .kind .sel{ color:var(--accent-soft) }   /* 選ばれているほうを少しだけ明るく（点だけでは目が滑るため） */
   /* 点字ブロック（U+2800〜）で作るオーディオEQ風の飾り。各セルが2×3ドットなので
      空・下・中・上の4段階がそのまま出せる（⠀⠤⠶⠿）。通話中だけ表示、装飾なので aria-hidden。 */
   .eq{ margin-top:12px; font-family:'Courier New',ui-monospace,monospace; font-size:20px;
-    line-height:1; letter-spacing:3px; color:#00e5cc; text-shadow:0 0 7px rgba(0,229,204,.45);
+    line-height:1; letter-spacing:3px; color:var(--link); text-shadow:0 0 7px var(--accent-glow);
     white-space:nowrap; overflow:hidden; user-select:none; text-align:center }
-  .member{ position:relative; display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:10px; background:#0d1526;
+  .member{ position:relative; display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:10px; background:var(--panel);
     transition:background .12s, box-shadow .12s }
-  .member.speaking{ background:#0c2b2a; box-shadow:0 0 0 1px #00e5cc inset }
+  .member.speaking{ background:var(--accent-dim); box-shadow:0 0 0 1px var(--accent) inset }
   /* transform は VAD が毎フレーム直接書き換える。中心基準で拡大し、GPUに乗せる */
   .m-emoji{ font-size:22px; line-height:1; transform-origin:center; will-change:transform }
   /* 名前の箱。**縮んでよいのは名前だけ**で、成長絵文字と（あなた）は縮ませない。
      min-width:0 が要点＝これが無いと flex の子は中身より小さくならず、行からはみ出す。 */
   .m-id{ display:flex; align-items:baseline; gap:4px; min-width:0; flex:1 }
-  .m-name{ font-size:14px; color:#eef2f8; min-width:0; overflow:hidden;
+  .m-name{ font-size:14px; color:var(--text); min-width:0; overflow:hidden;
     text-overflow:ellipsis; white-space:nowrap }
   .m-stage{ flex:none; font-size:14px }
-  .m-id .you{ flex:none; color:#9fb0c7; font-size:12px; white-space:nowrap }
+  .m-id .you{ flex:none; color:var(--sub); font-size:12px; white-space:nowrap }
   /* 状態のまとまり（見るだけ）。**名前の左**に置き、中身が無くても場所は空ける
      ＝行ごとに名前の左端がずれない。押せるものはここには入れない（右端に集める）。 */
   .m-state{ flex:none; display:flex; align-items:center; gap:5px }
   /* ミュート印＝朱色の丸い土台に暗いマイク斜線（退出ボタンと同系）。常に置いて visibility だけ切替 */
   .m-mute{ flex:none; width:22px; height:22px; border-radius:50%;
-    background:#ef5a3c; display:inline-flex; align-items:center; justify-content:center; visibility:hidden }
-  .m-mute svg{ width:13px; height:13px; color:#0d1526 }
+    background:var(--red); display:inline-flex; align-items:center; justify-content:center; visibility:hidden }
+  .m-mute svg{ width:13px; height:13px; color:var(--panel) }
   .member.muted .m-mute{ visibility:visible }
   .member.muted .m-emoji{ opacity:.45 }
   /* 無視の切替。行の右端。共通の button{width:100%} を打ち消す（忘れると行が壊れる）。
@@ -484,7 +513,7 @@
      ボタンだけ 6px 下がって、隣の経路アイコン（☁️/↔）と中心が揃わない（2026-08-14 に実測）。
      行の中で他と並べるボタンを足すときは、必ず margin も殺すこと。 */
   .m-ig{ flex:none; width:18px; height:18px; padding:0; margin:0; border:0;
-    background:transparent; cursor:pointer; color:#ef5a3c; display:inline-flex;
+    background:transparent; cursor:pointer; color:var(--red); display:inline-flex;
     align-items:center; justify-content:center }
   .m-ig svg{ width:16px; height:16px; display:block }
   .m-ig:hover{ color:#ff8266 }
@@ -492,11 +521,11 @@
      （右端に並ぶので、片方だけ大きいと縦位置がずれる）。共通 button{} の width と margin も殺す。
      消灯＝聞き役／点灯（ティール）＝話してよい、と色だけで状態を表す */
   .m-mic{ flex:none; width:18px; height:18px; padding:0; margin:0; border:0;
-    background:transparent; cursor:pointer; color:#4a5a72; display:inline-flex;
+    background:transparent; cursor:pointer; color:var(--ver); display:inline-flex;
     align-items:center; justify-content:center }
   .m-mic svg{ width:16px; height:16px; display:block }
-  .m-mic.on{ color:#00e5cc }
-  .m-mic:hover{ color:#9fb0c7 }
+  .m-mic.on{ color:var(--link) }
+  .m-mic:hover{ color:var(--sub) }
   .m-mic.on:hover{ color:#7cffee }
   /* 配信部屋の印（📣＝配信者／🎙＝話してよい人）。**配信部屋のときだけ**枠を作り、
      誰でもない行では空のまま場所だけ取る（名前の左端を揃えるため） */
@@ -511,12 +540,12 @@
      枠を立て、上辺に細いハイライトを入れて浮かせる。押すと沈んで色が変わる＝指に返る。 */
   /* 絵文字は文字なので、長押しで選択・コピー・「調べる」が出てしまう。連打する場所なので殺す */
   .reactions button{ flex:1; width:auto; margin:0; padding:9px 0; font-size:19px; line-height:1.15;
-    border-radius:10px; background:#1d2740; border:1px solid rgba(255,255,255,.10); cursor:pointer;
+    border-radius:10px; background:var(--chip); border:1px solid var(--border-soft); cursor:pointer;
     box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 1px 2px rgba(0,0,0,.25);
     transition:transform .09s ease, background .12s ease;
     -webkit-user-select:none; user-select:none; -webkit-touch-callout:none }
-  .reactions button:hover{ background:#26324f }
-  .reactions button:active{ transform:translateY(1px) scale(.94); background:#2f3d5f;
+  .reactions button:hover{ background:var(--chip-hover) }
+  .reactions button:active{ transform:translateY(1px) scale(.94); background:var(--chip-active);
     box-shadow:inset 0 2px 4px rgba(0,0,0,.35) }
   /* 押した人のアバターから浮かぶ。**誰が押したか見えることが抑止力**であり、
      ミュート（無視）の対象を特定できる唯一の手がかりでもある＝匿名にしないこと。
@@ -531,12 +560,12 @@
   .chat-row{ margin-top:6px; position:relative }
   .chat-row[hidden]{ display:none }
   .chat-row input{ width:100%; padding:9px 76px 9px 11px; border-radius:10px; font-size:16px;
-    background:#0d1526; color:#eef2f8; border:1px solid rgba(255,255,255,.10) }
-  .chat-row input::placeholder{ color:#5a6b83 }
+    background:var(--panel); color:var(--text); border:1px solid var(--border-soft) }
+  .chat-row input::placeholder{ color:var(--placeholder) }
   .chat-row button{ position:absolute; right:5px; top:50%; transform:translateY(-50%);
     width:auto; margin:0; padding:6px 13px; font-size:13px; border-radius:8px;
-    background:#1d2740; color:#cfe }
-  .chat-row button:hover{ background:#26324f }
+    background:var(--chip); color:var(--chip-fg) }
+  .chat-row button:hover{ background:var(--chip-hover) }
   .chat-row button:disabled{ opacity:.45 }
   /* 吹き出し。**中身は必ず textContent で入れる**（他人が決めた文字がここに出る）。
      ★position:fixed で座標を計算して置いてはいけない。**一度置いたら動かない**ので、
@@ -546,7 +575,7 @@
   .chat-bubble{ position:absolute; left:0; bottom:calc(100% + 4px); z-index:5;
     pointer-events:none; max-width:min(88%, 260px);
     padding:7px 10px; border-radius:12px; border-bottom-left-radius:3px;
-    background:#26324f; color:#eef2f8; font-size:13px; line-height:1.5;
+    background:var(--chip-hover); color:var(--text); font-size:13px; line-height:1.5;
     box-shadow:0 4px 14px rgba(0,0,0,.35); word-break:break-word;
     animation:chat-pop 4.6s ease-out forwards }
   @keyframes chat-pop{
@@ -563,13 +592,13 @@
      justify-content:flex-end ＋ overflow:hidden で、新しい行が下に積まれ、溢れた分は上で切れる。 */
   .chat-log{ flex:1; min-height:0; display:flex; flex-direction:column; justify-content:flex-end;
     gap:3px; margin-top:8px; overflow:hidden;
-    padding:6px 8px; border-radius:10px; background:#0a121f; font-size:12.5px; line-height:1.5 }
+    padding:6px 8px; border-radius:10px; background:var(--log); font-size:12.5px; line-height:1.5 }
   .chat-log[hidden]{ display:none }
   .cl-row{ display:flex; align-items:baseline; gap:5px }
   .cl-em{ flex:none; font-size:13px; line-height:1 }
   /* 名前は詰めてよい（誰かはアバター絵文字でも分かる）。本文は折り返して全部見せる */
-  .cl-who{ flex:none; max-width:6.5em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#9fb0c7 }
-  .cl-text{ flex:1; min-width:0; color:#eef2f8; word-break:break-word }
+  .cl-who{ flex:none; max-width:6.5em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--sub) }
+  .cl-text{ flex:1; min-width:0; color:var(--text); word-break:break-word }
   .react-fly{ position:fixed; z-index:60; pointer-events:none; font-size:22px; line-height:1;
     animation:react-fly 1.3s ease-out forwards }
   @keyframes react-fly{
@@ -580,18 +609,18 @@
   /* 無視中の行。**自分にだけ見える印**（相手には何も伝わらない）。忘れて混乱しないための表示 */
   .member.ignored{ opacity:.5 }
   .member.ignored .m-name{ text-decoration:line-through }
-  .member.muted .m-name{ color:#9fb0c7 }
+  .member.muted .m-name{ color:var(--sub) }
   /* 接続経路アイコン＝行の右端。中継=Cloudflareオレンジ雲／直結=アプリ色ティール矢印。
      プロフィール未着（経路不明）の相手には出さない。色だけで意味を持たせる（案A）＝title で補足。 */
   .m-conn{ flex:none; display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px }
   .m-conn svg{ width:16px; height:16px }
-  .m-conn.relay{ color:#f6821f }
-  .m-conn.direct{ color:#00e5cc }
+  .m-conn.relay{ color:var(--relay) }
+  .m-conn.direct{ color:var(--link) }
   /* 経路アイコンの凡例（通話中だけ）。**主語は常に「その行の人」**にしてある＝自分の行にも
      相手の行にも同じ文が当たり、読み手が立場を切り替えずに済む（逆転させない言い方を選ぶ）。
      参加直後だけ開いて出し、数秒で畳む＝アイコンと言葉の対応（☁️中継／↔直接）は常に残しつつ、
      2行を出しっぱなしにしない。畳んだ後もタップでいつでも開き直せる。 */
-  .conn-legend{ margin:8px 2px 0; font-size:12px; color:#6f7f96; line-height:1.9 }
+  .conn-legend{ margin:8px 2px 0; font-size:12px; color:var(--note); line-height:1.9 }
   .conn-legend > summary{ list-style:none; cursor:pointer }
   .conn-legend > summary::-webkit-details-marker{ display:none }
   .conn-legend .cl-line{ display:flex; align-items:center; gap:6px }
@@ -601,32 +630,32 @@
      こうすると開いたときに「☁️中継／↔直接 詳細…」が重複せず、それでいて summary が残るので
      押して閉じられる（summary を消すと、自分で開いたときに閉じる手段が無くなる）。 */
   .conn-legend .cl-mini{ display:inline-flex; align-items:center; gap:5px;
-    padding:4px 11px; background:#1d2740; border:1px solid rgba(255,255,255,.12);
-    border-radius:999px; color:#9fb0c7; line-height:1.5 }
-  .conn-legend .cl-mini .sep{ color:#48566b }
-  .conn-legend .cl-mini .more{ margin-left:2px; color:#7a8ca6 }
+    padding:4px 11px; background:var(--chip); border:1px solid var(--border);
+    border-radius:999px; color:var(--sub); line-height:1.5 }
+  .conn-legend .cl-mini .sep{ color:var(--ver) }
+  .conn-legend .cl-mini .more{ margin-left:2px; color:var(--note) }
   .conn-legend[open] .cl-mini{ display:none }
   .conn-legend .cl-full{ display:none }
   .conn-legend[open] .cl-full{ display:flex }
   /* 2カラム：左＝通話カード／右＝ロビー。狭い画面では縦に積む */
   .wrap{ width:100%; display:flex; flex-wrap:wrap; gap:18px; align-items:flex-start; justify-content:center }
-  .lobby{ width:100%; max-width:440px; background:rgba(255,255,255,.04);
-    border:1px solid rgba(255,255,255,.09); border-radius:18px; padding:22px }
+  .lobby{ width:100%; max-width:440px; background:var(--card);
+    border:1px solid var(--card-border); border-radius:18px; padding:22px }
   .lobby h2{ margin:0 0 10px; font-size:17px }
   .lobby-head{ display:flex; align-items:center; gap:10px; margin-bottom:10px }
   .lobby-head h2{ margin:0 }
   .lobby-head .retry-btn{ margin-left:auto }
-  .lobby-status{ font-size:13px; color:#9fb0c7; margin-bottom:12px }
-  .lobby-more{ font-size:12px; color:#6f7f96; padding:6px 2px }   /* 上限で省略した部屋数の注記 */
-  .lobby-viewers{ margin:12px 0 0; font-size:12.5px; color:#6f7f96 }
-  .lobby-note{ margin:12px 0 0; font-size:12px; color:#6f7f96; line-height:1.6 }
-  .legal{ width:100%; max-width:900px; margin:20px auto 0; text-align:center; font-size:11px; color:#5f6f86; line-height:1.7 }
-  .legal a{ color:#7a90ad }
+  .lobby-status{ font-size:13px; color:var(--sub); margin-bottom:12px }
+  .lobby-more{ font-size:12px; color:var(--note); padding:6px 2px }   /* 上限で省略した部屋数の注記 */
+  .lobby-viewers{ margin:12px 0 0; font-size:12.5px; color:var(--note) }
+  .lobby-note{ margin:12px 0 0; font-size:12px; color:var(--note); line-height:1.6 }
+  .legal{ width:100%; max-width:900px; margin:20px auto 0; text-align:center; font-size:11px; color:var(--legal); line-height:1.7 }
+  .legal a{ color:var(--legal-link) }
   .lobby-list{ display:flex; flex-direction:column; gap:10px; max-height:56vh; overflow-y:auto }
   .room{ width:100%; margin:0; padding:12px 14px; text-align:left; font-weight:400; font-size:14px;
-    background:#0d1526; border:1px solid rgba(255,255,255,.09); border-radius:12px }
-  .room:hover{ border-color:#00e5cc }
-  .room.here{ border-color:#00e5cc; background:#0c2b2a }
+    background:var(--panel); border:1px solid var(--card-border); border-radius:12px }
+  .room:hover{ border-color:var(--link) }
+  .room.here{ border-color:var(--link); background:var(--accent-dim) }
   /* 活発さ：内側にリングを描いて濃さ・太さを段階変化させる。box-shadow の inset なので
      border と違って内寸が変わらず中身がずれない。静的な状態なので、5秒ごとの再描画でも
      アニメーションのように途中で切れてガクつくことがない */
@@ -638,21 +667,21 @@
   .room-top{ display:flex; align-items:center; gap:8px }
   .room-name{ font-weight:700; font-size:15px; min-width:0;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-  .room-count{ margin-left:auto; flex:none; white-space:nowrap; color:#00e5cc; font-weight:700; font-size:13px }
+  .room-count{ margin-left:auto; flex:none; white-space:nowrap; color:var(--link); font-weight:700; font-size:13px }
   /* 満室は**目安**なので、押せなくはしない（色だけ落として「たぶん入れない」と伝える） */
-  .room-count.full{ color:#ffd24d }
-  .room-dur{ margin-top:4px; font-size:12px; color:#9fb0c7; display:flex; align-items:center; gap:8px }
+  .room-count.full{ color:var(--warn) }
+  .room-dur{ margin-top:4px; font-size:12px; color:var(--sub); display:flex; align-items:center; gap:8px }
   .room-eq{ margin-left:auto; font-family:'Courier New',ui-monospace,monospace; font-size:15px;
-    line-height:1; letter-spacing:1px; color:#00e5cc; text-shadow:0 0 6px rgba(0,229,204,.4) }
+    line-height:1; letter-spacing:1px; color:var(--link); text-shadow:0 0 6px var(--accent-glow) }
   .room-people{ margin-top:8px; display:flex; flex-wrap:wrap; gap:6px }
-  .rp{ display:inline-flex; align-items:center; gap:4px; background:#0a1830; padding:3px 9px; border-radius:999px; font-size:13px; color:#cfe0f0 }
+  .rp{ display:inline-flex; align-items:center; gap:4px; background:var(--log); padding:3px 9px; border-radius:999px; font-size:13px; color:var(--body) }
   .rp.mut{ opacity:.6 }
   /* ロビーチップのミュート印＝参加者リストと同じ朱丸バッジの縮小版（15px） */
-  .rp-mute{ flex:none; width:15px; height:15px; border-radius:50%; background:#ef5a3c;
+  .rp-mute{ flex:none; width:15px; height:15px; border-radius:50%; background:var(--red);
     display:inline-flex; align-items:center; justify-content:center; margin-left:1px }
-  .rp-mute svg{ width:9px; height:9px; color:#0d1526 }
+  .rp-mute svg{ width:9px; height:9px; color:var(--panel) }
   /* 成長（ブラウザを育てる遊び）の自分向け表示 */
-  .grow-note{ margin-top:14px; font-size:13px; color:#9fb0c7 }
+  .grow-note{ margin-top:14px; font-size:13px; color:var(--sub) }
 
   /* --- スマホ：枠に横幅を使うのがもったいないので、カードを画面いっぱいに広げる ---
      body余白24＋カード余白28＋境界線1＝左右で106px（390px幅の27%）が枠に消えていた。
@@ -683,6 +712,114 @@
   }
   html.pwa body{ padding-top:max(env(safe-area-inset-top), 14px) }
 </style>
+<!-- 見た目（昼夜）のエンジン。**モジュールの外・<style> の直後**に置く＝最初の描画より前に
+     昼の色を当てるため（モジュールは描画後に走るので、そこに置くと昼でも一瞬紺が見える）。
+     アプリの状態には一切触らない（読むのは localStorage の設定と時計だけ）。設定の UI は
+     モジュール側（⚙️ 設定タブ）が window.__potTheme を通して呼ぶ。
+     ★色の出どころは NIGHT / TEA / SKY の3つだけ。夜＝現行の紺、ミルクティー＝朝夕の紙、
+       朝の空＝正午。時刻モードは 紺 → 朝焼け → ミルクティー → 朝の空 → ミルクティー → 夕焼け → 紺 と、
+       昼のあいだ止まらずに動く。朝夕は素直に混ぜると濁った茶を通るので、キーフレームを密に置く。
+     ★「面」は時刻で補間、「墨」は面の明るさで入れ替える（朝夕の30分だけ）。中間の灰色の文字を作らない。 -->
+<script>
+(() => {
+  const KEY = 'pot-call-theme'   // 'time'（既定）| 'auto' | 'day' | 'night'
+  const NIGHT = {
+    g1:'#1c2b48', g2:'#0d1424', g3:'#090e1a', card:'rgba(255,255,255,.04)', 'card-border':'rgba(255,255,255,.09)',
+    panel:'#0d1526', chip:'#1d2740', 'chip-hover':'#26324f', 'chip-active':'#2f3d5f', mute:'#2a3550',
+    border:'rgba(255,255,255,.12)', 'border-soft':'rgba(255,255,255,.10)', 'border-faint':'rgba(255,255,255,.08)',
+    'tab-on':'#131d30', 'accent-dim':'#0c2b2a', dialog:'#111a2e', log:'#0a121f',
+    text:'#eef2f8', sub:'#9fb0c7', note:'#6f7f96', ver:'#4a5a72', tab:'#8fa0b8', body:'#cfe0f0', 'chip-fg':'#ccffee',
+    link:'#00e5cc', accent:'#00e5cc', 'accent-soft':'#8fe9de', 'accent-glow':'rgba(0,229,204,.45)',
+    warn:'#ffd24d', 'warn-bg':'rgba(255,210,77,.10)', 'warn-border':'rgba(255,210,77,.35)',
+    red:'#ef5a3c', 'red-glow':'rgba(239,90,60,.30)', relay:'#f6821f',
+    placeholder:'#5a6b83', legal:'#5f6f86', 'legal-link':'#7a90ad', 'dot-idle':'#48507a' }
+  const TEA = {   // ミルクティー（朝夕の肩）
+    g1:'#e7dfd4', g2:'#f3efe8', g3:'#f8f5f0', card:'rgba(255,255,255,.5)', 'card-border':'rgba(60,45,25,.10)',
+    panel:'#fffdf9', chip:'#eae3d8', 'chip-hover':'#e0d7c9', 'chip-active':'#d5cbbb', mute:'#eae3d8',
+    border:'rgba(60,45,25,.14)', 'border-soft':'rgba(60,45,25,.12)', 'border-faint':'rgba(60,45,25,.08)',
+    'tab-on':'#fffdf9', 'accent-dim':'#dff4ee', dialog:'#fffdf9', log:'#f1ebe1',
+    text:'#2b2520', sub:'#5f554b', note:'#7a6f64', ver:'#a89d90', tab:'#7a6f64', body:'#3b332c', 'chip-fg':'#3b3128',
+    link:'#00685e', accent:'#00c9b0', 'accent-soft':'#0a7a6b', 'accent-glow':'rgba(0,0,0,0)',
+    warn:'#8a4a06', 'warn-bg':'rgba(255,180,0,.14)', 'warn-border':'rgba(200,140,0,.45)',
+    red:'#e0502f', 'red-glow':'rgba(224,80,47,.22)', relay:'#d86a0a',
+    placeholder:'#9a8f83', legal:'#7a6f64', 'legal-link':'#5f554b', 'dot-idle':'#b8ad9f' }
+  const SKY = {   // 朝の空（正午）
+    g1:'#d9e6f5', g2:'#edf2f9', g3:'#f5f8fc', card:'rgba(255,255,255,.55)', 'card-border':'rgba(15,36,56,.10)',
+    panel:'#ffffff', chip:'#e3ebf5', 'chip-hover':'#d6e2f0', 'chip-active':'#c8d7e8', mute:'#e3ebf5',
+    border:'rgba(15,36,56,.14)', 'border-soft':'rgba(15,36,56,.12)', 'border-faint':'rgba(15,36,56,.08)',
+    'tab-on':'#ffffff', 'accent-dim':'#dcf5f0', dialog:'#ffffff', log:'#eef3f9',
+    text:'#0f2438', sub:'#395872', note:'#4d6a80', ver:'#8a9bb0', tab:'#5d7690', body:'#23405a', 'chip-fg':'#1d3a5a',
+    link:'#00685e', accent:'#00c8b2', 'accent-soft':'#0a7a6b', 'accent-glow':'rgba(0,0,0,0)',
+    warn:'#8a4a06', 'warn-bg':'rgba(255,180,0,.14)', 'warn-border':'rgba(200,140,0,.45)',
+    red:'#e04f2f', 'red-glow':'rgba(224,79,47,.25)', relay:'#d86a0a',
+    placeholder:'#8fa3b8', legal:'#4d6a80', 'legal-link':'#395872', 'dot-idle':'#b5c3d3' }
+  const SURF = ['g1','g2','g3','card','card-border','panel','chip','chip-hover','chip-active','mute',
+    'border','border-soft','border-faint','tab-on','accent-dim','dialog','log']
+  const INK = Object.keys(NIGHT).filter(k => !SURF.includes(k))
+  // h＝分。p＝面の出どころ／ink＝昼側の墨の出どころ。朝焼け・夕焼けは地（g1〜g3）だけ差し替える。
+  // ★snap＝その区間は**中間で一気に切り替える**（夜明け 6:00・日没 18:15）。暗い面と明るい面を
+  //   線形に混ぜると数分間だけ中間の灰色になり、白い文字でも黒い文字でも読めない（T43 が比 2.7 を
+  //   捕まえた）。面が灰色を通らなければ、墨は面の明るさで自動的に正しい側に付く
+  const KEYS = [
+    { h: 0,          p: NIGHT, ink: TEA },
+    { h: 5 * 60,     p: NIGHT, ink: TEA },
+    { h: 5 * 60 + 45, p: { ...NIGHT, g1:'#c9785a', g2:'#2a2a4a', g3:'#141a30' }, ink: TEA },   // 朝焼け
+    { h: 6 * 60 + 15, p: { ...TEA, g1:'#f2b48a', g2:'#efe4d8', g3:'#f5f0e8' }, ink: TEA, snap: true },   // 朝（6:00 に明ける）
+    { h: 7 * 60 + 30, p: TEA, ink: TEA },
+    { h: 12 * 60,    p: SKY, ink: SKY },                                                         // 正午
+    { h: 16 * 60 + 30, p: TEA, ink: TEA },
+    { h: 17 * 60 + 30, p: { ...TEA, g1:'#ee9a6a', g2:'#ede0d2', g3:'#f1e9df' }, ink: TEA },    // 夕方
+    { h: 18 * 60,    p: { ...TEA, g1:'#e07f56', g2:'#e6d3c4', g3:'#eadfd3' }, ink: TEA },      // 夕焼け
+    { h: 18 * 60 + 30, p: { ...NIGHT, g1:'#b05a48', g2:'#2e2440', g3:'#151a2e' }, ink: TEA, snap: true },  // 日没（18:15 に暮れる）
+    { h: 19 * 60 + 30, p: { ...NIGHT, g1:'#5a3a58', g2:'#141a34', g3:'#0c1020' }, ink: TEA },  // 宵
+    { h: 20 * 60 + 30, p: NIGHT, ink: TEA },
+    { h: 24 * 60,    p: NIGHT, ink: TEA },
+  ]
+  const parse = c => {
+    if (c[0] === '#') { const n = parseInt(c.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255, 1] }
+    const a = c.slice(c.indexOf('(') + 1, -1).split(',').map(Number); return [a[0], a[1], a[2], a.length > 3 ? a[3] : 1]
+  }
+  const out = ([r, g, b, a]) => { r = Math.round(r); g = Math.round(g); b = Math.round(b)
+    return a >= .999 ? '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('') : `rgba(${r},${g},${b},${a.toFixed(3)})` }
+  const mix = (x, y, t) => { const A = parse(x), B = parse(y); return out(A.map((v, i) => v + (B[i] - v) * t)) }
+  const lum = hex => { const c = parse(hex).slice(0, 3).map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4 })
+    return .2126 * c[0] + .7152 * c[1] + .0722 * c[2] }
+  const smooth = x => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x) }
+  // 時刻（分）の色。面は時刻で補間、墨は面の明るさ 0.10〜0.30 の間だけで夜⇄昼を入れ替える
+  const at = min => {
+    min = Math.min(1439, Math.max(0, min))
+    let i = 0; while (KEYS[i + 1].h < min) i++
+    const a = KEYS[i], b = KEYS[i + 1]
+    let t = (min - a.h) / (b.h - a.h)
+    if (b.snap) t = t < .5 ? 0 : 1
+    const p = {}
+    for (const k of SURF) p[k] = mix(a.p[k], b.p[k], t)
+    const ti = smooth((lum(p.panel) - .10) / (.30 - .10))
+    for (const k of INK) p[k] = mix(NIGHT[k], mix(a.ink[k], b.ink[k], t), ti)
+    return p
+  }
+  const MODES = ['time', 'auto', 'day', 'night']
+  const get = () => { try { const m = localStorage.getItem(KEY); return MODES.includes(m) ? m : 'time' } catch { return 'time' } }
+  const mq = matchMedia('(prefers-color-scheme: dark)')
+  const nowMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes() }
+  const pick = (m, min) => m === 'night' ? NIGHT : m === 'day' ? TEA : m === 'auto' ? (mq.matches ? NIGHT : TEA) : at(min)
+  const meta = document.querySelector('meta[name="theme-color"]')
+  const st = document.documentElement.style
+  // 当てる。引数は試験用（設定と時計を差し替えられる）。普段は無引数で呼ぶ
+  const apply = (m = get(), min = nowMin()) => {
+    const p = pick(m, min)
+    for (const k in p) st.setProperty('--' + k, p[k])
+    st.colorScheme = lum(p.panel) > .3 ? 'light' : 'dark'   // 入力欄・スクロールバーの地色も追従させる
+    if (meta) meta.content = p.g2                            // iPhone の上下の帯
+    return p
+  }
+  apply()
+  setInterval(() => apply(), 60 * 1000)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) apply() })   // ロックから戻ったら前の色を引きずらない
+  mq.addEventListener('change', () => apply())
+  window.__potTheme = { get, set: m => { try { localStorage.setItem(KEY, m) } catch {} apply() }, apply, at }
+})()
+</script>
 </head>
 <body>
 <div id="banner" class="banner" hidden>
@@ -880,7 +1017,18 @@
        β は #ver の**外**に置くこと（中に入れると test/smoke.py の T15 が版番号と誤認する）。
        ★**状態カードの外**に置くこと：初期画面ではそのカードごと畳むので、中に入れると
        版と「安定版へ」の導線が初回訪問者に見えなくなる（β から来た人の逃げ道が消える） -->
-  <div class="ver"><span id="ver"></span><span id="chan"></span></div>
+  <!-- 見た目（昼夜）の選択は**版表示と同じ行**に置く＝参加前でも通話中でも常に見える。
+       ⚙️ タブは通話中しか出ないうえ、4行足すと設定パネルが伸びてタブ切り替えで高さが動く
+       （T30 が捕まえた）。中身は <style> 直後のスクリプト。ここは選ぶだけ -->
+  <div class="ver-row">
+    <label class="theme-pick"><span aria-hidden="true">🌗</span><select id="theme" aria-label="見た目">
+      <option value="time">時刻で変わる</option>
+      <option value="auto">端末に合わせる</option>
+      <option value="day">ずっと昼</option>
+      <option value="night">ずっと夜</option>
+    </select></label>
+    <div class="ver"><span id="ver"></span><span id="chan"></span></div>
+  </div>
 </div>
 
 <aside class="lobby">
@@ -1101,7 +1249,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.10.3'
+const APP_VERSION = 'v0.11.0'
 
 const $ = id => document.getElementById(id)
 
@@ -2240,6 +2388,14 @@ const renderBgm = () => {
     if (bgm) bgm.gain.gain.value = bgmLevel()
   }
   renderBgm()
+}
+
+// 見た目（昼夜）の4択。エンジンは <style> 直後の classic script（window.__potTheme）。
+// ここは選んだら覚えて即座に当てるだけ
+{
+  const sel = $('theme')
+  sel.value = window.__potTheme.get()
+  sel.onchange = () => window.__potTheme.set(sel.value)
 }
 
 // ★中断からの復帰。**iOS は他アプリへ切り替えると AudioContext を `interrupted` にする**が、
