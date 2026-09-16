@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.11.1
+  ぽっと通話〈実験版〉 v0.11.2
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -747,11 +747,13 @@
     panel:'#fffdf9', chip:'#eae3d8', 'chip-hover':'#e0d7c9', 'chip-active':'#d5cbbb', mute:'#eae3d8',
     border:'rgba(60,45,25,.14)', 'border-soft':'rgba(60,45,25,.12)', 'border-faint':'rgba(60,45,25,.08)',
     'tab-on':'#fffdf9', 'accent-dim':'#e8f6f2', dialog:'#fffdf9', log:'#f1ebe1',
-    text:'#2b2520', sub:'#5f554b', note:'#7a6f64', ver:'#a89d90', tab:'#7a6f64', body:'#3b332c', 'chip-fg':'#3b3128',
+    /* 墨は濃緑（2026-09-16・利用者の選択。真っ黒に近い墨は暖かい紙の上で硬く見える。
+       ティールのリンクや「話している」枠と同じ家族なので紙になじむ）。注記は比 4.5 を切らない濃さ */
+    text:'#1e3a33', sub:'#4c6b61', note:'#5e766d', ver:'#96a49e', tab:'#5e766d', body:'#2c4a42', 'chip-fg':'#22453c',
     link:'#00685e', accent:'#00c9b0', 'accent-soft':'#0a7a6b', 'accent-glow':'rgba(0,0,0,0)',
     warn:'#8a4a06', 'warn-bg':'rgba(255,180,0,.14)', 'warn-border':'rgba(200,140,0,.45)',
     red:'#e0502f', 'red-glow':'rgba(224,80,47,.22)', relay:'#d86a0a',
-    placeholder:'#9a8f83', legal:'#7a6f64', 'legal-link':'#5f554b', 'dot-idle':'#b8ad9f' }
+    placeholder:'#8fa099', legal:'#5e766d', 'legal-link':'#4c6b61', 'dot-idle':'#b3c0ba' }
   const SKY = {   // 朝の空（正午）
     g1:'#d9e6f5', g2:'#edf2f9', g3:'#f5f8fc', card:'rgba(255,255,255,.55)', 'card-border':'rgba(15,36,56,.10)',
     panel:'#ffffff', chip:'#e3ebf5', 'chip-hover':'#d6e2f0', 'chip-active':'#c8d7e8', mute:'#e3ebf5',
@@ -1258,7 +1260,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.11.1'
+const APP_VERSION = 'v0.11.2'
 
 const $ = id => document.getElementById(id)
 
