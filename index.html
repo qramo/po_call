@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.11.4
+  ぽっと通話〈実験版〉 v0.11.5
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1280,7 +1280,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.11.4'
+const APP_VERSION = 'v0.11.5'
 
 const $ = id => document.getElementById(id)
 
@@ -1616,7 +1616,12 @@ const syncRoomCount = () => {
 roomInput.addEventListener('input', () => {
   // 他人の配信部屋のリンクを開いた状態で部屋名を書き換えた＝「別の部屋を作る」意思なので、
   // もらってきた指紋は捨てる（そのまま持っていると、名前だけ違う"存在しない配信部屋"に入ってしまう）。
+  // ★**名前が本当に変わったときだけ**捨てる（2026-09-17）。iPhone では IME の確定や自動修正で、
+  //   見た目が変わらなくても input が飛ぶことがあり、その瞬間に指紋が消えて「同名の普通の部屋」に
+  //   化けていた。元の名前に戻せば指紋も戻す。
   if (pendingPk && !ownerKeyByFp(pendingPk)) pendingPk = ''
+  { const h = roomFromHash(), hp = roomPk(h)
+    if (hp && !ownerKeyByFp(hp) && roomInput.value.trim() === roomName(h)) pendingPk = hp }
   syncRoomCount()
   if (kindBc.checked) applyBcast()   // 名前が変われば鍵も部屋も変わる（中で syncShare する）
   else { syncShare(); syncKindRow() }
@@ -1643,8 +1648,15 @@ let bcMint = 0   // 鍵づくりは非同期。部屋名を打ち替えるたび
 const syncKindRow = () => {
   // 他人の配信部屋にいる／入ろうとしている間は、この2択そのものを出さない。
   // 部屋の正体はURLで決まっているので、ここで切り替えられると誤解のもとになる。
+  // ★**指紋付きのリンクで来たなら、オーナー本人でも出さない**（2026-09-17・利用者の指摘）。
+  //   自分の配信部屋のリンクを開いたときに 🏠 が選べて、押すと同名の別の部屋になっていた。
+  //   欄の名前を変えたら（＝別の部屋を作る）出す。オーナーなら 📣 を選択状態にそろえる
+  //   （pendingPk が自分の鍵なのに 🏠 が選ばれている、という食い違いを残さない）
+  if (pendingPk && ownerKeyByFp(pendingPk) && !kindBc.checked) { kindBc.checked = true; kindChat.checked = false }
+  const h = roomFromHash()
+  const viaLink = !!roomPk(h) && roomInput.value.trim() === roomName(h)
   const foreign = !!pendingPk && !ownerKeyByFp(pendingPk)
-  kindRow.hidden = !!call.joinedId || foreign
+  kindRow.hidden = !!call.joinedId || foreign || viaLink
   kindBc.parentElement.classList.toggle('sel', kindBc.checked)
   kindChat.parentElement.classList.toggle('sel', kindChat.checked)
 }
