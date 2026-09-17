@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.11.5
+  ぽっと通話〈実験版〉 v0.11.6
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -904,7 +904,7 @@
   </div>
       <!-- 参加ボタンもこの中。**部屋名と対で使うもの**なので、畳んだときに一緒に消えるのが素直
            （ロビーから入るときはこのボタンを通らない） -->
-  <button id="join"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg><span>参加する</span></button>
+  <button id="join"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg><span id="joinLbl">参加する</span></button>
     </div></div>
   </details>
   </div></div>
@@ -1280,7 +1280,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.11.5'
+const APP_VERSION = 'v0.11.6'
 
 const $ = id => document.getElementById(id)
 
@@ -1657,6 +1657,8 @@ const syncKindRow = () => {
   const viaLink = !!roomPk(h) && roomInput.value.trim() === roomName(h)
   const foreign = !!pendingPk && !ownerKeyByFp(pendingPk)
   kindRow.hidden = !!call.joinedId || foreign || viaLink
+  // 他人の配信部屋に入るときはボタンの文言で役割を先に伝える（マイクは使わない・聞くだけ）
+  $('joinLbl').textContent = foreign ? 'リスナーとして参加する' : '参加する'
   kindBc.parentElement.classList.toggle('sel', kindBc.checked)
   kindChat.parentElement.classList.toggle('sel', kindChat.checked)
 }
