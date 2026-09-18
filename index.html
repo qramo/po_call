@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.11.9
+  ぽっと通話〈実験版〉 v0.12.0
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -217,6 +217,18 @@
   /* 参加後の操作は横並び（ミュート／退出を半々に） */
   .actions{ display:flex; gap:12px }
   .actions button{ flex:1; width:auto }
+  /* 入口の案内（お休み中／いま開いています）。注意の枠と同じ温度で */
+  .entry-note{ margin-top:12px; padding:10px 12px; border-radius:10px; font-size:13px; line-height:1.6;
+    background:var(--warn-bg); border:1px solid var(--warn-border); color:var(--text) }
+  .entry-note[hidden]{ display:none }
+  .entry-note p{ margin:0 }
+  .entry-actions{ display:flex; gap:8px }
+  .entry-actions[hidden]{ display:none }
+  .entry-actions button{ flex:1; width:auto; margin-top:8px; padding:9px 6px; font-size:13px;
+    background:var(--chip); color:var(--chip-fg) }
+  .entry-actions button[hidden]{ display:none }
+  #join:disabled{ opacity:.6; cursor:default }
+  #join[hidden]{ display:none }   /* ★display:flex を書いているので [hidden] も書く（お休み中は隠す） */
   /* ミュート（登壇なら「マイクを使う」）：退出 ＝ 3：2（利用者の指定・2026-09-18） */
   #mute, #speak{ flex:3 }
   #leave{ flex:2 }
@@ -908,6 +920,16 @@
       <!-- 参加ボタンもこの中。**部屋名と対で使うもの**なので、畳んだときに一緒に消えるのが素直
            （ロビーから入るときはこのボタンを通らない） -->
   <button id="join"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg><span id="joinLbl">参加する</span></button>
+  <!-- 入口の案内（リンクで来た人だけ・v0.12.0）。ロビーでその部屋が開いているかを見てから入る。
+       開いていなければ「お休み中」と案内してロビーへ誘導し、作る意思があれば「この名前で新しく開く」。
+       ★display を書いたら [hidden] も書くこと（.entry-note[hidden]） -->
+  <div id="entryNote" class="entry-note" hidden>
+    <p id="entryText"></p>
+    <div id="entryActions" class="entry-actions" hidden>
+      <button id="entryLobby" type="button">📡 ロビーで部屋をえらぶ</button>
+      <button id="entryOpen" type="button">🏠 この名前で新しく開く</button>
+    </div>
+  </div>
     </div></div>
   </details>
   </div></div>
@@ -1283,7 +1305,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.11.9'
+const APP_VERSION = 'v0.12.0'
 
 const $ = id => document.getElementById(id)
 
@@ -1586,6 +1608,11 @@ const importVerify = pub => crypto.subtle.importKey('raw', unb64u(pub), ECDSA, f
 // これから入る部屋の公開鍵指紋。URL（#部屋名~pk~…）・ロビーのタップ・下の「📣 配信部屋にする」の
 // どれかで決まる。**参加していない間の予定**なので call には置かない（退出で消えると困る）。
 let pendingPk = ''
+// 入口の確認（リンクで来た人）。中身は下の「入口の確認」の節。state: '' | 'checking' | 'live' | 'asleep'
+// ★entryIsBlocking は**ここで**宣言する。つなぎ直し（rejoin）はモジュール評価の途中で joinCall() を
+//   呼ぶので、下の節で const 宣言すると TDZ の ReferenceError になり、参加が黙って失敗する（T11 が捕まえた）
+const entry = { room: '', state: '' }
+const entryIsBlocking = () => entry.state === 'checking' || entry.state === 'asleep'
 const roomInput = $('room')
 // 文字数カウンタ。絵文字を1文字と数えるためコードポイント単位で数える（capRoom と同じ数え方）。
 // value への代入では input イベントが飛ばないので、値を書き換えた箇所では必ずこれを呼ぶこと。
@@ -1625,6 +1652,7 @@ roomInput.addEventListener('input', () => {
   if (pendingPk && !ownerKeyByFp(pendingPk)) pendingPk = ''
   { const h = roomFromHash(), hp = roomPk(h)
     if (hp && !ownerKeyByFp(hp) && roomInput.value.trim() === roomName(h)) pendingPk = hp }
+  if (entry.room && roomInput.value.trim() !== roomName(entry.room)) entryCancel()
   syncRoomCount()
   if (kindBc.checked) applyBcast()   // 名前が変われば鍵も部屋も変わる（中で syncShare する）
   else { syncShare(); syncKindRow() }
@@ -1661,7 +1689,7 @@ const syncKindRow = () => {
   const foreign = !!pendingPk && !ownerKeyByFp(pendingPk)
   kindRow.hidden = !!call.joinedId || foreign || viaLink
   // 他人の配信部屋に入るときはボタンの文言で役割を先に伝える（マイクは使わない・聞くだけ）
-  $('joinLbl').textContent = foreign ? 'リスナーとして参加する' : '参加する'
+  $('joinLbl').textContent = entry.state === 'checking' ? 'この部屋を探しています…' : foreign ? 'リスナーとして参加する' : '参加する'
   kindBc.parentElement.classList.toggle('sel', kindBc.checked)
   kindChat.parentElement.classList.toggle('sel', kindChat.checked)
 }
@@ -3679,6 +3707,7 @@ const runJoin = async () => {
     roomInput.focus()
     return
   }
+  if (entryIsBlocking()) return   // 入口の確認中／お休み中（案内の「この名前で新しく開く」からだけ入れる）
   roomInput.value = name; syncRoomCount()   // 補った／切り詰めた名前を入力欄にも反映する
   // 配信部屋なら部屋IDは `名前~pk~指紋`。**指紋から自分の秘密鍵が引ければ自分がオーナー**
   // ＝マイクを取る側。引けなければ聞き役なので、この先 getUserMedia を一度も呼ばない。
@@ -4327,9 +4356,57 @@ const LOBBY_MAX_ROOMS = 50
 const ROOM_SOUND_GAP_MS = 10000
 let lastRoomSound = 0
 
+// ─ 入口の確認（リンクで来た人）──────────────────────────────
+// ★URL の部屋名だけを頼りに参加すると、**古いリンク・QR を開いた人が無人の部屋を立ててしまう**
+//   （X で告知した昔のリンクが現存し、時々人が迷い込んでいる・2026-09-18）。リンクで来た人は、
+//   まずロビーでその部屋が開いているかを見てから入る。開いていなければ「お休み中」と案内して
+//   ロビーへ誘導し、作る意思があれば「この名前で新しく開く」で従来どおり入れる。
+//   ★これは第1段（名前ベースの URL のまま）。第2段で部屋の実体がハッシュになれば、名前付き URL は
+//     丸ごとこの「入口」扱いになる（HANDOFF「部屋ID・話題タグまわりの設計方針」）。
+//   対象外：自分で部屋名を打った人／ロビーからタップした人／つなぎ直し／配信部屋のオーナー。
+//   判定はロビーの在室（presences）。相手の発見に数秒かかるので、ロビーに入ってから
+//   ENTRY_WAIT のあいだは「探しています」と出し、その後も見つかれば「開いています」に戻す。
+const ENTRY_WAIT = 12000
+const entryCancel = () => { if (!entry.room) return; entry.room = ''; entry.state = ''; entryRender() }
+const entryLiveCount = () => { let n = 0; presences.forEach(v => { if (v.room === entry.room) n++ }); return n }
+const entryRender = () => {
+  const j = $('join'), note = $('entryNote'), acts = $('entryActions')
+  j.disabled = entry.state === 'checking'
+  j.hidden = entry.state === 'asleep'
+  note.hidden = entry.state !== 'asleep' && entry.state !== 'live'
+  acts.hidden = entry.state !== 'asleep'
+  if (entry.state === 'live') $('entryText').textContent = '🟢 いま開いています（' + entryLiveCount() + '人）'
+  if (entry.state === 'asleep') {
+    const bc = isBcRoom(entry.room)
+    $('entryText').textContent = bc
+      ? '😴 この配信はいま開いていないみたいです。始まればここに出ます。'
+      : '😴 この部屋にはいま誰もいないみたいです。古いリンクかもしれません。'
+    $('entryOpen').hidden = bc   // 聞き役は配信部屋を開けない（鍵が無い）
+  }
+  syncKindRow()   // ボタンの文言
+}
+const entryUpdate = () => {
+  if (!entry.room) return
+  const n = entryLiveCount()
+  const next = n ? 'live' : (lobbySince && Date.now() - lobbySince >= ENTRY_WAIT ? 'asleep' : 'checking')
+  if (next !== entry.state) { entry.state = next; entryRender() }
+  else if (next === 'live') $('entryText').textContent = '🟢 いま開いています（' + n + '人）'
+}
+const entryStart = () => {
+  const h = roomFromHash()
+  if (!h || rejoin) return
+  const pk = roomPk(h)
+  if (pk && ownerKeyByFp(pk)) return      // 自分の配信部屋＝作る側
+  entry.room = h; entry.state = 'checking'; entryRender()
+  setInterval(entryUpdate, 1000)
+}
+$('entryLobby').onclick = () => { const l = document.querySelector('.lobby'); if (l) l.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
+$('entryOpen').onclick = () => { entryCancel(); $('join').click() }
+
 const renderLobby = () => {
   const list = $('lobbyList'), status = $('lobbyStatus')
   if (!lobbyRoom) return  // 接続前は初期メッセージのまま
+  entryUpdate()           // 入口の確認（リンクで来た人）は在室が変わるたびに見直す
   // 部屋名 → 参加者[] に集約。自分は自分の発信を受け取らないので、通話中なら合成して足す。
   const byRoom = new Map()
   const push = (room, p) => {
@@ -4423,6 +4500,7 @@ const selectRoom = room => {
   } else {
     if (!confirm('「' + label + '」に参加しますか？\n' + how)) return   // 未参加時のミスタップ防止
   }
+  entryCancel()   // ロビーから来た＝開いている部屋だと分かっている
   // **指紋も一緒に持っていく**（名前だけ渡すと、同じ名前の普通の部屋に入って誰にも会えない）
   roomInput.value = roomName(room); pendingPk = roomPk(room)
   const own = !!(pendingPk && ownerKeyByFp(pendingPk))
@@ -4434,6 +4512,7 @@ const selectRoom = room => {
 
 const DISCOVER_MS = 8000     // この間は「探しています」と出す（発見に数秒かかるため）
 let lobbySince = 0           // ロビーに入り直した時刻
+entryStart()                 // リンクで来た人は入口の確認から（上の「入口の確認」）
 let lobbySweep = null        // 取りこぼし掃除のタイマー（入り直しで二重に走らせない）
 let lobbyBusy = false
 
