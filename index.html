@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.12.0
+  ぽっと通話〈実験版〉 v0.12.1
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -222,7 +222,7 @@
     background:var(--warn-bg); border:1px solid var(--warn-border); color:var(--text) }
   .entry-note[hidden]{ display:none }
   .entry-note p{ margin:0 }
-  .entry-actions{ display:flex; gap:8px }
+  .entry-actions{ display:flex; flex-direction:column; gap:0 }   /* 文言が長いので縦に */
   .entry-actions[hidden]{ display:none }
   .entry-actions button{ flex:1; width:auto; margin-top:8px; padding:9px 6px; font-size:13px;
     background:var(--chip); color:var(--chip-fg) }
@@ -926,8 +926,10 @@
   <div id="entryNote" class="entry-note" hidden>
     <p id="entryText"></p>
     <div id="entryActions" class="entry-actions" hidden>
-      <button id="entryLobby" type="button">📡 ロビーで部屋をえらぶ</button>
-      <button id="entryOpen" type="button">🏠 この名前で新しく開く</button>
+      <!-- 文言は利用者の指定（2026-09-18）。ロビーはすぐ下にあるので「ロビーで」とは言わない。
+           「名前をつけて参加」＝参加ボタンを戻して部屋名の欄にフォーカス（名前を見直してから押す） -->
+      <button id="entryLobby" type="button">☎️ 通話中の部屋から選んで参加</button>
+      <button id="entryOpen" type="button">✏️ 部屋の名前をつけて参加</button>
     </div>
   </div>
     </div></div>
@@ -1305,7 +1307,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.12.0'
+const APP_VERSION = 'v0.12.1'
 
 const $ = id => document.getElementById(id)
 
@@ -4401,7 +4403,9 @@ const entryStart = () => {
   setInterval(entryUpdate, 1000)
 }
 $('entryLobby').onclick = () => { const l = document.querySelector('.lobby'); if (l) l.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
-$('entryOpen').onclick = () => { entryCancel(); $('join').click() }
+// 「部屋の名前をつけて参加」＝すぐには入らない。参加ボタンを戻し、部屋名の欄を選択状態にして
+// 名前を見直してもらう（そのままでも変えてもよい）。押すのは本人
+$('entryOpen').onclick = () => { entryCancel(); roomInput.focus(); roomInput.select() }
 
 const renderLobby = () => {
   const list = $('lobbyList'), status = $('lobbyStatus')
