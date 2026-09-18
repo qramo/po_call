@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.13.3
+  ぽっと通話〈実験版〉 v0.13.4
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -375,6 +375,9 @@
      このファイルで同じ罠を踏むのは3度目。display を足したら必ず対で書く。 */
   .tab[hidden]{ display:none }
   .t-em{ font-size:13px; line-height:1 }
+  /* 未読の点：別のタブを見ている間にひとことが届いたら出す。開いたら消える（v0.13.4・利用者の要望） */
+  .t-dot{ display:none; width:7px; height:7px; border-radius:50%; background:var(--red); margin-left:1px; flex:none }
+  .tab.unread .t-dot{ display:inline-block }
   .tab:hover{ color:var(--chip-fg) }
   .tab[aria-selected="true"]{ color:var(--text); background:var(--tab-on) }
   /* 選択中の下線。border ではなく擬似要素にして、タブの枠線と1px重ねる */
@@ -984,7 +987,7 @@
          既定は「メンバー」。参加していない間はタブごと出さない。 -->
     <div id="tabs" class="tabs" role="tablist" aria-label="通話中の表示" hidden>
       <button id="tabMembers" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panMembers"><span class="t-em">👥</span><span class="t-label">メンバー</span></button>
-      <button id="tabChat" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panChat"><span class="t-em">💬</span><span class="t-label">ひとこと</span></button>
+      <button id="tabChat" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panChat"><span class="t-em">💬</span><span class="t-label">ひとこと</span><span class="t-dot" aria-hidden="true"></span></button>
       <!-- おたよりは**配信部屋のときだけ**出す（枠主がはっきりしている部屋でしか成立しないため） -->
       <button id="tabMail" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panMail" hidden><span class="t-em">📮</span><span class="t-label">おたより</span></button>
       <button id="tabSettings" class="tab tab-right" type="button" role="tab" aria-selected="false" aria-controls="panSettings" aria-label="設定"><span class="t-em">⚙️</span><span class="t-label">設定</span></button>
@@ -1329,7 +1332,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.13.3'
+const APP_VERSION = 'v0.13.4'
 
 const $ = id => document.getElementById(id)
 
@@ -2160,6 +2163,7 @@ const renderTabs = () => {
 const selectTab = key => {
   if (!tabLive().some(t => t[0] === key)) return
   call.tab = key
+  if (key === 'chat') $('tabChat').classList.remove('unread')   // 見たら既読
   renderTabs()
 }
 TAB_PANELS.forEach(([key, tabId]) => { $(tabId).onclick = () => selectTab(key) })
@@ -3971,6 +3975,7 @@ const runJoin = async () => {
       if (now - (call.chatSeen.get(peerId) || 0) < CHAT_ACCEPT_MS) return
       call.chatSeen.set(peerId, now)
       showBubble(peerId, text)
+      if (call.tab !== 'chat') $('tabChat').classList.add('unread')   // 見ていない間に届いた＝未読の点
     }
 
     // 配信部屋の名簿。**古いクライアントはこの action を知らないので黙って捨てる**（Trystero の
@@ -4181,6 +4186,7 @@ const resetJoinedUI = () => {
   $('retry').hidden = true
   $('pip').hidden = true
   $('tagRow').hidden = true; $('tagForm').hidden = true   // 話題タグの行（join/leave の対称）
+  $('tabChat').classList.remove('unread')                // ひとことの未読の点も持ち越さない
   // ★退出したら URL から部屋を落とす。参加時に焼き付けたままだと、**次に開いたとき
   //   「共有リンクから来た人」と区別がつかない**（＝最初の画面で「部屋を作る」が開いてしまう。
   //   2026-09-12 に利用者が遭遇）。URL としても、居ない部屋を指したままなのは嘘。
