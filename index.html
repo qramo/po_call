@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.11.8
+  ぽっと通話〈実験版〉 v0.11.9
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1283,7 +1283,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.11.8'
+const APP_VERSION = 'v0.11.9'
 
 const $ = id => document.getElementById(id)
 
@@ -2329,6 +2329,7 @@ const bgmSchedule = (stepSec, onStep) => {
   let next = ctx0().currentTime + 0.06, step = 0
   const tick = () => {
     if (!bgm) return
+    if (ctx0().state !== 'running') return   // 止まっている時計に向かって積まない（中断中）
     const now = ctx0().currentTime
     // 遅れを取り戻そうとすると**過去の時刻の音を大量に予約して一斉に鳴る**ので、現在に合わせ直す
     if (next < now) next = now + 0.06
@@ -2461,12 +2462,25 @@ const renderBgm = () => {
 //   ・音量が100%未満なら**相手の声も無音のまま**（`<audio>` を muted にして Web Audio 経由に
 //     しているため）＝「背面で聞こえない」より悪い「**戻っても聞こえない**」になる。
 //   なお **Safari 内のタブ切り替えでは中断されない**。止まるのは他アプリへの切り替え。
+// ★起こし直しは**1本に束ねる**（2026-09-18・v0.11.9）。iOS の中断中は resume() の約束が
+//   **中断が明けるまで解決しない**。その間に 3秒ごとの見張り・再生イベント・visibilitychange が
+//   resume() を何本も積み、明けた瞬間に**全部が解決して startBgm() が連続で走る**＝BGM の最初の
+//   一拍が連射されて「ダダダダダ」になっていた（T45 が再現：6本積むと作り直し4回ぶんの発振器）。
+//   進行中の約束があるうちは重ねない。ただし約束が永遠に解決しない環境に備えて 4 秒で諦めて
+//   もう1本だけ許し、古い約束が後から解決しても（追い越されていたら）何もしない。
+//   BGM の作り直しはさらに 1.5 秒に1回まで。
+let waking = null, wakeAt = 0, bgmRestartAt = 0
 const wakeAudio = () => {
   if (!audioCtx || audioCtx.state === 'running') return
-  audioCtx.resume().then(() => {
+  if (waking && Date.now() - wakeAt < 4000) return
+  wakeAt = Date.now()
+  const p = waking = audioCtx.resume().then(() => {
+    if (waking !== p) return                             // 追い越された古い約束
     applyVolume()                                        // 音量の経路を張り直す
-    if (bgmKind !== 'off' && call.joinedId) startBgm()   // BGM は作り直す（中断明けの状態に頼らない）
-  }).catch(() => {})
+    if (bgmKind !== 'off' && call.joinedId && Date.now() - bgmRestartAt > 1500) {
+      bgmRestartAt = Date.now(); startBgm()              // BGM は作り直す（中断明けの状態に頼らない）
+    }
+  }).catch(() => {}).finally(() => { if (waking === p) waking = null })
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeAudio() })
 // ★**音を出す他のアプリ（写真・動画など）に切り替えると、iOS は AudioContext を中断する。**
