@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.13.0
+  ぽっと通話〈実験版〉 v0.13.1
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -586,6 +586,16 @@
      部屋名の欄（共通の input{width:100%}）でこれが起きないのは全幅だから。
      ★font-size も 16px を下回らせないこと（16px 未満でも iOS は拡大する）。
      どちらも `user-scalable=no` では解決しない（拡大できないと困る人がいるので使わない）。 */
+  /* 話題タグの行（通話中だけ）。状態の行と同じ温度。タグがあれば本文色、無ければ薄く */
+  .tag-row{ display:flex; align-items:center; gap:7px; margin-top:8px; font-size:13px; line-height:1.5 }
+  .tag-row[hidden]{ display:none }
+  .tag-ic{ flex:none }
+  .tag-text{ flex:1; min-width:0; color:var(--sub); overflow-wrap:anywhere }
+  .tag-text b{ color:var(--text); font-size:14px }
+  .tag-text .tag-by{ color:var(--note); font-size:12px; margin-left:4px }
+  .tag-row .retry-btn{ margin:0 }
+  /* ロビー：タグが付いた部屋は**タグを大きく・部屋名を小さく**（利用者の指定・2026-09-18） */
+  .room-sub{ font-size:12px; color:var(--sub); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px }
   .chat-row{ margin-top:6px; position:relative }
   .chat-row[hidden]{ display:none }
   .chat-row input{ width:100%; padding:9px 76px 9px 11px; border-radius:10px; font-size:16px;
@@ -951,6 +961,18 @@
     </div>
     <div style="margin-top:8px">いま一緒にいる人：<span class="peers" id="count">0</span> 人</div>
     <!-- 人数が多くなってきたときだけ出る注意（上限に達したら言い方が変わる） -->
+    <!-- 話題タグ（v0.13.1）。話題が変わった部屋に「今の話題」を後付けする。誰でも上書き（最新1つ・履歴なし）。
+         抑止として付けた人の名前を全員に出す。★display を書いたら [hidden] も書くこと -->
+    <div id="tagRow" class="tag-row" hidden>
+      <span class="tag-ic" aria-hidden="true">🏷</span>
+      <span id="tagText" class="tag-text"></span>
+      <button id="tagEdit" class="retry-btn" type="button">つける</button>
+    </div>
+    <div id="tagForm" class="chat-row" hidden>
+      <input id="tagInput" name="topic" type="text" maxlength="30" placeholder="いまの話題（例：スカイラインGTR）"
+             inputmode="text" enterkeyhint="done" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="false">
+      <button id="tagSend" type="button">つける</button>
+    </div>
     <div id="crowdNote" class="audio-warn" hidden></div>
     <!-- 配信部屋のときだけ出る説明（自分がいま話せるのかを一言で言う） -->
     <div id="bcNote" class="bc-note" hidden></div>
@@ -1307,7 +1329,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.13.0'
+const APP_VERSION = 'v0.13.1'
 
 const $ = id => document.getElementById(id)
 
@@ -2961,7 +2983,38 @@ const aloneLong = () => call.joinedAt && performance.now() - call.joinedAt > JOI
 
 // 表示は「実際に繋がっている人数」から導く。
 // 繋がってさえいれば、幽霊ピアのハンドシェイク失敗などは表に出さない。
+// 話題タグの行。タグは call.meta（部屋のメタデータ）。付けると全員へ meta を送り、在室にも載る
+const renderTag = () => {
+  const row = $('tagRow'), txt = $('tagText')
+  row.hidden = !call.joinedId
+  if (!call.joinedId) { $('tagForm').hidden = true; return }
+  const m = call.meta
+  txt.replaceChildren()
+  if (m.tag) {
+    const b = document.createElement('b'); b.textContent = m.tag
+    const by = document.createElement('span'); by.className = 'tag-by'; by.textContent = m.tagBy ? '（' + m.tagBy + 'が付けた）' : ''
+    txt.append('いまの話題：', b, by)
+    $('tagEdit').textContent = '変える'
+  } else {
+    txt.textContent = '話題タグ：まだありません'
+    $('tagEdit').textContent = 'つける'
+  }
+}
+const setTag = text => {
+  if (!call.joinedId || !call.metaAction) return
+  const m = call.meta
+  m.tag = capText(text, ROOM_MAX); m.tagBy = m.tag ? (profile.name || 'ゲスト') : ''; m.tagAt = Date.now()
+  call.metaAction.send(m).catch(() => {})   // 全員へ（tagAt が新しいので採用される）
+  renderTag(); sendHeartbeat()              // ロビーにもすぐ出す
+}
+$('tagEdit').onclick = () => {
+  const f = $('tagForm'); f.hidden = !f.hidden
+  if (!f.hidden) { $('tagInput').value = call.meta.tag || ''; $('tagInput').focus(); $('tagInput').select() }
+}
+$('tagSend').onclick = () => { setTag($('tagInput').value.trim()); $('tagForm').hidden = true }
+$('tagInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('tagSend').onclick() } })
 const render = () => {
+  renderTag()
   if (!call.joinedId) return
   // 圏外・Wi-Fiオフでも参加自体は成功する（マイクはローカル、ライブラリは読込済み）。
   // 何も言わないと「誰も来ない部屋」に見えて原因が分からないので、まずこれを出す。
@@ -4127,6 +4180,7 @@ const resetJoinedUI = () => {
   $('sndReactRow').style.display = 'none'
   $('retry').hidden = true
   $('pip').hidden = true
+  $('tagRow').hidden = true; $('tagForm').hidden = true   // 話題タグの行（join/leave の対称）
   // ★退出したら URL から部屋を落とす。参加時に焼き付けたままだと、**次に開いたとき
   //   「共有リンクから来た人」と区別がつかない**（＝最初の画面で「部屋を作る」が開いてしまう。
   //   2026-09-12 に利用者が遭遇）。URL としても、居ない部屋を指したままなのは嘘。
@@ -4525,13 +4579,18 @@ const renderLobby = () => {
     // 配信部屋は 📣 で区別する（一覧では「入ると何が起きるか」が違うので、家の絵文字では足りない）。
     // 指紋そのものは出さない＝長いだけで読み手には意味がない。
     const nm = document.createElement('span'); nm.className = 'room-name'
-    nm.textContent = (isBcRoom(room) ? '📣 ' : '🏠 ') + lobbyName(room, people)
+    const tagged = people.find(p => p.tag)   // 部屋の中で同じ値に収束している（meta 同期）ので最初の1人でよい
+    nm.textContent = tagged ? '🏷 ' + tagged.tag : (isBcRoom(room) ? '📣 ' : '🏠 ') + lobbyName(room, people)
     // 満室の表示は**目安**（在室情報は30秒失効なのでずれる）。**押せるままにしておく**＝
     // 空いているのに入れない人を作らないため。実際の判定は入室時（checkCapacity）。
     const full = people.length >= roomCapOf(room)
     const ct = document.createElement('span'); ct.className = 'room-count' + (full ? ' full' : '')
     ct.textContent = people.length + '人' + (full ? '・満室' : '')
     top.append(nm, ct)
+    // タグが付いた部屋は、部屋名と付けた人を小さく添える
+    let sub = null
+    if (tagged) { sub = document.createElement('div'); sub.className = 'room-sub'
+      sub.textContent = (isBcRoom(room) ? '📣 ' : '🏠 ') + lobbyName(room, people) + (tagged.tagBy ? '　' + tagged.tagBy + 'が付けた' : '') }
     const dur = document.createElement('div'); dur.className = 'room-dur'
     const durText = document.createElement('span')
     durText.textContent = '⏱ ' + fmtDuration(roomSeconds(room, people))
@@ -4549,7 +4608,7 @@ const renderLobby = () => {
       if (p.muted) { const b = document.createElement('span'); b.className = 'rp-mute'; b.innerHTML = MIC_OFF_SVG; rp.append(b) }
       ppl.append(rp)
     })
-    btn.append(top, dur, ppl)
+    btn.append(top); if (sub) btn.append(sub); btn.append(dur, ppl)
     btn.onclick = () => selectRoom(room, lobbyName(room, people))
     list.append(btn)
   })
