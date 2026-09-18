@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.13.7
+  ぽっと通話〈実験版〉 v0.14.0
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1332,7 +1332,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.13.7'
+const APP_VERSION = 'v0.14.0'
 
 const $ = id => document.getElementById(id)
 
@@ -1389,6 +1389,8 @@ const CALL_INIT = () => ({
   grants: new Set(),    // **オーナーの原本**：話してよい人の peerId（自分を含む）
   speakers: new Set(),  // **検証済みの名簿**：この部屋で音を鳴らしてよい人の peerId
   ownerPeer: '',        // 名簿に書かれている配信者本人の peerId（📣 と 🎙 を描き分けるため）
+  bcEnd: null,          // 聞き役側の「配信の終わり」の状態 { phase:'grace'|'ending', since, endAt }（v0.14.0）
+  bcEndTimer: null,     // 上を1秒ごとに見直すタイマー
   roster: null,         // 最後に受け取った（署名済みの）名簿。新しい人にそのまま転送するために持つ
   rosterT: 0,           // 自分が署名した名簿の時刻（必ず増やす）
   rosterSeen: 0,        // 採用済みの名簿の時刻。**これ以下は捨てる**＝古い名簿の再送（リプレイ）よけ
@@ -3550,10 +3552,40 @@ const toggleGrant = id => {
 }
 
 // 配信部屋の説明。**自分がいま話せるのか**が一番の関心なので、そこを主語にして書く。
+// ───────── 配信の終わり（聞き役側・v0.14.0） ─────────
+// 配信者が居なくなったら 60 秒待ち（戻れば何事もなく続く）、戻らなければ「配信終了」を出して
+// 15 秒後にロビーへ送る。放置されたタブの掃除を兼ねる。「終わった配信は終わる」（設計方針）。
+// 配信者の在否は**名簿に書かれた配信者の peerId が接続にいるか**で見る（自己申告ではない）。
+const BC_GRACE_MS = 60000, BC_BYE_MS = 15000
+const ownerPresent = () => !!(call.ownerPeer && call.peers.has(call.ownerPeer))
+const bcEndTick = () => {
+  if (!call.joinedId || !call.bcast || call.ownerKey) return
+  const now = Date.now()
+  if (ownerPresent()) { if (call.bcEnd) { call.bcEnd = null; renderBcNote() } return }
+  if (!call.bcEnd) call.bcEnd = { phase: 'grace', since: now, endAt: 0 }
+  const e = call.bcEnd
+  if (e.phase === 'grace' && now - e.since >= BC_GRACE_MS) { e.phase = 'ending'; e.endAt = now + BC_BYE_MS }
+  if (e.phase === 'ending' && now >= e.endAt) {
+    leaveCall()
+    setState('📣 配信は終了しました。下の「通話中の部屋」から次を選べます', 'idle')
+    const l = document.querySelector('.lobby'); if (l) l.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    return
+  }
+  renderBcNote()
+}
+const startBcEndWatch = () => { clearInterval(call.bcEndTimer); call.bcEnd = null; call.bcEndTimer = setInterval(bcEndTick, 1000) }
 const renderBcNote = () => {
   const el = $('bcNote')
   el.hidden = !call.joinedId || !call.bcast
   if (el.hidden) return
+  const e = call.bcEnd
+  if (e && !call.ownerKey) {
+    const left = Math.max(0, Math.ceil((e.phase === 'grace' ? e.since + BC_GRACE_MS - Date.now() : e.endAt - Date.now()) / 1000))
+    el.textContent = e.phase === 'grace'
+      ? '📣 配信者の接続が切れました。戻るのを待っています（あと ' + left + ' 秒）'
+      : '📣 配信が終了しました。' + left + ' 秒後に「通話中の部屋」へ戻ります'
+    return
+  }
   el.textContent = call.ownerKey
     ? '📣 あなたの配信部屋です。ほかの人の声は誰にも流れません（🎙 を押すとその人も話せます）'
     : call.speakers.has(myPeerId)
@@ -4072,6 +4104,7 @@ const runJoin = async () => {
   call.joinedId = roomId; call.joinedAt = performance.now(); call.warn = ''
   call.meta = { name, tag: '', tagBy: '', tagAt: 0 }   // 名前は自分が持って来たもの。相手のほうが先なら meta で上書きされる
   render(); renderMembers(); renderBcNote()
+  if (bcast && !call.ownerKey) startBcEndWatch()   // 聞き役：配信者が居なくなったら 60 秒待って終わる
   // 配信部屋のオーナー：自分を載せた名簿をまず配る。以後は grant/revoke のたびと、
   // 取りこぼしの自己修復として定期的に配り直す（署名は1回1ms程度なので負荷にはならない）。
   if (call.ownerKey) {
@@ -4292,6 +4325,7 @@ const leaveCall = () => {
   clearTimeout(call.legendTimer)                               // 凡例を畳むタイマーも捨てる
   clearInterval(call.iceTimer)                                 // 資格情報の入れ替えも止める
   clearInterval(call.bcTimer)                                  // 配信部屋の名簿の配り直しも止める
+  clearInterval(call.bcEndTimer)                               // 配信の終わりの見張りも止める（join/leave の対称）
   clearTimeout(call.capTimer)                                  // 満室判定の待ちも捨てる
   stopAudioWatch()   // 音声到着の監視を停止＋待ち時間と催促回数の記憶を捨てる
   stopBgm()                          // BGM を止める（**stopVad より先に**＝AudioContext を閉じる前に畳む）
@@ -4355,7 +4389,7 @@ let lobbyRoom = null, lobbyPresence = null, heartbeatTimer = null
 const presences = new Map()  // 発信者peerId → {room, name, emoji, muted, stage, ts}
 
 const heartbeatPayload = () => call.joinedId
-  ? { room: call.joinedId, rn: call.meta.name, tag: call.meta.tag, tagBy: call.meta.tagBy, name: profile.name, emoji: profile.emoji, muted: micOff(), stage: stageOf(), elapsed: mySeconds(), talk: talkLevel }
+  ? { room: call.joinedId, rn: call.meta.name, tag: call.meta.tag, tagBy: call.meta.tagBy, bo: !!(call.bcast && call.ownerKey), name: profile.name, emoji: profile.emoji, muted: micOff(), stage: stageOf(), elapsed: mySeconds(), talk: talkLevel }
   : { room: null }
 // ───────── 在室の Nostr 直publish（段階A：既存ロビーに併走で足すだけ） ─────────
 // 外部（ブログのバナー等）が「この部屋が今ライブか」を、メッシュに入らず読み取り専用で知れるように、
@@ -4484,7 +4518,8 @@ const ENTRY_WAIT = 12000
 const entryActive = () => !!(entry.id || entry.name)
 const entryCancel = () => { if (!entryActive()) return; entry.id = ''; entry.name = ''; entry.pk = ''; entry.state = ''; entryRender() }
 // 在室がこの入口に合うか：新形式は部屋IDそのもの／旧形式は「告知している名前（無ければ旧クライアントの ID＝名前）＋指紋」
-const entryMatch = v => entry.id ? v.room === entry.id : (roomPk(v.room) === entry.pk && (v.rn || roomName(v.room)) === entry.name)
+const entryMatch = v => (entry.id ? v.room === entry.id : (roomPk(v.room) === entry.pk && (v.rn || roomName(v.room)) === entry.name))
+  && (!isBcRoom(v.room) || v.bo)   // 配信部屋は配信者がいるときだけ「開いている」
 const entryLiveCount = () => { let n = 0; presences.forEach(v => { if (entryMatch(v)) n++ }); return n }
 // 開いていると分かったら、その部屋（同名が複数なら人の多いほう）へ入る準備＝ハッシュと指紋を持つ
 const entryAdopt = () => {
@@ -4554,8 +4589,11 @@ const renderLobby = () => {
     if (!a) byRoom.set(room, a = [])
     a.push(p)
   }
-  presences.forEach(v => push(v.room, { name: v.name, emoji: v.emoji, muted: v.muted, stage: v.stage, elapsed: v.elapsed, ts: v.ts, talk: v.talk, rn: v.rn, tag: v.tag, tagBy: v.tagBy }))
-  if (call.joinedId) push(call.joinedId, { name: profile.name, emoji: profile.emoji, muted: call.muted, stage: stageOf(), elapsed: mySeconds(), ts: Date.now(), talk: talkLevel, rn: call.meta.name, tag: call.meta.tag, tagBy: call.meta.tagBy })
+  presences.forEach(v => push(v.room, { name: v.name, emoji: v.emoji, muted: v.muted, stage: v.stage, elapsed: v.elapsed, ts: v.ts, talk: v.talk, rn: v.rn, tag: v.tag, tagBy: v.tagBy, bo: v.bo }))
+  if (call.joinedId) push(call.joinedId, { name: profile.name, emoji: profile.emoji, muted: call.muted, stage: stageOf(), elapsed: mySeconds(), ts: Date.now(), talk: talkLevel, rn: call.meta.name, tag: call.meta.tag, tagBy: call.meta.tagBy, bo: !!(call.bcast && call.ownerKey) })
+  // ★配信部屋は**配信者がいるときだけ**一覧に出す（v0.14.0）。聞き役だけの部屋に新しい人が流れ込まない
+  //   （配信者が去った部屋は下の「配信の終わり」で片づく）。告知そのものは全員が送る＝人数は出る
+  byRoom.forEach((people, room) => { if (isBcRoom(room) && !people.some(p => p.bo)) byRoom.delete(room) })
   list.replaceChildren()
   const names = [...byRoom.keys()].sort()
   // ロビーに入った直後はまだ誰も見つけていないだけなので「ありません」と断定しない。
@@ -4732,7 +4770,7 @@ const openLobby = async (again, status, soft = false) => {
       else presences.set(peerId, {
         // ★capRoom ではなく capRoomId。**切り詰めてよいのは名前の部分だけ**で、全体を
         // 30文字で切ると配信部屋の指紋が欠け、タップしても誰にも会えない部屋になる。
-        room: capRoomId(d.room), rn: capText(d.rn, ROOM_MAX), tag: capText(d.tag, ROOM_MAX), tagBy: capText(d.tagBy, 20), name: capText(d.name, 20),
+        room: capRoomId(d.room), rn: capText(d.rn, ROOM_MAX), tag: capText(d.tag, ROOM_MAX), tagBy: capText(d.tagBy, 20), bo: !!d.bo, name: capText(d.name, 20),
         emoji: capText(d.emoji || '🙂', 8), muted: !!d.muted,
         stage: capText(d.stage, 4), ts: Date.now(),
         // 相手が「その部屋に入ってからの秒数」。受信時刻(ts)を足して現在値に補正して使う。
