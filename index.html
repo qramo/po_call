@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.13.4
+  ぽっと通話〈実験版〉 v0.13.5
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1332,7 +1332,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.13.4'
+const APP_VERSION = 'v0.13.5'
 
 const $ = id => document.getElementById(id)
 
@@ -4325,7 +4325,9 @@ const leaveCall = () => {
   // 失敗しても再参加を塞がないよう握りつぶす（掴んだ場合は上のゾンビ検出が拾う）。
   if (leftRoom) call.leaving = leftRoom.leave().catch(() => {}).finally(() => { call.leaving = null })
 }
-$('leave').onclick = leaveCall
+// 退出は確認してから（v0.13.5・利用者の要望）。誤タップで会話から落ちるのを防ぐ。
+// ★確認を出すのは**ボタンを押したときだけ**。つなぎ直し・ロビーからの部屋移動・自動復帰は leaveCall を直接呼ぶ
+$('leave').onclick = () => { if (confirm('「' + roomLabel(call.joinedId) + '」から退出しますか？')) leaveCall() }
 
 // つなぎ直しの後半：リロード後に自分で入り直す（予約は上の rejoin で読み取り済み）。
 // マイク許可が要求される場面なので、失敗しても普通の参加エラーとして見えればよい（部屋名は残る）。
