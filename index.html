@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.13.5
+  ぽっと通話〈実験版〉 v0.13.6
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -23,7 +23,7 @@
      `crossorigin` は必須：実際の取得が CORS（匿名）なので、付けないと別の接続として扱われ再利用されない。 -->
 <link rel="preconnect" href="https://esm.sh" crossorigin>
 <link rel="preconnect" href="https://pot-turn.itsuma-kuramoto.workers.dev" crossorigin>
-<link rel="modulepreload" href="https://esm.sh/trystero@0.25.2?bundle">
+<link rel="modulepreload" href="https://esm.sh/trystero@0.25.4?bundle">
 <!-- CSP：どこから読み、どこへ送ってよいかをブラウザに宣言する。GitHub Pages は HTTP ヘッダを
      足せないので <meta> で入れる（その制約で frame-ancestors は使えない＝クリックジャッキング
      対策は打てない）。単一 index.html にインラインの <style>/<script> があるため 'unsafe-inline'
@@ -1332,7 +1332,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.13.5'
+const APP_VERSION = 'v0.13.6'
 
 const $ = id => document.getElementById(id)
 
@@ -1962,7 +1962,7 @@ const trysteroConfig = ice => ice
 // 失敗時はキャッシュを捨てて次回リトライできるようにする（参加フローの段階別エラー表示を壊さない）。
 let trysteroPromise = null, trysteroMod = null
 const loadTrystero = () => {
-  if (!trysteroPromise) trysteroPromise = import('https://esm.sh/trystero@0.25.2?bundle')
+  if (!trysteroPromise) trysteroPromise = import('https://esm.sh/trystero@0.25.4?bundle')
     .then(m => (trysteroMod = m))
     .catch(e => { trysteroPromise = null; throw e })
   return trysteroPromise
