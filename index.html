@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.11.6
+  ぽっと通話〈実験版〉 v0.11.7
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -217,6 +217,9 @@
   /* 参加後の操作は横並び（ミュート／退出を半々に） */
   .actions{ display:flex; gap:12px }
   .actions button{ flex:1; width:auto }
+  /* ミュート（登壇なら「マイクを使う」）：退出 ＝ 3：2（利用者の指定・2026-09-18） */
+  #mute, #speak{ flex:3 }
+  #leave{ flex:2 }
   /* 通知音のトグル（入室・退出音＝通話カード／新部屋音＝ロビー）。help-hide と同系の控えめな見た目 */
   .snd-opt{ display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; color:var(--sub); cursor:pointer; user-select:none }
   .snd-opt input{ width:auto; margin:0; padding:0; accent-color:var(--accent); flex:none }
@@ -909,17 +912,9 @@
   </details>
   </div></div>
 
-  <!-- 音声を有効化：出ている間はこれが最優先の操作なので、ボタン群の先頭に置く。
-       未参加なら「参加する」の上、通話中なら「ミュート／退出」の上＝どちらの状態でも必ず一番上に来る。
-       （参加ボタンの後ろに置くと、参加中は上・未参加時は下、と位置が入れ替わって見えてしまう） -->
+  <!-- 音声を有効化：出ている間はこれが最優先の操作なので、状態カードの上＝一番上に置く。
+       （ミュート／退出は v0.11.7 で状態カードの中の下側へ移した。これだけは上に残す） -->
   <button id="unlock">🔊 音声を有効化（タップ）</button>
-  <div class="actions">
-    <!-- 配信部屋で登壇を許されたときだけ出る。**押すまでマイクは取らない**（許可ダイアログが
-         何の脈絡もなく出るのを避ける＝聞き役でいるつもりの人を驚かせない） -->
-    <button id="speak"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/></svg><span>マイクを使う</span></button>
-    <button id="mute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/><line class="mic-slash" x1="4" y1="3" x2="20" y2="21"/></svg><span class="lbl">ミュート</span></button>
-    <button id="leave"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8"/><path d="M14 3v18"/><path d="M18 12h4"/><path d="m19 9 3 3-3 3"/></svg><span>退出</span></button>
-  </div>
 
   <div class="status" id="statusCard">
     <!-- ★状態は1行まるごと使う。チップと同じ行に入れると、**部屋名が長いときに
@@ -1032,6 +1027,16 @@
     <audio id="appAudio" playsinline aria-hidden="true"></audio>
     <video id="pipVideo" class="pip-video" playsinline muted aria-hidden="true"></video>
     <div id="eq" class="eq" hidden aria-hidden="true"></div>
+    <!-- ミュート／退出は**イコライザーと招待リンクの間**（2026-09-18・利用者の指定）。
+         カードの上に置くと、スマホでは参加者リストを見ている間に画面の外へ出て目に入らない。
+         比率は ミュート：退出 ＝ 3：2（よく押すほうを大きく／退出は誤タップしにくく） -->
+    <div class="actions">
+      <!-- 配信部屋で登壇を許されたときだけ出る。**押すまでマイクは取らない**（許可ダイアログが
+           何の脈絡もなく出るのを避ける＝聞き役でいるつもりの人を驚かせない） -->
+      <button id="speak"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/></svg><span>マイクを使う</span></button>
+      <button id="mute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/><line class="mic-slash" x1="4" y1="3" x2="20" y2="21"/></svg><span class="lbl">ミュート</span></button>
+      <button id="leave"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8"/><path d="M14 3v18"/><path d="M18 12h4"/><path d="m19 9 3 3-3 3"/></svg><span>退出</span></button>
+    </div>
     <div style="margin-top:10px" id="shareWrap" hidden>
       <div id="qrBox" class="qr-inline" hidden>
         <div id="qrImg" class="qr-img">生成中…</div>
@@ -1280,7 +1285,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.11.6'
+const APP_VERSION = 'v0.11.7'
 
 const $ = id => document.getElementById(id)
 
