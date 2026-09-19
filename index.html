@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.0
+  ぽっと通話〈実験版〉 v0.14.1
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1332,7 +1332,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.0'
+const APP_VERSION = 'v0.14.1'
 
 const $ = id => document.getElementById(id)
 
@@ -3018,7 +3018,9 @@ $('tagEdit').onclick = () => {
   if (!f.hidden) { $('tagInput').value = call.meta.tag || ''; $('tagInput').focus(); $('tagInput').select() }
 }
 $('tagSend').onclick = () => { setTag($('tagInput').value.trim()); $('tagForm').hidden = true }
-$('tagInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('tagSend').onclick() } })
+// ★変換中の Enter（IME の確定）では送らない。isComposing を見る（ひとこと・おたよりと同じ作法）。
+//   古い Safari は確定の Enter で isComposing が false のことがあるので keyCode 229 も併せて見る
+$('tagInput').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); $('tagSend').onclick() } })
 const render = () => {
   renderTag()
   if (!call.joinedId) return
