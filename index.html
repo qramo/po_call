@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.19
+  ぽっと通話〈実験版〉 v0.14.20
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1311,6 +1311,11 @@ let pcMade = 0, pcOpen = 0, pcSwept = 0
   window.RTCPeerConnection = class extends Base {
     constructor(...a) {
       super(...a); pcMade++; pcOpen++
+      // 届いたトラックを**Trystero を通さずに**アプリへ渡す（window.__potTrack。参加中だけ中身がある）。
+      // Trystero の onPeerStream は「相手側のストリーム id」で同じ物と見なすので、相手が同じストリームを
+      // 外して入れ直したとき（＝「送り直して」への返事）に届く新しいトラックを**二度と知らせてくれない**
+      // （ブラウザは新しい MediaStream オブジェクトで渡してくるのに、Trystero は古い方を返す。2026-09-20）。
+      this.addEventListener('track', e => { try { window.__potTrack?.(this, e) } catch {} })
       // 'failed' はすぐ閉じない。**Trystero がその失敗を処理している最中に閉じると競合して**
       // `OperationError: User-Initiated Abort, reason=Close called` がコンソールに出る
       // （実害は無いが、コンソールを診断の道具として使いたいので黙らせる。2026-08-15）。
@@ -1328,7 +1333,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.19'
+const APP_VERSION = 'v0.14.20'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1921,6 +1926,7 @@ const mySeconds = () => call.joinedId ? Math.floor((performance.now() - call.joi
 // やり直されるから。＝**入り直してもらわなくても、そのデータチャネルで「送り直して」と頼めばよい**。
 // 直せる力を持っているのは受け取れていない側ではなく送る側なので、自力の「つなぎ直す」より確実。
 const AUDIO_WAIT_MS = 10000   // これだけ待って音が来なければ送り直しを頼む（相手の準備が遅いだけの場合を避ける）
+const AUDIO_MUTE_MS = 10000   // トラックは来たのに中身が来ない（track.muted）がこれだけ続いたら「届いていない」（audioFlowing）
 const NUDGE_EVERY_MS = 6000   // 頼む間隔
 const NUDGE_MAX = 3           // これだけ頼んで駄目なら諦めて本人に知らせる（接続自体が壊れている場合）
 // **応じる側の下限間隔**。頼む側は NUDGE_EVERY_MS で自制しているが、それは行儀のよいクライアントの
@@ -3075,6 +3081,57 @@ const dropAudios = id => {
   (call.audios.get(id) || []).forEach(a => { try { a.pause() } catch {} a.srcObject = null; a.remove() })
   call.audios.delete(id)
 }
+// 相手1人ぶんの音声要素を作り直す（1人につき1本）。sid は**相手側のストリーム id**：要素の srcObject は
+// トラック1本だけの別 MediaStream に差し替えることがあるので、「同じ物か」の照合は srcObject.id ではなく
+// こちらで持つ（onPeerStream の再到着判定が使う）
+const mkAudio = (id, ms, sid) => {
+  dropAudios(id)
+  const a = document.createElement('audio')
+  a.srcObject = ms; a.autoplay = true; a.playsInline = true; a.sid = sid
+  document.body.appendChild(a)
+  call.audios.set(id, [a])
+  return a
+}
+// 同じ物が既に載っているか（相手側のストリーム id か、トラック id のどちらかが一致すれば同じ物）
+const hasStream = (id, stream) => (call.audios.get(id) || []).some(a =>
+  a.sid === stream.id || (a.srcObject && a.srcObject.getTracks().some(t => stream.getTracks().some(u => u.id === t.id))))
+// 相手の音を載せ替える：要素（1本）→解析（絵文字の跳ね）→音量経路→再生。onPeerStream と __potTrack の共通部
+const attachStream = (id, ms, sid) => {
+  const a = mkAudio(id, ms, sid)   // 古い方は中で捨てる
+  addAnalyser(id, ms)              // 相手の音量を測って絵文字を跳ねさせる（中で古い方を外している）
+  routePeer(id)                    // 音量が 100% でなければマスター音量の経路に繋ぎ替える
+  play(a)
+}
+// 「送り直して」に応じる：**一度外してから、新しい MediaStream に包んで入れ直す。**
+// ・同じトラックをもう一度 addTrack するとブラウザは「送信者が既にある」と例外を投げる＝addStream だけでは
+//   何も起きない（v0.14.19 までの「送り直して」は空振りだった。Trystero は先にストリームの案内だけ送るので、
+//   相手側では「同じものが再到着」して見えていた）
+// ・同じ MediaStream で入れ直すと、相手の Trystero は「既知の id」として古い物を返し、新しいトラックを知らせない。
+//   新しい MediaStream（新しい id）に包めば、**古いクライアント（onPeerStream だけ）でも別物として届く**
+// 2026-09-20・iPhone Safari の「入り直した直後に track.muted のまま音が来ない」で判明
+const resendStream = target => {
+  if (!call.stream || !call.room) return
+  try { call.room.removeStream(call.stream, { target }); call.room.addStream(new MediaStream(call.stream.getTracks()), { target }) } catch {}
+}
+// 「音が届いている」の判定。**要素があるだけでは足りない**：トラックは来たのに中身（RTP）が来ないことがある
+// （2026-09-20・iPhone Safari で入り直した直後に再現。要素は再生中・AudioContext も running なのに
+// track.muted のまま＝この判定が無いと「届いている」と誤認して、催促も警告も出なかった）。
+// 受信トラックはパケットが届くまで muted=true、届けば false（Chrome/Safari。Firefox は最初から false
+// なので、そこでは従来どおり「要素があれば届いている」に落ちる＝安全側）。
+// ・相手がミュート中は無音が正常なので判定しない
+// ・瞬断を数えないよう、muted が AUDIO_MUTE_MS 続いて初めて「届いていない」にする
+const audioFlowing = id => {
+  const els = call.audios.get(id) || []
+  if (!els.length) return false
+  if ((call.profiles.get(id) || {}).muted) return true
+  const now = Date.now()
+  return els.some(a => {
+    const live = a.srcObject && a.srcObject.getAudioTracks().some(t => t.readyState === 'live' && !t.muted)
+    if (live) { a.mutedSince = 0; return true }
+    if (!a.mutedSince) a.mutedSince = now
+    return now - a.mutedSince < AUDIO_MUTE_MS
+  })
+}
 
 // 音の解錠。★iPhone は**リロード直後（＝つなぎ直しの後）**にユーザー操作が無いとして再生を弾く。
 //   ボタンは v0.11.8 で下のほうへ移したので、画面上部からは見えないことがある（2026-09-20・利用者が
@@ -3118,7 +3175,7 @@ const checkAudioArrival = () => {
     if (!canHear(id)) return
     expect++
     // 届いていれば覚えを捨てる（また切れたら最初から頼み直せるように）
-    if ((call.audios.get(id) || []).length) { call.nudges.delete(id); return }
+    if (audioFlowing(id)) { call.nudges.delete(id); return }
     if (now - (call.peerSince.get(id) || now) < AUDIO_WAIT_MS) return   // まだ待つ（相手の準備中かもしれない）
     const st = call.nudges.get(id) || { n: 0, at: 0 }
     if (st.n >= NUDGE_MAX) { stuck.push(id); return }              // 頼み尽くした＝接続自体が壊れている
@@ -3904,7 +3961,7 @@ const wireRoom = () => {
     if (tooSoon(call.nudgeSeen, peerId, NUDGE_ACCEPT_MS)) return
     // 頼まれた側から見て相手が既に切れている（＝こちらは見失っている）ことがある。その時の
     // addStream は失敗するが、頼んだ側の状況は改善しようがないので黙って諦める。
-    try { if (call.stream && call.room) call.room.addStream(call.stream, { target: peerId }) } catch {}
+    resendStream(peerId)
   }
 
   if (call.stream) call.room.addStream(call.stream)   // 配信部屋の聞き役はマイクを持っていない
@@ -3914,16 +3971,21 @@ const wireRoom = () => {
     if (!canHear(id)) return
     // 同じ相手から何度もストリームが来る（再ネゴ、そして「送り直して」を頼んだ結果）。
     // 足し続けると無音の <audio> と古い MediaStream への参照が溜まるので、1人につき1本に保つ。
-    const cur = call.audios.get(id) || []
-    if (cur.some(a => a.srcObject && a.srcObject.id === stream.id)) return   // 同じものの再到着
-    dropAudios(id)            // 別のストリームに入れ替わった＝古い方は用済み
-    const a = document.createElement('audio')
-    a.srcObject = stream; a.autoplay = true; a.playsInline = true
-    document.body.appendChild(a)
-    call.audios.set(id, [a])
-    addAnalyser(id, stream)   // 相手の音量を測って絵文字を跳ねさせる（中で古い方を外している）
-    routePeer(id)             // 音量が 100% でなければマスター音量の経路に繋ぎ替える
-    play(a)
+    // ★通常は下の __potTrack（トラック到着）が先に同じ物を載せていて、ここは何もしない。
+    //   Trystero がまだ相手を「参加中」にしていない瞬間に届いた場合の受け皿として残す。
+    if (hasStream(id, stream)) return
+    attachStream(id, stream, stream.id)
+  }
+  // 相手の PeerConnection に届いたトラックを、Trystero を通さず直接受け取る（PC ラッパの track イベント）。
+  // 「送り直して」に相手が応じたとき、新しいトラックは**新しい MediaStream オブジェクト**で届くが、Trystero は
+  // 相手側のストリーム id で同じ物と見なして onPeerStream を二度と呼ばない（2026-09-20・実測）。
+  // そこでトラック単位で受け取り、1本だけ載せた MediaStream に包んで鳴らす。門番（canHear）はここでも同じ。
+  window.__potTrack = (pc, e) => {
+    if (!call.room || !e.track || e.track.kind !== 'audio') return
+    const id = Object.keys(call.room.getPeers()).find(k => call.room.getPeers()[k] === pc)
+    if (!id || !canHear(id)) return
+    if ((call.audios.get(id) || []).some(a => a.srcObject && a.srcObject.getTracks().some(t => t.id === e.track.id))) return
+    attachStream(id, new MediaStream([e.track]), e.streams[0] ? e.streams[0].id : e.track.id)
   }
 
   // 「退出します」の合図。**退出する側が抜ける前に送る。**受け取っていれば正規の退出、
@@ -4037,14 +4099,14 @@ const diagAudio = () => {
     const parts = [
       '要素' + els.length,
       e ? (e.paused ? '停止' : '再生中') + ' t=' + e.currentTime.toFixed(1) + ' rs=' + e.readyState + (e.muted ? ' muted' : '') + ' vol=' + e.volume : '',
-      tr ? 'track:' + tr.readyState + (tr.muted ? '/muted' : '/live') + (tr.enabled ? '' : '/disabled') : 'track:なし',
+      tr ? 'track:' + tr.readyState + (tr.muted ? '/muted' + (e.mutedSince ? Math.round((Date.now() - e.mutedSince) / 1000) + 's' : '') : '/live') + (tr.enabled ? '' : '/disabled') : 'track:なし', 'flow=' + [...call.peers].filter(audioFlowing).length,
       'ctx=' + ctx, '音量=' + Math.round(masterVol * 100) + '%', 'peers=' + call.peers.size, 'hear=' + [...call.peers].filter(canHear).length
     ]
     showPeerNotice('🔬 ' + parts.filter(Boolean).join(' / '))
   } catch (err) { showPeerNotice('🔬 診断でエラー: ' + err.message) }
 }
 const armJoined = (roomId, name, bcast) => {
-  if (rejoin && location.hostname !== 'potalk.app') { setTimeout(diagAudio, 6000); setTimeout(diagAudio, 20000) }
+  if (location.hostname !== 'potalk.app') [6000, 20000, 40000].forEach(ms => setTimeout(diagAudio, ms))
   call.wantWake = true; wake()
   call.joinedId = roomId; call.joinedAt = performance.now(); call.warn = ''
   call.meta = { name, tag: '', tagBy: '', tagAt: 0 }   // 名前は自分が持って来たもの。相手のほうが先なら meta で上書きされる
