@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.4
+  ぽっと通話〈実験版〉 v0.14.5
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1352,7 +1352,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.4'
+const APP_VERSION = 'v0.14.5'
 
 const $ = id => document.getElementById(id)
 
@@ -2643,7 +2643,9 @@ const drawPip = () => {
   pipG.fillStyle = '#00e5cc'; pipG.fillRect(0, 0, 8, h)
   pipG.fillStyle = '#eef2f8'
   pipG.font = 'bold 34px -apple-system, sans-serif'
-  const name = (call.joinedId || '').split('~pk~')[0] || '通話中'
+  // ★表示用の名前は roomLabel（メタデータの部屋名）。部屋 ID を切って出すと v0.13 以降はハッシュが出る
+  //   （2026-09-20・利用者の報告「小窓がハッシュになった」）
+  const name = call.joinedId ? roomLabel(call.joinedId) : '通話中'
   pipG.fillText(name.length > 12 ? name.slice(0, 11) + '…' : name, 30, 120)
   pipG.fillStyle = '#8fe9de'; pipG.font = '26px -apple-system, sans-serif'
   pipG.fillText('🫖 ぽっと通話', 30, 70)
@@ -3988,7 +3990,10 @@ const runJoin = async () => {
       if (!d || typeof d !== 'object') return
       const m = call.meta, name = capRoom(String(d.name ?? ''))
       let changed = false
-      if (name && !m.name) { m.name = name; changed = true }   // 名前が無いときだけ受け取る（持って来た名前は変えない）
+      if (name && !m.name) {   // 名前が無いときだけ受け取る（持って来た名前は変えない）
+        m.name = name; changed = true
+        try { startPipFeed() } catch {}   // 小窓の絵は参加時に録ってあるので、名前が届いたら録り直す（ハッシュのまま残さない）
+      }
       const at = Math.min(Number(d.tagAt) || 0, Date.now() + 60000)
       if (at > (m.tagAt || 0)) { m.tag = capText(d.tag, ROOM_MAX); m.tagBy = capText(d.tagBy, 20); m.tagAt = at; changed = true }
       if (changed) { render(); syncShare(); if (call.joinedId) location.hash = 'room=' + call.joinedId + '&name=' + encodeURIComponent(m.name); sendHeartbeat() }
