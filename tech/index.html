@@ -29,6 +29,7 @@
   .fig .lbl{ font-size:12px; fill:var(--text) } .fig .sub{ font-size:10.5px; fill:var(--note) }
   .fig .voice{ stroke:var(--accent-soft); stroke-width:3; fill:none } .fig .sig{ stroke:var(--note); stroke-width:1.4; fill:none; stroke-dasharray:3 3 }
   .fig .cap{ font-size:12px; fill:var(--note) }
+  .fig .fb{ stroke:var(--note); stroke-width:1.1; fill:none; stroke-dasharray:2 5; opacity:.6 }   /* 直接接続＝中継が使えないときだけの細い線 */
   .figcap{ font-size:13px; color:var(--note); margin:6px 4px 0 }
   table{ border-collapse:collapse; font-size:15px; margin:8px 0 } th,td{ border:1px solid var(--border-soft); padding:6px 10px; text-align:left; vertical-align:top } th{ background:var(--chip); color:var(--text); font-weight:700; white-space:nowrap }
   .tw{ overflow-x:auto }
@@ -78,7 +79,7 @@
 
   <h2 id="overview">1. 全体像</h2>
   <div class="fig">
-    <svg viewBox="0 0 720 330" role="img" aria-label="全体像。あなたのブラウザと相手のブラウザが声を直接やり取りし、相手探しは公開 Nostr リレー、直結できないときは Cloudflare の中継、中継の鍵は小さな Worker が配る">
+    <svg viewBox="0 0 720 330" role="img" aria-label="全体像。声は暗号化したまま Cloudflare の TURN 中継を通ってブラウザどうしを行き来し、相手探しは公開 Nostr リレー、中継の鍵は小さな Worker が配る。直接接続は中継が使えないときだけの予備">
       <rect class="box you" x="20" y="120" width="170" height="90" rx="14"/>
       <text class="lbl" x="105" y="150" text-anchor="middle">あなたのブラウザ</text>
       <text class="sub" x="105" y="170" text-anchor="middle">index.html を開いただけ</text>
@@ -86,24 +87,25 @@
       <rect class="box you" x="530" y="120" width="170" height="90" rx="14"/>
       <text class="lbl" x="615" y="150" text-anchor="middle">相手のブラウザ</text>
       <text class="sub" x="615" y="170" text-anchor="middle">同じ index.html</text>
-      <path class="voice" d="M190 165 H530"/>
-      <text class="cap" x="360" y="156" text-anchor="middle">声（WebRTC・暗号化）</text>
+      <path class="fb" d="M190 150 H530"/>
+      <text class="cap" x="360" y="143" text-anchor="middle" style="font-size:10.5px;opacity:.75">直接接続（中継が使えないときだけの予備）</text>
       <rect class="box" x="270" y="20" width="180" height="60" rx="12"/>
       <text class="lbl" x="360" y="45" text-anchor="middle">公開 Nostr リレー</text>
       <text class="sub" x="360" y="63" text-anchor="middle">相手探しの合図だけ（第三者）</text>
       <path class="sig" d="M150 120 C 200 60, 240 55, 270 50"/>
       <path class="sig" d="M570 120 C 520 60, 480 55, 450 50"/>
-      <rect class="box" x="270" y="215" width="180" height="60" rx="12"/>
+      <rect class="box" x="255" y="215" width="210" height="60" rx="12"/>
       <text class="lbl" x="360" y="240" text-anchor="middle">Cloudflare TURN 中継</text>
-      <text class="sub" x="360" y="258" text-anchor="middle">直結できないとき。中身は読めない</text>
-      <path class="voice" d="M190 175 C 230 215, 250 240, 270 245"/>
-      <path class="voice" d="M530 175 C 490 215, 470 240, 450 245"/>
+      <text class="sub" x="360" y="258" text-anchor="middle">ふだんの声の通り道。中身は読めない</text>
+      <text class="cap" x="360" y="200" text-anchor="middle">声（WebRTC・暗号化）</text>
+      <path class="voice" d="M190 175 C 225 215, 240 240, 255 245"/>
+      <path class="voice" d="M530 175 C 495 215, 480 240, 465 245"/>
       <rect class="op" x="500" y="270" width="200" height="48" rx="12"/>
       <text class="lbl" x="600" y="290" text-anchor="middle">pot-turn（運営の Worker）</text>
       <text class="sub" x="600" y="307" text-anchor="middle">中継の合鍵を配るだけ。声は通らない</text>
       <path class="sig" d="M150 210 C 200 300, 420 300, 500 294"/>
     </svg>
-    <p class="figcap">太い線＝声、点線＝合図。運営が動かしているのは破線の枠の Worker だけで、それは短命の鍵を発行するだけです。</p>
+    <p class="figcap">太い線＝声（ふだんは中継を通る。相手にあなたの IP は見えない）、点線＝合図、薄い点線＝中継が使えないときだけの直接接続。運営が動かしているのは破線の枠の Worker だけで、それは短命の鍵を発行するだけです。</p>
   </div>
   <p>ブラウザに読み込まれるのは <code>index.html</code> 1 枚と、実行時に CDN から読む Trystero というライブラリだけです。ビルドも、パッケージ管理も、バックエンドもありません。</p>
 
