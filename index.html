@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.7
+  ぽっと通話〈実験版〉 v0.14.8
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1374,7 +1374,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.7'
+const APP_VERSION = 'v0.14.8'
 
 const $ = id => document.getElementById(id)
 
@@ -1599,6 +1599,16 @@ const copyLink = async (btn, text = shareUrl()) => {
 }
 $('copyTop').onclick = () => copyLink($('copyTop'))                 // URL だけ（Safari で開くため）
 $('copy').onclick    = () => copyLink($('copy'), shareText())      // 「部屋名 - 名前」＋URL
+// 見えているリンクをタップ＝**URL だけ**コピー（v0.14.8・利用者の選択）。アドレスバーに貼る人向け。
+// ボタンは「投稿用の文」のままにして、URL だけが要る人はここから取る（ボタンを増やさない）
+$('share').addEventListener('click', async e => {
+  e.preventDefault()   // 同じ部屋へのリンクなので辿らせない
+  const el = $('share'), lbl = $('shareLabel'), keep = lbl.textContent
+  try { await navigator.clipboard.writeText(shareUrl()); lbl.textContent = 'URL をコピーしました ✓' }
+  catch { lbl.textContent = '長押しでコピーしてください' }
+  el.classList.add('full')
+  clearTimeout(el._revert); el._revert = setTimeout(() => { syncShare(); if (!qrShown) el.classList.remove('full') }, 1600)
+})
 
 // 部屋名は「識別子」なので途中で切ると別の部屋になる（＝ロビーからタップしても相手と繋がらない）。
 // **参加時と受信時で必ず同じ処理を通すこと**。表示上の省略は CSS の text-overflow に任せる（データは削らない）。
@@ -1745,7 +1755,7 @@ const syncShare = () => {
   if (!nm) return
   const url = roomUrl(n, nm)
   $('share').textContent = url; $('share').href = url
-  $('shareLabel').textContent = call.joinedId ? '共有リンク：' : '招待リンク（まだ参加していません）：'
+  $('shareLabel').textContent = (call.joinedId ? '共有リンク' : '招待リンク（まだ参加していません）') + '（タップで URL だけコピー）：'
   if (qrShown) drawQr()   // QRを開いたまま部屋名を変えたら描き直す
 }
 
