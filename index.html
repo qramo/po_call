@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.17
+  ぽっと通話〈実験版〉 v0.14.18
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1328,7 +1328,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.17'
+const APP_VERSION = 'v0.14.18'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2318,7 +2318,7 @@ const ensureOut = () => {
       // 自動再生を止められた＝鳴らす先が無い。**素のスピーカーに繋ぎ直して**音を失わない
       // ようにしつつ、解錠ボタンを出す（押されたら wakeAudio がやり直す）。
       try { appOut.connect(ctx.destination) } catch {}
-      $('unlock').style.display = 'block'
+      showUnlock()
     })
   } catch {
     appOut.connect(ctx.destination)   // 作れない環境では従来どおり
@@ -2354,7 +2354,7 @@ const routePeer = uid => {
     // その間は素の再生のまま解錠ボタンを出し、押されたら applyVolume でやり直す。
     // muted な要素の play() は拒否されない＝ここで自分から出さないと誰も気づけない。
     const ctx = ensureAudioCtx()
-    if (ctx.state !== 'running') { $('unlock').style.display = 'block'; return }
+    if (ctx.state !== 'running') { showUnlock(); return }
     if (!a.gain) { try { a.gain = ensureMasterGain(); a.src.connect(a.gain) } catch { a.gain = null } }
     if (a.gain) els.forEach(el => { el.muted = true })
   } else if (a.gain) {                       // 100% に戻した＝元の素朴な鳴らし方へ返す
@@ -3069,14 +3069,28 @@ const MIC_CONSTRAINTS = {
 //  NotAllowedError … 本当に自動再生を止められた＝ユーザーの操作が要る。ボタンを出す。
 //  AbortError      … 退出時に dropAudios が srcObject を外して再生要求を中断させただけ。
 //                    これでボタンを出すと「押しても何も起きない」誤警告になる（実際そうなっていた）。
-const play = el => el.play().catch(e => { if (e.name === 'NotAllowedError') $('unlock').style.display = 'block' })
+const play = el => el.play().catch(e => { if (e.name === 'NotAllowedError') showUnlock() })
 const allAudios = () => [...call.audios.values()].flat()
 const dropAudios = id => {
   (call.audios.get(id) || []).forEach(a => { try { a.pause() } catch {} a.srcObject = null; a.remove() })
   call.audios.delete(id)
 }
 
-$('unlock').onclick = () => { if (audioCtx) audioCtx.resume().then(applyVolume).catch(() => {}); $('appAudio').play().catch(() => {}); allAudios().forEach(a => a.play().catch(() => {})); $('unlock').style.display = 'none' }
+// 音の解錠。★iPhone は**リロード直後（＝つなぎ直しの後）**にユーザー操作が無いとして再生を弾く。
+//   ボタンは v0.11.8 で下のほうへ移したので、画面上部からは見えないことがある（2026-09-20・利用者が
+//   「つなぎ直しで相手の声が戻らない」＝実はボタンが下にあった）。**出ている間は画面のどこをタップしても
+//   解錠**し、状態カードの上のほうにも案内を出す
+const unlockNow = () => { if (audioCtx) audioCtx.resume().then(applyVolume).catch(() => {}); $('appAudio').play().catch(() => {}); allAudios().forEach(a => a.play().catch(() => {})); $('unlock').style.display = 'none'; showPeerNotice('') }
+let unlockArmed = false
+const showUnlock = () => {
+  $('unlock').style.display = 'block'
+  showPeerNotice('🔊 音が止まっています。画面のどこかをタップすると鳴ります')
+  if (unlockArmed) return
+  unlockArmed = true
+  const once = () => { unlockArmed = false; if ($('unlock').style.display !== 'none') unlockNow() }
+  document.addEventListener('pointerdown', once, { once: true, capture: true })
+}
+$('unlock').onclick = unlockNow
 
 // 音が届いていない相手を見張る。まず黙って「送り直して」と頼み（相手の入り直しと同じ効果）、
 // それでも来なければ本人に知らせる。無音のまま本人が理由に気づけないのが一番まずいので、
