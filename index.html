@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.2
+  ぽっと通話〈実験版〉 v0.14.3
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -222,6 +222,9 @@
   .leave-confirm span{ flex:1; min-width:0 }
   .leave-confirm button{ flex:none; width:auto; margin:0; padding:6px 12px; font-size:13px; border-radius:999px }
   #leaveYes{ background:var(--red); color:#fff }
+  .room-ask{ margin-top:-2px }   /* ロビーの部屋の直下（一覧の gap を少し詰める） */
+  #roomAskYes{ background:var(--join-bg); color:var(--join-fg) }
+  #roomAskNo{ background:var(--chip); color:var(--chip-fg) }
   #leaveNo{ background:var(--chip); color:var(--chip-fg) }
   .actions{ display:flex; gap:12px }
   .actions button{ flex:1; width:auto }
@@ -1349,7 +1352,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.2'
+const APP_VERSION = 'v0.14.3'
 
 const $ = id => document.getElementById(id)
 
@@ -4688,8 +4691,21 @@ const renderLobby = () => {
       ppl.append(rp)
     })
     btn.append(top); if (sub) btn.append(sub); btn.append(dur, ppl)
-    btn.onclick = () => selectRoom(room, lobbyName(room, people))
+    btn.onclick = () => askRoom(room, lobbyName(room, people))
     list.append(btn)
+    if (lobbyAsk && lobbyAsk.room === room) {   // タップした部屋の直下に2択
+      const label = (isBcRoom(room) ? '📣 ' : '') + lobbyAsk.name
+      const ask = document.createElement('div'); ask.className = 'leave-confirm room-ask'; ask.id = 'roomAsk'
+      const txt = document.createElement('span'); txt.id = 'roomAskText'
+      txt.textContent = call.joinedId
+        ? '「' + roomLabel(call.joinedId) + '」を退出して「' + label + '」に移りますか？ ' + roomHow(room)
+        : '「' + label + '」に参加しますか？ ' + roomHow(room)
+      const yes = document.createElement('button'); yes.type = 'button'; yes.id = 'roomAskYes'; yes.textContent = call.joinedId ? '移る' : '参加する'
+      const no = document.createElement('button'); no.type = 'button'; no.id = 'roomAskNo'; no.textContent = 'やめる'
+      yes.onclick = () => selectRoom(room, lobbyAsk.name)
+      no.onclick = lobbyAskClear
+      ask.append(txt, yes, no); list.append(ask)
+    }
   })
   // 省略したぶんは黙って消さずに件数だけ知らせる（「全部出ている」と誤解させないため）
   if (names.length > LOBBY_MAX_ROOMS) {
@@ -4703,20 +4719,30 @@ const renderLobby = () => {
 // 一覧クリック：タップした部屋にそのまま入室する（＝参加ボタンと同じ意味）。
 // フォーカスは当てない（スマホでキーボードが出るのを避ける）。通話中に別部屋をタップしたら
 // 確認のうえ今の部屋を退出してから入り直す（自室のタップは無視）。
-const selectRoom = (room, name) => {
+// ロビーのタップの確認は**ページ内の2択**（v0.14.3）。★confirm() は使わない：ダイアログの間はページの
+// JS が止まり、閉じた瞬間に BGM が連なる（退出の確認と同じ・2026-09-20 に利用者が再現）。
+// タップした部屋のカードの直下に出す（目線がその部屋にある）。出るのは1つだけ。もう一度押すか
+// 「やめる」か 8 秒放置で畳む。一覧は在室のたびに描き直されるので、状態（lobbyAsk）から毎回描く。
+let lobbyAsk = null, lobbyAskTimer = null
+const lobbyAskClear = () => { clearTimeout(lobbyAskTimer); if (lobbyAsk) { lobbyAsk = null; renderLobby() } }
+const askRoom = (room, name) => {
   if (room === call.joinedId) return
-  name = name || roomLabel(room)
+  if (lobbyAsk && lobbyAsk.room === room) { lobbyAskClear(); return }
+  lobbyAsk = { room, name }
+  clearTimeout(lobbyAskTimer); lobbyAskTimer = setTimeout(lobbyAskClear, 8000)
+  renderLobby()
+}
+const roomHow = room => {
   // 配信部屋の聞き役として入るなら、そもそもマイクを使わない。「ミュートで入る」と書くと
   // 「あとで解除すれば話せる」と読まれてしまうので、起きることをそのまま書く。
   const listen = isBcRoom(room) && !ownerKeyByFp(roomPk(room))
-  const how = listen ? '聞き役で入室します（マイクは使いません）。' : 'ミュート状態で入室します。'
-  const label = (isBcRoom(room) ? '📣 ' : '') + name
-  if (call.joinedId) {
-    if (!confirm('参加中の部屋「' + roomLabel(call.joinedId) + '」を退出して「' + label + '」に移りますか？\n' + how)) return
-    leaveCall()   // 今の部屋を退出（非同期の後片付けは leaving が保持し、次の参加で待たれる）
-  } else {
-    if (!confirm('「' + label + '」に参加しますか？\n' + how)) return   // 未参加時のミスタップ防止
-  }
+  return listen ? '聞き役で入室します（マイクは使いません）' : 'ミュート状態で入室します'
+}
+const selectRoom = (room, name) => {
+  if (room === call.joinedId) return
+  name = name || roomLabel(room)
+  lobbyAskClear()
+  if (call.joinedId) leaveCall()   // 今の部屋を退出（非同期の後片付けは leaving が保持し、次の参加で待たれる）
   entryCancel()   // ロビーから来た＝開いている部屋だと分かっている
   // **ハッシュも指紋も一緒に持っていく**（名前だけ渡すと、同じ名前の別の部屋を作って誰にも会えない）
   roomInput.value = name; pendingHash = roomName(room); pendingPk = roomPk(room)
