@@ -19,7 +19,7 @@ if (pots.length) {
     const now = Date.now()
     for (const r of rooms.values()) {
       for (const [k, v] of r.seen) if (now - v.ts > STALE_MS) r.seen.delete(k)
-      const n = r.seen.size, st = r.el.querySelector('.state'), cta = r.el.querySelector('.cta')
+      const n = r.seen.size, st = r.el.querySelector('.state'), cta = r.el.querySelector('.cta:not([data-fixed])')   // data-fixed の説明文（やまびこ）は上書きしない
       r.el.classList.toggle('live', n > 0)
       if (n > 0) {
         const faces = [...r.seen.values()].slice(0, 5).map(v => v.emoji).join('')
