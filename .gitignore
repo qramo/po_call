@@ -5,3 +5,6 @@ node_modules/
 # 計測用の一時ファイル置き場（webrtc-internals のダンプなど）
 tmp/
 *_dump.txt
+
+# 内部メモ（HANDOFF・レビュー・計画）は別の非公開リポジトリ po-talk/potalk-internal。ここでは追跡しない
+internal/

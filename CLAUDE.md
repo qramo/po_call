@@ -8,6 +8,10 @@ A serverless P2P voice-chat room ("ぽっと通話〈実験版〉"), shipped as 
 
 Deployed via GitHub Pages (`main` / root), which supplies the HTTPS that `getUserMedia` requires. Pushing to `main` publishes.
 
+## Where the notes live
+
+The handoff log (`HANDOFF.md`), code reviews and plans are **not in this repo**. They sit in a nested private repo at `internal/` (GitHub: `po-talk/potalk-internal`), which this repo's `.gitignore` excludes. Start a session by reading `internal/HANDOFF.md` from its top section. The two always-on clients (greeter / echo) are another private repo, `po-talk/potalk-greeter`, checked out at `~/Downloads/potalk-greeter`; they must be redeployed by hand whenever the data-channel protocol changes.
+
 ## Running locally
 
 ```bash
