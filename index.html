@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.16
+  ぽっと通話〈実験版〉 v0.14.17
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -465,7 +465,7 @@
   .mail-form{ position:relative; margin-top:8px }
   .mail-form input{ padding-right:74px }
   .mail-form button{ position:absolute; right:5px; top:50%; transform:translateY(-50%);
-    width:auto; margin:0; padding:7px 12px; font-size:13px; background:var(--mute); color:var(--text); border-radius:9px }
+    width:auto; margin:0; padding:7px 12px; font-size:13px; background:var(--join-bg); color:var(--join-fg); border-radius:9px }   /* 送信はティール（ひとことと同じ） */
   /* いま読まれているお便り（タブの外・常時表示）。配信部屋の説明と同じ枠だが、
      こちらは「中身」なので少し明るく、送り主が分かる形にする */
   .mail-now{ margin-top:10px; padding:9px 11px; border-radius:10px; font-size:13px; line-height:1.6;
@@ -599,8 +599,8 @@
   .chat-row input::placeholder{ color:var(--placeholder) }
   .chat-row button{ position:absolute; right:5px; top:50%; transform:translateY(-50%);
     width:auto; margin:0; padding:6px 13px; font-size:13px; border-radius:8px;
-    background:var(--chip); color:var(--chip-fg) }
-  .chat-row button:hover{ background:var(--chip-hover) }
+    background:var(--join-bg); color:var(--join-fg) }   /* ★ティール＝「参加する」と同じ「これから行動する」色。灰色だとすぐ下の朱の退出を押しがち（2026-09-20・利用者） */
+  .chat-row button:hover{ filter:brightness(.95) }
   .chat-row button:disabled{ opacity:.45 }
   /* 吹き出し。**中身は必ず textContent で入れる**（他人が決めた文字がここに出る）。
      ★position:fixed で座標を計算して置いてはいけない。**一度置いたら動かない**ので、
@@ -1328,7 +1328,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.16'
+const APP_VERSION = 'v0.14.17'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
