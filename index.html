@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.8
+  ぽっと通話〈実験版〉 v0.14.9
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -191,7 +191,6 @@
   .qr-room{ margin-top:8px; text-align:center; font-size:13px; color:var(--body); word-break:break-all }
   label{ display:block; font-size:13px; color:var(--sub); margin:14px 0 6px }
   /* 文字数カウンタ：ラベルの右端に添える。上限超過は色で知らせる（超えた分は参加時に切られるため） */
-  .label-row{ display:flex; align-items:baseline; justify-content:space-between; gap:8px }
   .char-count{ font-size:12px; color:var(--note); font-variant-numeric:tabular-nums }
   .char-count.over{ color:var(--warn); font-weight:700 }
   input{ width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border);
@@ -221,7 +220,7 @@
      visibility なのでレイアウトは一切動かない */
   .mic-slash{ visibility:hidden }
   #mute.muted .mic-slash{ visibility:visible }
-  /* 参加後の操作は横並び（ミュート／退出を半々に） */
+  /* 参加後の操作は横並び（ミュート：退出 ＝ 3：2・下の #mute/#leave） */
   /* 退出の確認（ページ内・止まらない）。注意の枠と同じ温度で、ボタンは小さく横に */
   .leave-confirm{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px; padding:9px 11px;
     border-radius:10px; font-size:13px; line-height:1.5; background:var(--warn-bg); border:1px solid var(--warn-border); color:var(--text) }
@@ -285,7 +284,6 @@
   .stable-link:hover{ color:var(--sub) }
   #qr{ background:var(--chip); color:var(--chip-fg); margin-top:8px; padding:10px; font-size:14px }
   .status{ margin-top:18px; padding:14px; border-radius:10px; background:var(--panel); font-size:14px; line-height:1.7 }
-  /* 状態表示の右に「つなぎ直す」。共通の button{width:100%} を打ち消して小さなチップにする */
   /* 状態＝1行／操作＝次の行。部屋名が長くても折り返しがきれいに収まる */
   .status-head{ display:flex; flex-direction:column; gap:8px }
   .head-actions{ display:flex; gap:8px; justify-content:flex-end }
@@ -1187,7 +1185,7 @@
     <ol><li>部屋名を入れて「参加する」→ マイクを許可</li><li>同じ部屋名・共有リンク・QRコードを相手に渡す</li></ol>
     <p class="help-sub">部屋に入る</p>
     <ul><li>「通話中の部屋」から選んでタップ（共有リンク／QRからも入れます）→ マイクを許可</li></ul>
-    <p class="help-tip">💡 部屋名はURLの一部（末尾の <code>#◯◯</code>）。共有リンク＝その部屋のURLなので、開けば同じ部屋に入れます。</p>
+    <p class="help-tip">💡 共有リンク＝その部屋への入口です。開けば同じ部屋に入れます（同じ名前でも別の部屋が作れるので、名前ではなくリンクで合流します）。</p>
   </details>
 
   <details class="help-sec"><summary>📣 配信部屋</summary>
@@ -1339,7 +1337,7 @@
 // Chrome には1ページで作れる PeerConnection の上限があり、当たると**新しい接続を一切作れなくなる**
 // （リロードするまで復帰しない）。常駐クライアントは 2026-08-07 に実際に踏んだ。
 //
-// **なぜ自分で閉じてよいか**（Trystero 0.25.2 のソースで確認。上げたら確かめ直すこと）：
+// **なぜ自分で閉じてよいか**（Trystero 0.25.4 の core/peer.ts で確認（2026-09-19）。上げたら確かめ直すこと）：
 //   ・Trystero の状態監視は 'failed' と **'closed' を同じ扱い**にして後始末へ進む。
 //     つまりこちらが閉じても、あちらの整合性は壊れない。
 //   ・Trystero には**握手そのものの時間切れが無い**（15秒の定数は ICE 収集の待ちだけ）。
@@ -1374,9 +1372,13 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.8'
+const APP_VERSION = 'v0.14.9'
 
 const $ = id => document.getElementById(id)
+// localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
+// getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
+const lsGet = (k, d = null) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
+const lsSet = (k, v) => { try { localStorage.setItem(k, v) } catch {} }
 
 // ⓪ 通話の状態。**読込時に syncShare() が call.joinedId を読む**ので、他の何より先に
 // 宣言しておくこと（後ろに置くと TDZ で「Cannot access 'call' before initialization」に
@@ -1545,9 +1547,9 @@ const rejoin = (() => {
 // しかも本人はページが再読込されたことを知らないので「なぜ今？」になる。
 const HELP_HIDE_KEY = 'pot-call-hide-help'
 const helpHide = $('helpHide')
-try { helpHide.checked = localStorage.getItem(HELP_HIDE_KEY) === '1' } catch {}
-helpHide.onchange = () => { try { localStorage.setItem(HELP_HIDE_KEY, helpHide.checked ? '1' : '') } catch {} }
-try { if (!rejoin && localStorage.getItem(HELP_HIDE_KEY) !== '1') openHelp() } catch {}
+helpHide.checked = lsGet(HELP_HIDE_KEY) === '1'
+helpHide.onchange = () => lsSet(HELP_HIDE_KEY, helpHide.checked ? '1' : '')
+if (!rejoin && lsGet(HELP_HIDE_KEY) !== '1') openHelp()
 
 // 招待リンクのQRコード（参加中ボード内にトグル表示）。ライブラリは必要時だけ esm.sh から
 // 読み込み、生成はクライアント側＝リンクを外部に送らない。
@@ -1617,8 +1619,8 @@ $('share').addEventListener('click', async e => {
 // 255文字を超えると生成そのものが失敗する。実用的に読み取れる上限として30文字を採る。
 // 他人から届いた文字列（部屋名・名前・絵文字）を表示に使う前に必ず通す整形。**受信口はすべてここ**。
 //  ・コードポイント単位で切る … UTF-16 の slice は絵文字を途中で割って「�」を作る
-//  ・制御文字と双方向制御を落とす … 改行を混ぜると confirm() の文面を偽装でき（部屋名は
-//    「〇〇に参加しますか？」にそのまま入る）、U+202E などは表示順を反転できる
+//  ・制御文字と双方向制御を落とす … 改行を混ぜると2択の文面（#leaveConfirmText・#roomAskText）を
+//    偽装でき（部屋名は「〇〇に参加しますか？」にそのまま入る）、U+202E などは表示順を反転できる
 // ZWJ(U+200D) は**落とさない**：絵文字の結合に使われており、消すと 👨‍👩‍👧 が分解されてしまう。
 // 内訳：制御文字 / U+061C アラビア文字マーク / U+200E,200F 左右マーク /
 //       U+202A-202E 埋め込み・上書き / U+2066-2069 分離。**エスケープで書くこと**
@@ -1675,7 +1677,7 @@ const SIGN_ALG = { name: 'ECDSA', hash: 'SHA-256' }
 const fpOf = async pub => b64u((await crypto.subtle.digest('SHA-256', unb64u(pub))).slice(0, 16))
 const BC_KEY = 'pot-call-bcast'
 const BC_MAX = 20            // 溜め込まない。古い順に捨てる（＝古い配信部屋のオーナー権は失う）
-const loadBcKeys = () => { try { const o = JSON.parse(localStorage.getItem(BC_KEY) || '{}'); return o && typeof o === 'object' ? o : {} } catch { return {} } }
+const loadBcKeys = () => { try { const o = JSON.parse(lsGet(BC_KEY) || '{}'); return o && typeof o === 'object' ? o : {} } catch { return {} } }
 // **同じ部屋名なら同じ鍵**を使い回す＝配信リンクが毎回変わらない（前に配ったリンクが生き続ける）。
 const ownerKeyFor = async name => {
   const all = loadBcKeys()
@@ -1688,7 +1690,7 @@ const ownerKeyFor = async name => {
   all[fp] = { name, jwk, pub, at: Date.now() }
   const ks = Object.keys(all)
   if (ks.length > BC_MAX) ks.sort((a, b) => (all[a].at || 0) - (all[b].at || 0)).slice(0, ks.length - BC_MAX).forEach(k => delete all[k])
-  try { localStorage.setItem(BC_KEY, JSON.stringify(all)) } catch {}
+  lsSet(BC_KEY, JSON.stringify(all))
   return { fp, name, jwk, pub }
 }
 // 指紋から自分の鍵を探す。**見つかれば自分がその部屋のオーナー**（＝端末に縛られる代償）。
@@ -1711,7 +1713,7 @@ const roomLabel = id => (id === call.joinedId && call.meta.name) || (isHashRoom(
 // ロビーに出す部屋の名前：その部屋の人が告知している名前（rn）。無ければ旧クライアント＝ID が名前
 const lobbyName = (room, people) => { const p = people.find(p => p.rn); return p ? p.rn : roomLabel(room) }
 
-// これから入る部屋の公開鍵指紋。URL（#部屋名~pk~…）・ロビーのタップ・下の「📣 配信部屋にする」の
+// これから入る部屋の公開鍵指紋。URL（#room=ハッシュ~pk~指紋&name=…）・ロビーのタップ・下の「📣 配信部屋にする」の
 // どれかで決まる。**参加していない間の予定**なので call には置かない（退出で消えると困る）。
 let pendingPk = ''
 // これから入る部屋の**ハッシュ**（URL の room=／ロビーのタップ／入口の確認で決まる）。空なら参加時に新しく作る。
@@ -1841,8 +1843,7 @@ kindChat.onchange = applyBcast
 if (pendingPk && ownerKeyByFp(pendingPk)) kindBc.checked = true
 syncKindRow()
 
-// プロフィール（名前・アバター絵文字）— ブラウザに保存し次回も引き継ぐ。
-// いまは自分の設定を保持するだけ。相手への送信・参加者リスト表示は次の段階で足す。
+// プロフィール（名前・アバター絵文字）— ブラウザに保存し次回も引き継ぐ。相手へは参加時に profile チャネルで送る。
 const AVATARS = ['🦞','🐱','🐶','🦊','🐻','🐼','🐸','🐧','🦉','🐙','🦄','🐝','🌸','⭐','🍎','🍣']
 // 初見の初期名：お茶 × サメ映画テイスト（基本あったか・たまに竜巻）。名前も絵文字も初回だけランダムに入れる（編集可）。
 const TEA_MOD_COZY = ['朝の','昼下がりの','夜の','3時の','真夜中の','明け方の','週末の','雨の日の','こたつの','ひなたの','ゆげの','ほかほかの','あつあつの','できたての','ぬるめの','1杯目の','おかわり','2煎目の','ラストの','のこりの','まったりした','ねむけの','ほっと一息の','いつもの']
@@ -1853,10 +1854,10 @@ const pickRand = arr => arr[Math.floor(Math.random() * arr.length)]
 const randomTeaName = () => pickRand(Math.random() < CHAOS_RATE ? TEA_MOD_CHAOS : TEA_MOD_COZY) + pickRand(TEAS)
 const PROFILE_KEY = 'pot-call-profile'
 let savedRaw = null
-try { savedRaw = localStorage.getItem(PROFILE_KEY) } catch {}
+savedRaw = lsGet(PROFILE_KEY)
 let profile = { name: '', emoji: AVATARS[0] }
 try { if (savedRaw) profile = { ...profile, ...JSON.parse(savedRaw) } } catch {}
-const saveProfile = () => { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)) } catch {} }
+const saveProfile = () => lsSet(PROFILE_KEY, JSON.stringify(profile))
 // 初回だけ（保存が無い＝初見）：ランダムな名前＋絵文字を初期値にして即保存＝リロードでも安定（レアは"初回の引き"）。
 // 既存ユーザー（savedRaw あり）は上書きしない。名前は編集可（下で input に反映）。
 if (!savedRaw) { profile.name = randomTeaName(); profile.emoji = pickRand(AVATARS); saveProfile() }
@@ -1871,7 +1872,7 @@ const nameInput = $('name')
 nameInput.value = profile.name
 
 // 部屋名の初期値：名前を入れると「◯◯の部屋」を自動で入れる。ただし
-// ・共有リンク（#部屋名）がある時はそれを尊重（勝手に上書きしない）
+// ・共有リンク（URL に部屋がある）時はそれを尊重（勝手に上書きしない）
 // ・ユーザーが部屋名を手で変えたら追従をやめる（直近の自動値と一致する間だけ更新）
 let lastAutoRoom = ''
 const defaultRoom = () => profile.name ? profile.name + 'の部屋' : ''
@@ -1909,7 +1910,6 @@ syncToggleLabel()
 // 開閉をスライドさせる。<details> の既定は瞬時に切り替わるので、summary のクリックを横取りして
 // 「開く時：先に open にしてから 0→実高さ」「閉じる時：実高さ→0 のあとで open を外す」を自分でやる。
 // 閉じるのを待たせる必要があるのは、open を外した瞬間に中身が display:none になってしまうため。
-const pfSlide = profileBox.querySelector('.pf-body')
 let pfAnim = null
 profileBox.querySelector('summary').addEventListener('click', e => {
   if (profileBox.classList.contains('locked')) return
@@ -1935,8 +1935,8 @@ renderProfileSummary()
 // 1回あたりの平均通話時間**で、短め多め＝小さいほう（🌷🌲）／長めときどき＝大きいほう（🌻🌳）。
 const STATS_KEY = 'pot-call-stats'
 let stats = { seconds: 0, joins: 0, days: 0, lastDay: '' }
-try { stats = { ...stats, ...JSON.parse(localStorage.getItem(STATS_KEY) || '{}') } } catch {}
-const saveStats = () => { try { localStorage.setItem(STATS_KEY, JSON.stringify(stats)) } catch {} }
+try { stats = { ...stats, ...JSON.parse(lsGet(STATS_KEY) || '{}') } } catch {}
+const saveStats = () => lsSet(STATS_KEY, JSON.stringify(stats))
 const localDay = () => { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() }
 const stageOf = () => {
   const min = stats.seconds / 60
@@ -1950,7 +1950,7 @@ const stageOf = () => {
 const STAGE_NOTE = { '🌱': '🌱（←話して育てよう）', '🌿': '🌿（すくすく）', '🌷': '🌷（花がさいた）', '🌻': '🌻（大きな花がさいた）', '🌲': '🌲（りっぱな針葉樹！）', '🌳': '🌳（りっぱな広葉樹！）' }
 const renderGrow = () => { $('growNote').textContent = STAGE_NOTE[stageOf()] }
 renderGrow()
-// 参加中はプロフィール変更を止める（roomInput と同様。送信機能を足すまで見た目を実態に合わせる）
+// 参加中はプロフィール変更を止める（名前・絵文字は参加時に送ったきりで、途中で変えても相手に届かない）
 const lockProfile = on => {
   nameInput.disabled = on
   avatarsEl.querySelectorAll('.avatar').forEach(b => { b.disabled = on })
@@ -2337,7 +2337,7 @@ const ensureAudioCtx = () => {
 // 音量ミキサーもブラウザ丸ごと1つ（別タブの YouTube と分けられない）。だからアプリ内に持つ。
 const VOL_KEY = 'pot-call-vol'
 const clampVol = v => (v >= 0 && v <= 1 ? v : 1)
-let masterVol = clampVol(parseFloat(localStorage.getItem(VOL_KEY)))
+let masterVol = clampVol(parseFloat(lsGet(VOL_KEY)))
 let masterGain = null   // 「各ピア → マスターGain → 出力」。100% のときは張らない
 // ★このアプリが Web Audio で鳴らす音（音量調整・BGM・効果音）は**全部ここを通してから出す**。
 //   出口が1つにまとまっていれば、**小窓を開いたときに接続先を差し替えるだけ**で全部が移る。
@@ -2426,7 +2426,7 @@ const applyVolume = () => {
   draw()
   slider.oninput = () => {
     masterVol = clampVol(Number(slider.value) / 100)
-    localStorage.setItem(VOL_KEY, String(masterVol))
+    lsSet(VOL_KEY, String(masterVol))
     draw(); applyVolume()
   }
 }
@@ -2438,8 +2438,8 @@ const applyVolume = () => {
 // 選択肢は性格が一番遠い2つだけ：🎵 軽快な音楽（拍と旋律がある）／🌫 アンビエント空間（どちらも無い）。
 const BGM_KEY = 'pot-call-bgm'          // 'off' | 'tune' | 'amb'
 const BGM_VOL_KEY = 'pot-call-bgm-vol'
-let bgmKind = ['off', 'tune', 'amb'].includes(localStorage.getItem(BGM_KEY)) ? localStorage.getItem(BGM_KEY) : 'off'
-let bgmVol = (() => { const v = parseFloat(localStorage.getItem(BGM_VOL_KEY)); return v >= 0 && v <= 1 ? v : 0.3 })()
+let bgmKind = ['off', 'tune', 'amb'].includes(lsGet(BGM_KEY)) ? lsGet(BGM_KEY) : 'off'
+let bgmVol = (() => { const v = parseFloat(lsGet(BGM_VOL_KEY)); return v >= 0 && v <= 1 ? v : 0.3 })()
 let bgm = null   // 鳴っている間だけ {nodes, timers, gain}。**止めるときはここを畳むだけ**（join/leave と同じ対称性）
 
 // 部屋名 → 数。同じ部屋名なら何度でも同じ曲になる（リロードしても・別のブラウザでも）
@@ -2585,7 +2585,7 @@ const renderBgm = () => {
 }
 {
   const pick = k => () => {
-    bgmKind = k; localStorage.setItem(BGM_KEY, k)
+    bgmKind = k; lsSet(BGM_KEY, k)
     renderBgm(); startBgm()      // 選び直したらその場で作り直す（前のものは startBgm が畳む）
   }
   $('bgmOff').onchange = pick('off')
@@ -2593,7 +2593,7 @@ const renderBgm = () => {
   $('bgmAmb').onchange = pick('amb')
   $('bgmVol').oninput = () => {
     bgmVol = Math.min(1, Math.max(0, Number($('bgmVol').value) / 100))
-    localStorage.setItem(BGM_VOL_KEY, String(bgmVol))
+    lsSet(BGM_VOL_KEY, String(bgmVol))
     renderBgm()
     if (bgm) bgm.gain.gain.value = bgmLevel()
   }
@@ -2667,12 +2667,11 @@ $('pipVideo').addEventListener('play', wakeAudio)
 const pipCanvas = document.createElement('canvas')
 pipCanvas.width = 480; pipCanvas.height = 270
 const pipG = pipCanvas.getContext('2d')
-let pipStream = null, pipTimer = null, pipRaf = null
+let pipStream = null, pipTimer = null
 const pipOn = () => !!document.pictureInPictureElement || $('pipVideo').webkitPresentationMode === 'picture-in-picture'
 const pipCan = () => !!(document.pictureInPictureEnabled || $('pipVideo').webkitSetPresentationMode)
 
-// 小窓の中身。**画面の縮小版ではなく「離れている間に知りたいこと」だけ**を大きく描く：
-// 部屋名・人数・自分のマイクの状態・経過時間。文字は大きく、色数は少なく。
+// 小窓の中身。**画面の縮小版ではなく「どの部屋にいるか」と「通話中であること」だけ**を大きく描く（下の★）。
 const drawPip = () => {
   const w = pipCanvas.width, h = pipCanvas.height
   // ★中身は**録った時点で固定**になる（3秒の動画をループさせるため）。だから
@@ -2745,7 +2744,7 @@ const recordPipVideo = () => {
   try { rec.start(); setTimeout(() => { try { rec.stop() } catch {} }, 3000) } catch {}
 }
 
-// 映像トラックは**通話中だけ**作る（電池）。2コマ/秒で十分＝時計が動けばよい。
+// 映像トラックは**通話中だけ**作る（電池）。
 const startPipFeed = () => {
   if (pipTimer) return
   // ★**canvas を DOM に置く**。iOS は描画されていない要素の captureStream が
@@ -2772,15 +2771,14 @@ const startPipFeed = () => {
   try { v.autoPictureInPicture = true; v.setAttribute('autopictureinpicture', '') } catch {}
   v.play().catch(() => {})
   recordPipVideo()          // ★3秒ぶん録って Blob に差し替える（iPhone の小窓はこれでないと映らない）
-  // ★描き直しは**1秒に1回**で十分（出しているのは人数と mm:ss だから）。
-  //   **iPhone では小窓の中身が誰にも見えない**（iOS は MediaStream の映像を PiP に描けない＝
+  // ★描き直しは録っている3秒の間だけ（脈打つ点のため 120ms）。
+  //   **iPhone では MediaStream の小窓の中身が誰にも見えない**（iOS は MediaStream の映像を PiP に描けない＝
   //   2026-09-12 に4条件で実測）ので、細かく描くのは電池のむだ。見えるのはデスクトップと
   //   Safari のタブだけ。rAF は背面で止まるので使わない（setInterval なら背面でも動く）。
   pipTimer = setInterval(drawPip, 120)   // 録っている3秒だけ動く（録り終えたら止める）
 }
 const stopPipFeed = () => {
   clearInterval(pipTimer); pipTimer = null
-  if (pipRaf) { cancelAnimationFrame(pipRaf); pipRaf = null }
   if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {})
   const v = $('pipVideo')
   try { if (v.webkitSetPresentationMode && v.webkitPresentationMode === 'picture-in-picture') v.webkitSetPresentationMode('inline') } catch {}
@@ -2818,9 +2816,9 @@ $('pipVideo').addEventListener('webkitpresentationmodechanged', renderPip)   // 
 const SND_PEER_KEY = 'pot-call-snd-peer'
 const SND_ROOM_KEY = 'pot-call-snd-room'
 const SND_REACT_KEY = 'pot-call-snd-react'
-let sndPeer = localStorage.getItem(SND_PEER_KEY) !== '0'   // 未保存＝オン
-let sndRoom = localStorage.getItem(SND_ROOM_KEY) === '1'   // 未保存＝オフ
-let sndReact = localStorage.getItem(SND_REACT_KEY) !== '0' // 未保存＝オン
+let sndPeer = lsGet(SND_PEER_KEY) !== '0'   // 未保存＝オン
+let sndRoom = lsGet(SND_ROOM_KEY) === '1'   // 未保存＝オフ
+let sndReact = lsGet(SND_REACT_KEY) !== '0' // 未保存＝オン
 const seenRooms = new Set() // ロビーで既に鳴らした部屋名（重複防止・消えたら忘れて再通知する）
 // notes: [[周波数Hz, 開始秒, 長さ秒], …] を柔らかいエンベロープで鳴らす。ロビー音は未解錠なら resume も試みる。
 const playTones = (notes, vol = 0.11) => {
@@ -2847,13 +2845,13 @@ const soundRoom  = () => { if (sndRoom) playTones([[988, 0, 0.09], [1319, 0.08, 
 {
   const peerBox = $('sndPeer'), roomBox = $('sndRoom'), reactBox = $('sndReact')
   peerBox.checked = sndPeer; roomBox.checked = sndRoom; reactBox.checked = sndReact
-  peerBox.onchange = () => { sndPeer = peerBox.checked; localStorage.setItem(SND_PEER_KEY, sndPeer ? '1' : '0') }
+  peerBox.onchange = () => { sndPeer = peerBox.checked; lsSet(SND_PEER_KEY, sndPeer ? '1' : '0') }
   reactBox.onchange = () => {
-    sndReact = reactBox.checked; localStorage.setItem(SND_REACT_KEY, sndReact ? '1' : '0')
+    sndReact = reactBox.checked; lsSet(SND_REACT_KEY, sndReact ? '1' : '0')
     if (sndReact) { ensureAudioCtx(); soundReact(0) }   // オンにした操作で解錠＋見本を1回鳴らす
   }
   roomBox.onchange = () => {
-    sndRoom = roomBox.checked; localStorage.setItem(SND_ROOM_KEY, sndRoom ? '1' : '0')
+    sndRoom = roomBox.checked; lsSet(SND_ROOM_KEY, sndRoom ? '1' : '0')
     if (sndRoom) { ensureAudioCtx(); soundRoom() }   // オンにした操作で解錠＋見本を1回鳴らす
   }
 }
@@ -2971,7 +2969,7 @@ addEventListener('resize', () => {
 // まま TURN の割り当てが拒否されて**候補がひとつも作れず、まったく繋がらない**。しかも静かに失敗
 // するので誰も気づけない（ロビーが時間とともに劣化していた原因と同じ筋・HANDOFF 参照）。
 //
-// **直せる根拠**（Trystero 0.25.2 のソースで確認。上げたら必ず確かめ直すこと）：
+// **直せる根拠**（Trystero 0.25.4 の core/peer.ts で確認（2026-09-19）。上げたら必ず確かめ直すこと）：
 //   ・joinRoom に渡した設定オブジェクトを**参照のまま**保持している（deep clone していない）
 //   ・ピア接続はそのつど `new RTCPeerConnection({iceServers: 既定, ...rtcConfig})` で作られる
 //   → **同じ配列の中身を入れ替えれば、以降に繋がる相手には新しい資格情報が使われる**。
@@ -3123,7 +3121,7 @@ addEventListener('offline', render)
 // ★autoGainControl は**既定のまま（true）**にしてある。切ると「入力が小さいと持ち上げる」動作が
 //   止まり、**弱いエコーを増幅して発振の引き金を引く**のを防げる見込みだが、代わりに
 //   **声が小さい人はそのまま小さく**届く。効くかどうかは実機で確かめてから決める。
-//   **`?agc=off` を付けて開くと切って比べられる**（Android の回り込み検証用。決着したら消す）。
+//   **`?agc=off` を付けて開くと切って比べられる**（Android の回り込み検証用フック。1行なので残す）。
 const MIC_CONSTRAINTS = {
   audio: {
     echoCancellation: true,
@@ -3206,7 +3204,7 @@ const stopAudioWatch = () => {
 // 相手にはこちらの声が届き続ける。守りの道具が嘘の安心を与えるのが一番まずい。
 // 2回目からは出さない（毎回だと、嫌な思いをしている最中に手間が増える）。
 const IGNORE_SEEN_KEY = 'pot-call-ignore-seen'
-const ignoreSeen = () => { try { return localStorage.getItem(IGNORE_SEEN_KEY) === '1' } catch { return false } }
+const ignoreSeen = () => lsGet(IGNORE_SEEN_KEY) === '1'
 // ★v0.14.6：confirm() ではなく <dialog>（#ignoreDlg）。JS を止めないので BGM が連ならない。
 //   押した相手の id を覚えておき、「無視する」で実行、「やめる」で何もしない。初回だけ出す
 let ignorePending = ''
@@ -3219,7 +3217,7 @@ const ignorePeer = id => {
   try { $('ignoreDlg').showModal() } catch { doIgnore(id) }   // <dialog> が使えない環境ではそのまま実行
 }
 $('ignoreYes').onclick = () => {
-  try { localStorage.setItem(IGNORE_SEEN_KEY, '1') } catch {}
+  lsSet(IGNORE_SEEN_KEY, '1')
   $('ignoreDlg').close()
   const id = ignorePending; ignorePending = ''
   if (id && call.peers.has(id)) doIgnore(id)   // ダイアログの間に相手が去っていたら何もしない
@@ -3906,8 +3904,7 @@ const joinCall = async () => {
 let joinMuted = false
 const runJoin = async () => {
   const muteOnJoin = joinMuted; joinMuted = false   // 失敗しても次の参加に持ち越さないよう、先に消費する
-  // 空欄のときは名前から作る（'lobby' に落とすと、その名前が #lobby としてURLに焼き付き、
-  // 以後ハッシュ優先で自動命名が効かなくなって二度と抜けられなくなる）。名前も無ければ促して中止。
+  // 空欄のときは名前から作る。名前も無ければ促して中止。
   const name = capRoom(roomInput.value.trim() || defaultRoom())
   if (!name) {
     setState('部屋名を入れてください', 'warn')
@@ -4445,8 +4442,6 @@ const leaveCall = () => {
   // 失敗しても再参加を塞がないよう握りつぶす（掴んだ場合は上のゾンビ検出が拾う）。
   if (leftRoom) call.leaving = leftRoom.leave().catch(() => {}).finally(() => { call.leaving = null })
 }
-// 退出は確認してから（v0.13.5・利用者の要望）。誤タップで会話から落ちるのを防ぐ。
-// ★確認を出すのは**ボタンを押したときだけ**。つなぎ直し・ロビーからの部屋移動・自動復帰は leaveCall を直接呼ぶ
 // 退出は確認してから（v0.13.5）。★v0.14.2 から confirm() ではなく**ページ内の2択**（理由は HTML 側のコメント）。
 // 押すたびに出し入れ。8秒で自動で畳む（出しっぱなしを残さない）。確認を出すのはこのボタンだけで、
 // つなぎ直し・ロビーからの部屋移動・自動復帰・配信の終わりは leaveCall を直接呼ぶ
@@ -4608,8 +4603,7 @@ let lastRoomSound = 0
 //   （X で告知した昔のリンクが現存し、時々人が迷い込んでいる・2026-09-18）。リンクで来た人は、
 //   まずロビーでその部屋が開いているかを見てから入る。開いていなければ「お休み中」と案内して
 //   ロビーへ誘導し、作る意思があれば「この名前で新しく開く」で従来どおり入れる。
-//   ★これは第1段（名前ベースの URL のまま）。第2段で部屋の実体がハッシュになれば、名前付き URL は
-//     丸ごとこの「入口」扱いになる（HANDOFF「部屋ID・話題タグまわりの設計方針」）。
+//   ★第2段（v0.13）で部屋の実体はハッシュになり、旧形式の名前付き URL（#名前）は丸ごとこの「入口」扱い。
 //   対象外：自分で部屋名を打った人／ロビーからタップした人／つなぎ直し／配信部屋のオーナー。
 //   判定はロビーの在室（presences）。相手の発見に数秒かかるので、ロビーに入ってから
 //   ENTRY_WAIT のあいだは「探しています」と出し、その後も見つかれば「開いています」に戻す。
