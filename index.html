@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.11
+  ぽっと通話〈実験版〉 v0.14.12
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1326,7 +1326,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.11'
+const APP_VERSION = 'v0.14.12'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1608,12 +1608,15 @@ const roomPk = id => {
   const p = i < 0 ? '' : s.slice(i + PK_SEP.length)
   return FP_RE.test(p) ? p : ''
 }
-const roomName = id => { const s = String(id ?? ''); return roomPk(s) ? s.slice(0, s.lastIndexOf(PK_SEP)) : s }
+// 部屋IDから指紋（~pk~…）を剥いだ**土台**を返す。v0.13 以降はランダムなハッシュ、旧クライアント（v0.12
+// 以前）の部屋IDならそれが名前。★**人が読む名前ではない**（名前は roomLabel / lobbyName / call.meta.name）。
+// 旧名 roomBase。小窓にハッシュが出た事故（v0.14.5）はこの取り違えだったので改名した（2026-09-20）
+const roomBase = id => { const s = String(id ?? ''); return roomPk(s) ? s.slice(0, s.lastIndexOf(PK_SEP)) : s }
 const isBcRoom = id => !!roomPk(id)
 const roomIdOf = (name, pk) => name && FP_RE.test(pk || '') ? name + PK_SEP + pk : name
 // 受け取った部屋IDの整形。**切り詰めてよいのは名前の部分だけ**（全体を capRoom に通すと
 // 30文字で切れて指紋が欠け、別の部屋になる＝ロビーからタップしても誰にも会えない）。
-const capRoomId = v => roomIdOf(capRoom(roomName(v)), roomPk(v))
+const capRoomId = v => roomIdOf(capRoom(roomBase(v)), roomPk(v))
 
 // ───────── 配信部屋の鍵（ECDSA P-256・localStorage） ─────────
 // オーナーであることの証明は**秘密鍵を持っていること**だけで決まる。トークン方式を捨てた理由は
@@ -1654,11 +1657,11 @@ const importVerify = pub => crypto.subtle.importKey('raw', unb64u(pub), ECDSA, f
 // 部屋が勝手に復活しない／（第2段の続きで）改名・タグ付けが再接続なしで済む。
 // URL は `#room=ID&name=名前`。旧形式 `#名前` は**入口URL**（ロビーにその名前の生きている部屋が
 // あれば案内、無ければ「お休み中」。上の「入口の確認」）。
-// ★旧クライアント（v0.12 以前）の部屋ID＝名前もそのまま通る（`roomName(id)` が名前を返す）。
+// ★旧クライアント（v0.12 以前）の部屋ID＝名前もそのまま通る（`roomBase(id)` が名前を返す）。
 const HASH_RE = /^[A-Za-z0-9_-]{16}$/
 const newHash = () => b64u(crypto.getRandomValues(new Uint8Array(12)))
-const isHashRoom = id => HASH_RE.test(roomName(id))
-const roomLabel = id => (id === call.joinedId && call.meta.name) || (isHashRoom(id) ? '（名前のない部屋）' : roomName(id))
+const isHashRoom = id => HASH_RE.test(roomBase(id))
+const roomLabel = id => (id === call.joinedId && call.meta.name) || (isHashRoom(id) ? '（名前のない部屋）' : roomBase(id))
 // ロビーに出す部屋の名前：その部屋の人が告知している名前（rn）。無ければ旧クライアント＝ID が名前
 const lobbyName = (room, people) => { const p = people.find(p => p.rn); return p ? p.rn : roomLabel(room) }
 
@@ -1691,12 +1694,12 @@ const parseHash = () => {
   }
   try { return { room: '', name: '', legacy: decodeURIComponent(raw) } } catch { return { room: '', name: '', legacy: '' } }
 }
-const hashName = () => { const q = parseHash(); return q.room ? q.name : roomName(q.legacy) }   // URL が持って来た名前
+const hashName = () => { const q = parseHash(); return q.room ? q.name : roomBase(q.legacy) }   // URL が持って来た名前
 // これから入る（または入っている）部屋の**ID**。配信部屋なら `~pk~指紋` が付いた形で、
 // 共有リンクもこれで組む＝**リンクを配った時点で部屋の正体（配信部屋かどうか）が決まる**。
 // ハッシュがまだ無ければここで作る（先に配ってから入れる）。
 const pendingRoom = () => call.joinedId || roomIdOf(pendingHash ||= newHash(), pendingPk)
-const pendingRoomName = () => call.joinedId ? (call.meta.name || roomName(call.joinedId)) : capRoom(roomInput.value.trim() || defaultRoom())
+const pendingRoomName = () => call.joinedId ? (call.meta.name || roomBase(call.joinedId)) : capRoom(roomInput.value.trim() || defaultRoom())
 const shareUrl = () => { const n = pendingRoom(); return n ? roomUrl(n, pendingRoomName()) : location.href }
 // 共有欄（リンク・コピー・QR）の表示を今の部屋名に合わせる。部屋名が無ければ隠す。
 const syncShare = () => {
@@ -1740,8 +1743,8 @@ const roomFromHash = () => { const q = parseHash(); return q.room || q.legacy } 
   // 入力欄に入れるのは**名前だけ**。指紋は pendingPk、ハッシュは pendingHash で持つ（欄に出すと、
   // うっかり消されて「同じ名前の別の部屋」に入ってしまうし、文字数カウンタの意味も壊れる）。
   const q = parseHash()
-  if (q.room) { pendingHash = roomName(q.room); pendingPk = roomPk(q.room); roomInput.value = q.name }
-  else { roomInput.value = roomName(q.legacy); pendingPk = roomPk(q.legacy) }   // 旧形式＝入口URL（ハッシュは入口の確認で決まる）
+  if (q.room) { pendingHash = roomBase(q.room); pendingPk = roomPk(q.room); roomInput.value = q.name }
+  else { roomInput.value = roomBase(q.legacy); pendingPk = roomPk(q.legacy) }   // 旧形式＝入口URL（ハッシュは入口の確認で決まる）
 }
 syncRoomCount()
 
@@ -4358,7 +4361,7 @@ $('leaveNo').onclick = hideLeaveConfirm
 if (rejoin) {
   // **指紋ごと戻す**。名前だけ戻すと、つなぎ直した瞬間に配信部屋から普通の部屋へ移ってしまう
   // （＝オーナーは自分だけの部屋に取り残され、リスナーには誰も来なくなる）。
-  roomInput.value = capRoom(rejoin.name || roomName(rejoin.room)); pendingHash = roomName(rejoin.room); pendingPk = roomPk(rejoin.room)
+  roomInput.value = capRoom(rejoin.name || roomBase(rejoin.room)); pendingHash = roomBase(rejoin.room); pendingPk = roomPk(rejoin.room)
   if (pendingPk && ownerKeyByFp(pendingPk)) kindBc.checked = true
   syncRoomCount(); syncShare(); syncKindRow()
   joinCall().then(() => { if (rejoin.muted && !call.muted && call.joinedId) toggleMute() })
@@ -4507,7 +4510,7 @@ const ENTRY_WAIT = 12000
 const entryActive = () => !!(entry.id || entry.name)
 const entryCancel = () => { if (!entryActive()) return; entry.id = ''; entry.name = ''; entry.pk = ''; entry.state = ''; entryRender() }
 // 在室がこの入口に合うか：新形式は部屋IDそのもの／旧形式は「告知している名前（無ければ旧クライアントの ID＝名前）＋指紋」
-const entryMatch = v => (entry.id ? v.room === entry.id : (roomPk(v.room) === entry.pk && (v.rn || roomName(v.room)) === entry.name))
+const entryMatch = v => (entry.id ? v.room === entry.id : (roomPk(v.room) === entry.pk && (v.rn || roomBase(v.room)) === entry.name))
   && (!isBcRoom(v.room) || v.bo)   // 配信部屋は配信者がいるときだけ「開いている」
 const entryLiveCount = () => { let n = 0; presences.forEach(v => { if (entryMatch(v)) n++ }); return n }
 // 開いていると分かったら、その部屋（同名が複数なら人の多いほう）へ入る準備＝ハッシュと指紋を持つ
@@ -4517,7 +4520,7 @@ const entryAdopt = () => {
   const best = [...count.entries()].sort((a, b) => b[1] - a[1])[0]
   if (!best) return
   const room = best[0]
-  pendingHash = roomName(room); pendingPk = roomPk(room)
+  pendingHash = roomBase(room); pendingPk = roomPk(room)
   if (!roomInput.value.trim()) { let nm = ''; presences.forEach(v => { if (v.room === room && v.rn) nm = v.rn }); roomInput.value = nm || roomLabel(room); syncRoomCount() }
   syncShare()
 }
@@ -4554,7 +4557,7 @@ const entryStart = () => {
   if (!id) return
   const pk = roomPk(id)
   if (pk && ownerKeyByFp(pk)) return      // 自分の配信部屋＝作る側
-  if (q.room) entry.id = q.room; else { entry.name = roomName(q.legacy); entry.pk = pk }
+  if (q.room) entry.id = q.room; else { entry.name = roomBase(q.legacy); entry.pk = pk }
   entry.state = 'checking'; entryRender()
   setInterval(entryUpdate, 1000)
 }
@@ -4697,7 +4700,7 @@ const selectRoom = (room, name) => {
   if (call.joinedId) leaveCall()   // 今の部屋を退出（非同期の後片付けは leaving が保持し、次の参加で待たれる）
   entryCancel()   // ロビーから来た＝開いている部屋だと分かっている
   // **ハッシュも指紋も一緒に持っていく**（名前だけ渡すと、同じ名前の別の部屋を作って誰にも会えない）
-  roomInput.value = name; pendingHash = roomName(room); pendingPk = roomPk(room)
+  roomInput.value = name; pendingHash = roomBase(room); pendingPk = roomPk(room)
   const own = !!(pendingPk && ownerKeyByFp(pendingPk))
   kindBc.checked = own; kindChat.checked = !own
   syncRoomCount(); syncShare(); syncKindRow()
