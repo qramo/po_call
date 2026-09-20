@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.3
+  ぽっと通話〈実験版〉 v0.14.4
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1352,7 +1352,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.3'
+const APP_VERSION = 'v0.14.4'
 
 const $ = id => document.getElementById(id)
 
@@ -2831,9 +2831,22 @@ const removeAnalyser = uid => {
   const a = analysers.get(uid)
   if (a) { try { a.src.disconnect() } catch {} ; analysers.delete(uid) }
 }
+// 音の出口（<audio id="appAudio"）を**先に静かに畳んでから** AudioContext を閉じる（v0.14.4）。
+// ★閉じる順番が要点。ctx.close() を先にやると、MediaStreamDestination の track が死んだ stream を
+//   <audio> が再生し続けようとして、iPhone で「プププ」と最後のバッファが繰り返される
+//   （2026-09-20・退出のたびに利用者が再現）。出口を 0 に落とし、要素を止め、srcObject を外し、
+//   stream の track を止めてから ctx を閉じれば、OS 側の音声ユニットに切れ端が残らない。
+const stopOut = () => {
+  try { if (appOut && audioCtx) appOut.gain.setValueAtTime(0, audioCtx.currentTime) } catch {}
+  const el = $('appAudio')
+  try { el.pause() } catch {}
+  try { el.srcObject = null } catch {}
+  try { outDest && outDest.stream.getTracks().forEach(t => t.stop()) } catch {}
+}
 const stopVad = () => {
   if (vadRAF) { cancelAnimationFrame(vadRAF); vadRAF = null }
   analysers.forEach((_, uid) => removeAnalyser(uid))
+  stopOut()   // ★ctx.close() より先（上のコメント）
   if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null }
   masterGain = null   // ctx と寿命を合わせる（閉じた ctx のノードは次の join では使えない）
   appOut = null; outDest = null   // 同上（出口も作り直す）
@@ -3084,7 +3097,7 @@ const MIC_CONSTRAINTS = {
 const play = el => el.play().catch(e => { if (e.name === 'NotAllowedError') $('unlock').style.display = 'block' })
 const allAudios = () => [...call.audios.values()].flat()
 const dropAudios = id => {
-  (call.audios.get(id) || []).forEach(a => { a.srcObject = null; a.remove() })
+  (call.audios.get(id) || []).forEach(a => { try { a.pause() } catch {} a.srcObject = null; a.remove() })
   call.audios.delete(id)
 }
 
