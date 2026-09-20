@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ぽっと通話 ― 知らない人と、アフタヌーンティー</title>
+<meta name="description" content="登録なし、アプリなし。リンクひとつで、居合わせた人と声だけで話せる小さなお茶の席。ブラウザを開いて、名前を決めて、ポットが温かいテーブルへどうぞ。">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ぽっと通話 ― 知らない人と、アフタヌーンティー">
+<meta property="og:description" content="登録なし、アプリなし。リンクひとつで、居合わせた人と声だけで話せる小さなお茶の席。">
+<meta property="og:url" content="https://potalk.app/start/">
+<meta property="og:image" content="https://potalk.app/images/ogp.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://potalk.app/start/">
+<link rel="icon" href="/favicon.ico" sizes="48x48 96x96">
+<link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
+<!-- 案内ページは本番（potalk.app）だけの存在。β（旧URL）にも main の取り込みで複製されるが、そこに人を留めない：
+     本番へ転送する。検索向けには canonical が本番を指す。ローカル（localhost）は確認用なので転送しない -->
+<script>if (!/^(potalk\.app|localhost|127\.0\.0\.1)$/.test(location.hostname)) location.replace('https://potalk.app' + location.pathname.replace(/^\/po_call/, '') + location.hash)</script>
+<link rel="stylesheet" href="../common/docs.css">
+<style>
+  /* このページだけの見た目：冒頭の一画面 */
+  .hero{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:20px 28px; align-items:center; padding:28px 0 8px }
+  @media (max-width:640px){ .hero{ grid-template-columns:1fr } .hero .art{ order:-1; justify-self:center } }
+  .hero h1{ font-size:clamp(26px,5.5vw,38px); letter-spacing:.01em }
+  .hero .lead{ font-size:17px; color:var(--body); max-width:34em; margin-top:10px }
+  .hero .lead b{ color:var(--text) }
+  .hero .cta{ display:flex; flex-wrap:wrap; gap:10px; margin-top:18px }
+  .art{ width:min(260px,70vw); height:auto; display:block; color:var(--text) }
+  .art .body{ fill:var(--panel); stroke:currentColor; stroke-width:2.2; stroke-linejoin:round; stroke-linecap:round }
+  .art .tea{ fill:var(--warm); opacity:.85 }
+  .art .steam{ fill:none; stroke:var(--steam); stroke-width:2.4; stroke-linecap:round }
+  .art .steam.a{ animation:rise 3.2s ease-in-out infinite } .art .steam.b{ animation:rise 3.2s ease-in-out .9s infinite } .art .steam.c{ animation:rise 3.2s ease-in-out 1.7s infinite }
+  @keyframes rise{ 0%{ transform:translateY(0); opacity:.35 } 50%{ transform:translateY(-4px); opacity:.9 } 100%{ transform:translateY(-8px); opacity:0 } }
+  @media (prefers-reduced-motion:reduce){ .art .steam{ animation:none !important } }
+  .feat{ list-style:none; padding:0; margin:12px 0 0; display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); max-width:none }
+  .feat li{ background:var(--card); border:1px solid var(--card-border); border-radius:14px; padding:12px 14px; margin:0; display:grid; grid-template-columns:auto 1fr; gap:10px; align-items:start }
+  .feat .ic{ font-size:22px; line-height:1.4 } .feat b{ display:block; color:var(--text) } .feat span{ font-size:14px; color:var(--note) }
+  .env{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); margin-top:12px; max-width:none }
+  .env div{ background:var(--card); border:1px solid var(--card-border); border-radius:14px; padding:12px 14px; font-size:15px }
+  .env b{ color:var(--text) }
+  .trust{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); margin-top:12px }
+  .trust div{ padding:12px 14px; border-radius:14px; background:var(--accent-dim); color:var(--text); font-size:15px }
+  .trust b{ display:block }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav" aria-label="案内">
+    <a class="brand" href="../">🫖 ぽっと通話</a>
+    <a href="./" aria-current="page">はじめに</a>
+    <a href="../manual/">使い方</a>
+    <a href="../tech/">しくみ</a>
+    <a href="../about/">運営</a>
+  </nav>
+
+  <header class="hero">
+    <div>
+      <h1>知らない人と、<br>アフタヌーンティー。</h1>
+      <p class="lead">大きなテーブルに、席はいつも一つ空いています。<b>ポットが温かければ、誰かがいる合図。</b>名前も登録もいりません。カップを置いて席を立てば、それでおしまい。</p>
+      <div class="cta">
+        <a class="btn" href="../">テーブルを見る</a>
+        <a class="btn ghost" href="../manual/">使い方を読む</a>
+      </div>
+    </div>
+    <svg class="art" viewBox="0 0 260 200" role="img" aria-label="湯気の立つティーポットと、ティーカップ">
+      <!-- 湯気（ポット） -->
+      <path class="steam a" d="M118 52c-6-8 6-14 0-22"/><path class="steam b" d="M134 48c-6-8 6-14 0-22"/><path class="steam c" d="M150 54c-6-8 6-14 0-22"/>
+      <!-- ポット：胴・注ぎ口・取っ手・蓋 -->
+      <path class="body" d="M86 96c0-18 14-30 48-30s48 12 48 30v22c0 22-18 36-48 36s-48-14-48-36z"/>
+      <path class="body" d="M182 104l30-14c6-3 10 4 6 9l-24 30c-3 4-8 2-12-2z"/>
+      <path class="body" d="M88 100c-18-2-30 10-28 24s16 20 26 14"/>
+      <path class="body" d="M112 70c0-8 10-14 22-14s22 6 22 14"/>
+      <circle class="body" cx="134" cy="52" r="4"/>
+      <!-- カップと受け皿（ポットの右下） -->
+      <path class="steam a" d="M224 116c-4-6 4-10 0-16"/>
+      <path class="body" d="M200 128h44v14c0 12-10 20-22 20s-22-8-22-20z"/>
+      <path class="tea" d="M202 130h40v10c0 4-2 8-6 10h-28c-4-2-6-6-6-10z"/>
+      <path class="body" d="M244 134c8 0 12 4 12 9s-6 9-14 8"/>
+      <path class="body" d="M192 166h60"/>
+    </svg>
+  </header>
+
+  <section aria-labelledby="pots-h">
+    <h2 id="pots-h">いつもポットが温かいテーブル</h2>
+    <p>ふたつだけ、いつも用意してあるテーブルです。人がいれば「温かい」と出ます。いなくても、入って待っていれば次に来た人と話せます。</p>
+    <div class="pots">
+      <a class="pot" data-room="はじめましての部屋" href="../#room=%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%A6%E3%81%AE%E9%83%A8%E5%B1%8B&name=%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%A6%E3%81%AE%E9%83%A8%E5%B1%8B">
+        <span class="ic">🫖</span>
+        <span class="name">はじめましての席</span>
+        <span class="state">確認中…</span>
+        <span class="cta">入って待つと、次に来た人と話せます →</span>
+      </a>
+      <a class="pot" data-room="やまびこ部屋⛰️（5秒で返信）" href="../#room=%E3%82%84%E3%81%BE%E3%81%B3%E3%81%93%E9%83%A8%E5%B1%8B%E2%9B%B0%EF%B8%8F%EF%BC%88%EF%BC%95%E7%A7%92%E3%81%A7%E8%BF%94%E4%BF%A1%EF%BC%89&name=%E3%82%84%E3%81%BE%E3%81%B3%E3%81%93%E9%83%A8%E5%B1%8B%E2%9B%B0%EF%B8%8F%EF%BC%88%EF%BC%95%E7%A7%92%E3%81%A7%E8%BF%94%E4%BF%A1%EF%BC%89">
+        <span class="ic">⛰️</span>
+        <span class="name">声を試す席（やまびこ）</span>
+        <span class="state">確認中…</span>
+        <span class="cta">自分の声が 5 秒後に返ってきます。マイクの確認にどうぞ →</span>
+      </a>
+    </div>
+    <p><small>「温かい」の目印は、席にいる人のブラウザが公開の中継所に置く小さな合図を読んでいます。誰がいるかの名前や声は流れません。</small></p>
+  </section>
+
+  <section aria-labelledby="how-h">
+    <h2 id="how-h">はじめかた</h2>
+    <ol class="steps">
+      <li><b>開く</b>ブラウザで potalk.app を開きます。アプリのインストールも、登録もいりません。</li>
+      <li><b>名前を決める</b>名前と絵文字を決めます。本名でなくて大丈夫。ブラウザが覚えていて、次回も同じです。</li>
+      <li><b>席につく</b>「通話中の部屋」から選んで入るか、部屋の名前をつけて新しいテーブルを取ります。マイクの許可を一度だけ聞かれます。</li>
+    </ol>
+    <p>友だちを呼ぶときは、招待リンクか QR コードを送ります。リンクがそのまま席への入口です。</p>
+  </section>
+
+  <section aria-labelledby="can-h">
+    <h2 id="can-h">テーブルでできること</h2>
+    <ul class="feat">
+      <li><span class="ic">🎙️</span><div><b>声だけで話す</b><span>顔は出ません。ミュートはいつでも。</span></div></li>
+      <li><span class="ic">💬</span><div><b>ひとことと相づち</b><span>短い文字と、8 種類の絵文字のリアクション。</span></div></li>
+      <li><span class="ic">🏷️</span><div><b>話題タグ</b><span>いま何の話をしているか、席に札を立てられます。</span></div></li>
+      <li><span class="ic">📣</span><div><b>主のお茶会（配信部屋）</b><span>主の声だけが流れる席。聞くだけの人も座れます。おたよりも送れます。</span></div></li>
+      <li><span class="ic">🎵</span><div><b>BGM と小窓</b><span>静かな BGM を流したり、小さな窓に畳んでほかの画面を見ながら。</span></div></li>
+      <li><span class="ic">🌗</span><div><b>昼と夜</b><span>時刻で色が変わります。昼はミルクティー、夜は紺。</span></div></li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="env-h">
+    <h2 id="env-h">使える環境</h2>
+    <div class="env">
+      <div><b>iPhone / iPad</b><br>Safari か Chrome。</div>
+      <div><b>Android</b><br>Chrome。</div>
+      <div><b>パソコン</b><br>Chrome、Edge、Safari、Firefox。</div>
+    </div>
+    <p class="note">LINE や X、Instagram の中で開いたブラウザではマイクが使えないことがあります。その場合は画面の案内から Safari や Chrome で開き直してください。</p>
+  </section>
+
+  <section aria-labelledby="trust-h">
+    <h2 id="trust-h">安心して座れる理由</h2>
+    <div class="trust">
+      <div><b>登録なし・無料</b>メールアドレスも電話番号も聞きません。</div>
+      <div><b>声はサーバに残らない</b>声はブラウザどうしを直接つなぎます。運営のサーバは声を通しません。</div>
+      <div><b>席を立てば終わり</b>部屋は人がいなくなると消えます。録音の機能はありません。</div>
+    </div>
+    <p><small>実験版です。予告なく変わることがあります。合わない人の声は「無視」で自分にだけ聞こえなくできます。詳しくは<a href="../manual/">使い方</a>と<a href="../tech/">しくみ</a>へ。</small></p>
+  </section>
+
+  <footer class="foot">
+    <span>🫖 ぽっと通話〈実験版〉</span>
+    <a href="../">アプリを開く</a>
+    <a href="../manual/">使い方</a>
+    <a href="../tech/">しくみ</a>
+    <a href="../about/">運営</a>
+    <a href="https://github.com/po-talk/po-talk.github.io">GitHub</a>
+  </footer>
+</div>
+<script type="module" src="../common/presence.js"></script>
+</body>
+</html>

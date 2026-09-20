@@ -1,0 +1,79 @@
+/* ぽっと通話の案内ページ共通（/start/ /manual/ /tech/ /about/）。
+   配色はアプリ本体（index.html の TEA＝昼／NIGHT＝夜）から借りる。端末の設定に追従（昼夜の手動切替は無し）。
+   ビルド無し・依存無し。各ページは <link rel="stylesheet" href="../common/docs.css"> で読む。 */
+:root{
+  --g1:#e7dfd4; --g2:#f3efe8; --g3:#f8f5f0; --panel:#fffdf9; --card:rgba(255,255,255,.5); --card-border:rgba(60,45,25,.10);
+  --chip:#eae3d8; --chip-hover:#e0d7c9; --border:rgba(60,45,25,.14); --border-soft:rgba(60,45,25,.12);
+  --text:#1e3a33; --sub:#4c6b61; --note:#5e766d; --body:#2c4a42; --link:#00685e; --accent:#00c9b0; --accent-soft:#0a7a6b; --accent-dim:#e8f6f2;
+  --red:#e0502f; --relay:#d86a0a; --warm:#e9b35a; --steam:rgba(30,58,51,.35);
+  --join-bg:#0a7a6b; --join-fg:#fffdf9;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --g1:#1c2b48; --g2:#0d1424; --g3:#090e1a; --panel:#0d1526; --card:rgba(255,255,255,.04); --card-border:rgba(255,255,255,.09);
+  --chip:#1d2740; --chip-hover:#26324f; --border:rgba(255,255,255,.12); --border-soft:rgba(255,255,255,.10);
+  --text:#eef2f8; --sub:#b9c4d6; --note:#9fb0c6; --body:#d8e0ec; --link:#7ee0d0; --accent:#00c9b0; --accent-soft:#2ac5ae; --accent-dim:rgba(0,201,176,.14);
+  --red:#ff7a5c; --relay:#f0934a; --warm:#f2c374; --steam:rgba(238,242,248,.35);
+  --join-bg:#2ac5ae; --join-fg:#0d1526;
+} }
+:root[data-theme="dark"]{
+  --g1:#1c2b48; --g2:#0d1424; --g3:#090e1a; --panel:#0d1526; --card:rgba(255,255,255,.04); --card-border:rgba(255,255,255,.09);
+  --chip:#1d2740; --chip-hover:#26324f; --border:rgba(255,255,255,.12); --border-soft:rgba(255,255,255,.10);
+  --text:#eef2f8; --sub:#b9c4d6; --note:#9fb0c6; --body:#d8e0ec; --link:#7ee0d0; --accent:#00c9b0; --accent-soft:#2ac5ae; --accent-dim:rgba(0,201,176,.14);
+  --red:#ff7a5c; --relay:#f0934a; --warm:#f2c374; --steam:rgba(238,242,248,.35);
+  --join-bg:#2ac5ae; --join-fg:#0d1526;
+}
+*{ box-sizing:border-box }
+html{ -webkit-text-size-adjust:100% }
+body{ margin:0; min-height:100vh; color:var(--body); background:var(--g2);
+  background-image:linear-gradient(160deg,var(--g1) 0%,var(--g2) 45%,var(--g3) 100%); background-attachment:fixed;
+  font-family:system-ui,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif; font-size:16px; line-height:1.8;
+  padding-inline:16px; padding-block:0 48px }
+a{ color:var(--link); text-decoration-thickness:1px; text-underline-offset:3px }
+a:hover{ color:var(--accent-soft) }
+h1,h2,h3{ color:var(--text); line-height:1.35; text-wrap:balance; margin:0 }
+h2{ font-size:22px; margin-top:44px } h3{ font-size:17px; margin-top:20px }
+p{ margin:10px 0; max-width:40em }
+ul,ol{ margin:8px 0; padding-left:1.4em; max-width:42em } li{ margin:4px 0 }
+strong{ color:var(--text) } small{ color:var(--note) }
+code{ font-family:ui-monospace,Menlo,monospace; font-size:.92em; background:var(--chip); padding:1px 6px; border-radius:6px; color:var(--text) }
+.wrap{ max-width:820px; margin:0 auto }
+/* 共通ナビ（各ページに同じ数行を書く） */
+.nav{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; padding:14px 0 6px; font-size:14px }
+.nav .brand{ font-weight:700; color:var(--text); text-decoration:none; font-size:16px; margin-right:auto }
+.nav a{ text-decoration:none; color:var(--sub); padding:4px 8px; border-radius:8px }
+.nav a:hover{ background:var(--chip) }
+@media (max-width:420px){ .nav{ gap:4px 6px; font-size:13px } .nav a{ padding:4px 6px } } .nav a[aria-current="page"]{ color:var(--text); background:var(--chip) }
+/* 面 */
+.card{ background:var(--card); border:1px solid var(--card-border); border-radius:16px; padding:18px 20px }
+.grid{ display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)) }
+.chip{ display:inline-block; background:var(--chip); color:var(--text); border-radius:999px; padding:2px 10px; font-size:13px }
+/* ボタン */
+.btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:48px; padding:0 22px; border-radius:14px;
+  font-size:17px; font-weight:700; text-decoration:none; background:var(--join-bg); color:var(--join-fg); border:0; cursor:pointer }
+.btn:hover{ filter:brightness(1.06); color:var(--join-fg) }
+.btn.ghost{ background:var(--chip); color:var(--text) } .btn.ghost:hover{ background:var(--chip-hover); color:var(--text) }
+/* 手順の番号：内容が順序なので番号を使う */
+.steps{ counter-reset:s; list-style:none; padding:0; display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); max-width:none }
+.steps li{ counter-increment:s; background:var(--card); border:1px solid var(--card-border); border-radius:14px; padding:14px 16px 14px 52px; position:relative; margin:0 }
+.steps li::before{ content:counter(s); position:absolute; left:14px; top:12px; width:28px; height:28px; border-radius:50%; background:var(--accent-dim); color:var(--accent-soft); font-weight:700; display:flex; align-items:center; justify-content:center }
+.steps b{ display:block; color:var(--text); margin-bottom:2px }
+/* 注記の枠 */
+.note{ border-left:3px solid var(--warm); padding:6px 14px; color:var(--note); font-size:15px; background:var(--card); border-radius:0 12px 12px 0 }
+/* 固定部屋のバナー（在室は common/presence.js が書く） */
+.pots{ display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); margin-top:14px }
+.pot{ display:grid; grid-template-columns:auto 1fr; gap:12px 14px; align-items:center; padding:14px 16px; border-radius:16px;
+  background:var(--panel); border:1px solid var(--border); color:var(--body); text-decoration:none; transition:transform .15s }
+.pot:hover{ transform:translateY(-1px); color:var(--body) }
+.pot .ic{ font-size:30px; line-height:1; width:40px; text-align:center; grid-row:span 2 }
+.pot .name{ font-weight:700; color:var(--text) }
+.pot .state{ font-size:14px; color:var(--note) }
+.pot .state b{ color:var(--accent-soft); font-weight:700 }
+.pot.live{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim) }
+.pot.live .ic{ animation:steam 2.2s ease-in-out infinite }
+@keyframes steam{ 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-2px) } }
+@media (prefers-reduced-motion:reduce){ .pot.live .ic{ animation:none } }
+.pot .cta{ grid-column:2; font-size:14px; color:var(--link) }
+/* フッター */
+.foot{ margin-top:48px; padding-top:16px; border-top:1px solid var(--border-soft); font-size:13px; color:var(--note); display:flex; flex-wrap:wrap; gap:6px 16px }
+.foot a{ color:var(--note) }
+:focus-visible{ outline:3px solid var(--accent); outline-offset:2px; border-radius:8px }
