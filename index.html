@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.18
+  ぽっと通話〈実験版〉 v0.14.19
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1328,7 +1328,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.18'
+const APP_VERSION = 'v0.14.19'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -4025,7 +4025,26 @@ const wireRoom = () => {
 
 // ───────── 参加が成立した後の処理（runJoin の尻尾・v0.14.13 で分離） ─────────
 // ここから先で確保するもの（タイマー・解析・BGM・小窓・在室）は**すべて leaveCall が返す**（対称性）。
+// β だけの診断（2026-09-20）：iPhone Safari で「つなぎ直す」後に相手の声が戻らない件。解錠の案内も
+// 「届いていない」警告も出ないので、要素は再生中なのに鳴っていない疑い。どこで消えているかを実機から読む。
+// 本番（potalk.app）では出さない。原因が分かったら消すこと
+const diagAudio = () => {
+  try {
+    const els = [...document.querySelectorAll('audio:not(#appAudio)')]
+    const e = els[0]
+    const tr = e && e.srcObject ? e.srcObject.getAudioTracks()[0] : null
+    const ctx = audioCtx ? audioCtx.state : 'なし'
+    const parts = [
+      '要素' + els.length,
+      e ? (e.paused ? '停止' : '再生中') + ' t=' + e.currentTime.toFixed(1) + ' rs=' + e.readyState + (e.muted ? ' muted' : '') + ' vol=' + e.volume : '',
+      tr ? 'track:' + tr.readyState + (tr.muted ? '/muted' : '/live') + (tr.enabled ? '' : '/disabled') : 'track:なし',
+      'ctx=' + ctx, '音量=' + Math.round(masterVol * 100) + '%', 'peers=' + call.peers.size, 'hear=' + [...call.peers].filter(canHear).length
+    ]
+    showPeerNotice('🔬 ' + parts.filter(Boolean).join(' / '))
+  } catch (err) { showPeerNotice('🔬 診断でエラー: ' + err.message) }
+}
 const armJoined = (roomId, name, bcast) => {
+  if (rejoin && location.hostname !== 'potalk.app') { setTimeout(diagAudio, 6000); setTimeout(diagAudio, 20000) }
   call.wantWake = true; wake()
   call.joinedId = roomId; call.joinedAt = performance.now(); call.warn = ''
   call.meta = { name, tag: '', tagBy: '', tagAt: 0 }   // 名前は自分が持って来たもの。相手のほうが先なら meta で上書きされる
