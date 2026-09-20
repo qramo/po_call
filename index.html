@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.15
+  ぽっと通話〈実験版〉 v0.14.16
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1263,11 +1263,11 @@
 <dialog id="ignoreDlg" class="help-dialog ignore-dialog" aria-labelledby="ignoreTitle">
   <h2 id="ignoreTitle">🙈 この人の音を受け取らないようにします</h2>
   <ul>
-    <li>相手には伝わりません（通知も出ません）</li>
-    <li>ただし相手からは、<b>あなたの声が聞こえたままです</b>。本当に離れたいときは退出してください</li>
-    <li>相手が入り直すと無視は外れます</li>
+    <li>押したことは相手には伝わりません（通知も出ません）</li>
+    <li>もう一度押せばいつでも戻せます</li>
+    <li>ただし相手には、<b>あなたの声が聞こえたままです</b>。本当に離れたいときは退出してください</li>
+    <li>なお相手が部屋に入り直すと無視は外れます</li>
   </ul>
-  <p>いつでも戻せます。</p>
   <div class="ignore-actions">
     <button id="ignoreYes" type="button">無視する</button>
     <button id="ignoreNo" type="button">やめる</button>
@@ -1328,7 +1328,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.15'
+const APP_VERSION = 'v0.14.16'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
