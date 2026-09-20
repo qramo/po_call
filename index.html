@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.22
+  ぽっと通話〈実験版〉 v0.14.23
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1335,7 +1335,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.22'
+const APP_VERSION = 'v0.14.23'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2034,7 +2034,14 @@ const CLOUD_SVG  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 // 丸みの強いハートは「お気に入り」に見えやすいので、あえてこちらにしている。
 const HEART_PATH = 'M12 21C6.5 16.5 3 13.2 3 9.4 3 6.5 5.2 4.4 7.9 4.4c1.8 0 3.3 1.1 4.1 2.6.8-1.5 2.3-2.6 4.1-2.6C18.8 4.4 21 6.5 21 9.4c0 3.8-3.5 7.1-9 11.6z'
 const HEART_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="' + HEART_PATH + '"/></svg>'
-const HEART_BROKEN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + HEART_PATH + '"/><path d="M12 7 10.2 11.2l3.2 1.6-2.4 3.6 1.4 2.4"/></svg>'
+// 割れたハート（v0.14.23）：輪郭にひびを 1 本描くだけでは 16px で読めなかったので、**2 つの破片に割って
+// 下の先端を支点に左右へ 9° 開く**（Noto Emoji の 💔 の「破片を傾けて離す」考え方を参考。形は上の HEART_PATH のまま）。
+// 破片は「輪郭と割れ目（中心から ±1.4 ずらしたジグザグ）の交点」で閉じた 1 本ずつのパス。切り抜き（clipPath）では
+// 先端で割れ目の線が飛び出したので、交点計算で閉じている（生成は scratchpad/heart/halves.py・HANDOFF 参照）。
+// 塗らないのは「塗り＝受け取っている／輪郭＝受け取っていない」の対比を残すため。
+const HEART_HALF_L = 'M10.70 19.92 C5.95 15.96 3 12.89 3 9.40 C3 6.50 5.20 4.40 7.90 4.40 C9.17 4.40 10.29 4.95 11.12 5.79 L10.60 7 L8.80 11.20 L11.80 12.80 L9.40 16.40 L10.80 18.80Z'
+const HEART_HALF_R = 'M14.36 4.77 C14.89 4.53 15.48 4.40 16.10 4.40 C18.80 4.40 21 6.50 21 9.40 C21 12.84 18.13 15.87 13.51 19.75 L13.60 18.80 L12.20 16.40 L14.60 12.80 L11.60 11.20 L13.40 7Z'
+const HEART_BROKEN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" overflow="visible" aria-hidden="true"><g transform="rotate(-9 12 21)"><path d="' + HEART_HALF_L + '"/></g><g transform="rotate(9 12 21)"><path d="' + HEART_HALF_R + '"/></g></svg>'
 const ARROWS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7 4 11l4 4"/><path d="M16 7l4 4-4 4"/><path d="M4 11h16"/></svg>'
 
 // 参加者リスト（自分＋接続中の相手）を描く。名前・絵文字は textContent で入れる（受信データは信用しない）。
