@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.13
+  ぽっと通話〈実験版〉 v0.14.14
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -276,6 +276,9 @@
   .stable-link:hover{ color:var(--sub) }
   #qr{ background:var(--chip); color:var(--chip-fg); margin-top:8px; padding:10px; font-size:14px }
   .status{ margin-top:18px; padding:14px; border-radius:10px; background:var(--panel); font-size:14px; line-height:1.7 }
+  /* 通話中は入力欄が畳まれて説明文の直下に来る。説明文の下 20px＋18px＝38px は広いので、
+     未参加のとき（説明文→プロフィール枠 24px）と同じ間隔に揃える（2026-09-20・利用者の指摘） */
+  #setupFields.collapsed + .status{ margin-top:4px }
   /* 状態＝1行／操作＝次の行。部屋名が長くても折り返しがきれいに収まる */
   .status-head{ display:flex; flex-direction:column; gap:8px }
   .head-actions{ display:flex; gap:8px; justify-content:flex-end }
@@ -1326,7 +1329,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.13'
+const APP_VERSION = 'v0.14.14'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
