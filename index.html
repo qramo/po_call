@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.5
+  ぽっと通話〈実験版〉 v0.14.6
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -173,6 +173,13 @@
   .help-hide{ display:flex; align-items:center; gap:8px; margin:20px 0 12px; font-size:13px; color:var(--sub); cursor:pointer }
   .help-hide input{ width:auto; margin:0; padding:0; accent-color:var(--accent) }
   .help-close{ width:100%; margin:0; padding:12px; background:var(--mute); color:var(--text); border-radius:10px; font-weight:700 }
+  /* 無視の初回説明（ヘルプと同じ器・短いので内部スクロールは要らない） */
+  .ignore-dialog{ max-width:380px }
+  .ignore-dialog h2{ font-size:16px }
+  .ignore-actions{ display:flex; gap:10px; margin-top:6px }
+  .ignore-actions button{ flex:1; width:auto; margin:0; padding:11px; font-size:14px; border-radius:10px }
+  #ignoreYes{ background:var(--red); color:#fff }
+  #ignoreNo{ background:var(--mute); color:var(--text) }
   /* 共有アクション：コピーとQRを横並び */
   .share-actions{ display:flex; gap:8px }
   .share-actions button{ flex:1; width:auto }
@@ -1281,6 +1288,21 @@
   <label class="help-hide"><input type="checkbox" id="helpHide"> 今後表示しない</label>
   <button id="helpClose" class="help-close" type="button">閉じる</button>
 </dialog>
+<!-- 無視の初回説明（v0.14.6）。★confirm() は使わない（ダイアログの間ページの JS が止まり、閉じた瞬間に
+     BGM が連なる）。<dialog>.showModal() は操作を止めても JS は止めない。初回だけ出す（ignoreFirst） -->
+<dialog id="ignoreDlg" class="help-dialog ignore-dialog" aria-labelledby="ignoreTitle">
+  <h2 id="ignoreTitle">🙈 この人の音を受け取らないようにします</h2>
+  <ul>
+    <li>相手には伝わりません（通知も出ません）</li>
+    <li>ただし相手からは、<b>あなたの声が聞こえたままです</b>。本当に離れたいときは退出してください</li>
+    <li>相手が入り直すと無視は外れます</li>
+  </ul>
+  <p>いつでも戻せます。</p>
+  <div class="ignore-actions">
+    <button id="ignoreYes" type="button">無視する</button>
+    <button id="ignoreNo" type="button">やめる</button>
+  </div>
+</dialog>
 
 <script type="module">
 // ───────────────────────────────────────────────────────────────────────────
@@ -1352,7 +1374,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.5'
+const APP_VERSION = 'v0.14.6'
 
 const $ = id => document.getElementById(id)
 
@@ -3166,22 +3188,27 @@ const stopAudioWatch = () => {
 // 相手にはこちらの声が届き続ける。守りの道具が嘘の安心を与えるのが一番まずい。
 // 2回目からは出さない（毎回だと、嫌な思いをしている最中に手間が増える）。
 const IGNORE_SEEN_KEY = 'pot-call-ignore-seen'
-const confirmIgnore = name => {
-  try { if (localStorage.getItem(IGNORE_SEEN_KEY) === '1') return true } catch {}
-  const ok = confirm(
-    (name || 'この人') + ' の音を受け取らないようにします。\n\n' +
-    '・相手には伝わりません（通知も出ません）\n' +
-    '・ただし相手からは、あなたの声が聞こえたままです\n' +
-    '　本当に離れたいときは退出してください\n' +
-    '・相手が入り直すと無視は外れます\n\n' +
-    'いつでも戻せます。')
-  if (ok) { try { localStorage.setItem(IGNORE_SEEN_KEY, '1') } catch {} }
-  return ok
-}
-
+const ignoreSeen = () => { try { return localStorage.getItem(IGNORE_SEEN_KEY) === '1' } catch { return false } }
+// ★v0.14.6：confirm() ではなく <dialog>（#ignoreDlg）。JS を止めないので BGM が連ならない。
+//   押した相手の id を覚えておき、「無視する」で実行、「やめる」で何もしない。初回だけ出す
+let ignorePending = ''
 const ignorePeer = id => {
   if (call.ignored.has(id)) return
-  if (!confirmIgnore((call.profiles.get(id) || {}).name)) return
+  if (ignoreSeen()) { doIgnore(id); return }
+  ignorePending = id
+  const name = (call.profiles.get(id) || {}).name
+  $('ignoreTitle').textContent = '🙈 ' + (name || 'この人') + ' の音を受け取らないようにします'
+  try { $('ignoreDlg').showModal() } catch { doIgnore(id) }   // <dialog> が使えない環境ではそのまま実行
+}
+$('ignoreYes').onclick = () => {
+  try { localStorage.setItem(IGNORE_SEEN_KEY, '1') } catch {}
+  $('ignoreDlg').close()
+  const id = ignorePending; ignorePending = ''
+  if (id && call.peers.has(id)) doIgnore(id)   // ダイアログの間に相手が去っていたら何もしない
+}
+$('ignoreNo').onclick = () => { ignorePending = ''; $('ignoreDlg').close() }
+const doIgnore = id => {
+  if (call.ignored.has(id)) return
   call.ignored.add(id)
   dropAudios(id)        // 鳴っている音を止める（要素ごと捨てる）
   removeAnalyser(id)    // 絵文字の跳ねも止める＝画面から気配を消す
