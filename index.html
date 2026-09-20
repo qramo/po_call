@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.12
+  ぽっと通話〈実験版〉 v0.14.13
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1326,7 +1326,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.12'
+const APP_VERSION = 'v0.14.13'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -3809,23 +3809,271 @@ const joinCall = async () => {
 // 一覧に出ている＝誰かが在室を発信している、なので「人がいる」の判定は要らない（推測しない）。
 // **つなぎ直しは joinCall() を直接呼ぶのでここを通らない**＝預けたミュート状態の復元が生きる。
 let joinMuted = false
-const runJoin = async () => {
-  const muteOnJoin = joinMuted; joinMuted = false   // 失敗しても次の参加に持ち越さないよう、先に消費する
-  // 空欄のときは名前から作る。名前も無ければ促して中止。
+// ───────── 参加先と役割の確定（runJoin の頭・v0.14.13 で分離） ─────────
+// 入力欄・pendingHash/pendingPk・鍵の有無から「どの部屋に・どの立場で入るか」を1つのオブジェクトにする。
+// 役割：owner（配信者・鍵あり）／listener（配信部屋・鍵なし＝マイクを使わない）／chat（雑談）。
+// 空欄なら促して null（呼び側は中止）。
+const joinTarget = () => {
   const name = capRoom(roomInput.value.trim() || defaultRoom())
   if (!name) {
     setState('部屋名を入れてください', 'warn')
     roomInput.focus()
-    return
+    return null
   }
-  if (entryIsBlocking()) return   // 入口の確認中／お休み中（案内の「この名前で新しく開く」からだけ入れる）
+  if (entryIsBlocking()) return null   // 入口の確認中／お休み中（案内の「部屋の名前をつけて参加」からだけ入れる）
   roomInput.value = name; syncRoomCount()   // 補った／切り詰めた名前を入力欄にも反映する
-  // 配信部屋なら部屋IDは `名前~pk~指紋`。**指紋から自分の秘密鍵が引ければ自分がオーナー**
+  // 配信部屋なら部屋IDは `ハッシュ~pk~指紋`。**指紋から自分の秘密鍵が引ければ自分がオーナー**
   // ＝マイクを取る側。引けなければ聞き役なので、この先 getUserMedia を一度も呼ばない。
   const roomId = roomIdOf(pendingHash ||= newHash(), pendingPk)   // 部屋の実体はハッシュ。名前は meta
   const bcast = isBcRoom(roomId)
   const owner = bcast ? ownerKeyByFp(roomPk(roomId)) : null
   const wantMic = !bcast || !!owner
+  const role = !bcast ? 'chat' : owner ? 'owner' : 'listener'
+  return { name, roomId, bcast, owner, wantMic, role }
+}
+
+// ───────── データチャネルの配線（runJoin の中身・v0.14.13 で分離） ─────────
+// ★joinRoom() の直後・**最初のピア接続イベントより前**に同期で呼ぶこと（onMessage を代入する前に
+//   届いたメッセージは捨てられる）。call.room と call.stream を読む。
+const wireRoom = () => {
+  // プロフィール交換：接続が張れた相手に自分の名前・絵文字・ミュート状態を送る。相手も同じことを
+  // するので、双方の onPeerJoin だけで両方向が揃う。名前・絵文字は通話中不変だが、muted は変わるので
+  // ミュート切替時に同じペイロードを再送する（下の #mute ハンドラ）。
+  // onMessage は最初のピア接続イベントより前（この同期ブロック内）に必ず代入しておく。
+  call.profileAction = call.room.makeAction('profile')
+  call.profileAction.onMessage = (data, { peerId }) => {
+    const prev = call.profiles.get(peerId) || {}
+    call.profiles.set(peerId, {
+      name: capText(data?.name ?? prev.name, 20),
+      emoji: capText(data?.emoji ?? prev.emoji, 8, '🙂'),
+      muted: !!data?.muted,
+      stage: capText(data?.stage ?? prev.stage, 4),
+      // 経路は boolean のときだけ採用（旧クライアントは送らない→undefinedのまま＝アイコン非表示）
+      relay: typeof data?.relay === 'boolean' ? data.relay : prev.relay,
+      // 相手が部屋に入った時刻（こちらの時計での推定）。届いた「経過秒」を受信時刻から引く。
+      // 満室のときに**誰が抜けるか**の順位づけに使う。旧クライアントは送ってこない＝undefined のままで、
+      // その場合は「自分より先にいた人」として扱う（＝抜けるのは自分側に倒す。下の checkCapacity）。
+      // 上限30日は自己申告の暴走ガード（「自分は大昔から居る」と言い張って居座らせない）。
+      joinedAt: Number.isFinite(data?.since) && data.since >= 0 && data.since < 30 * 24 * 3600
+        ? Date.now() - data.since * 1000
+        : prev.joinedAt
+    })
+    renderMembers()
+    scheduleCapacityCheck()   // 到着時刻が分かった＝満室の順位を数え直す
+  }
+  const sendProfile = id => sendTo(call.profileAction, myProfilePayload(), id)
+  // 部屋のメタデータ（名前・タグ）。入室時に互いに送り合う。名前は**先にいた人のもの**を採用
+  // （自分が持って来た名前より相手の meta が優先＝作った人が付けた名前が固定される）。
+  // タグは tagAt が新しいほうが勝つ（誰でも上書き・履歴なし・付けた人の名前を添える）。
+  call.metaAction = call.room.makeAction('meta')
+  call.metaAction.onMessage = d => {
+    if (!d || typeof d !== 'object') return
+    const m = call.meta, name = capRoom(String(d.name ?? ''))
+    let changed = false
+    if (name && !m.name) {   // 名前が無いときだけ受け取る（持って来た名前は変えない）
+      m.name = name; changed = true
+      try { startPipFeed() } catch {}   // 小窓の絵は参加時に録ってあるので、名前が届いたら録り直す（ハッシュのまま残さない）
+    }
+    const at = Math.min(Number(d.tagAt) || 0, Date.now() + 60000)
+    if (at > (m.tagAt || 0)) { m.tag = capText(d.tag, ROOM_MAX); m.tagBy = capText(d.tagBy, 20); m.tagAt = at; changed = true }
+    if (changed) { render(); syncShare(); if (call.joinedId) location.hash = 'room=' + call.joinedId + '&name=' + encodeURIComponent(m.name); sendHeartbeat() }
+  }
+  const sendMeta = id => sendTo(call.metaAction, call.meta, id)
+
+  // 「音が届いていないので送り直して」の受け口。頼まれた側は自分のストリームを相手へ入れ直す＝
+  // 相手が入り直したときに起きることと同じ。onMessage は profile と同じくピア接続より前に置く。
+  call.nudgeAction = call.room.makeAction('nudge')
+  call.nudgeAction.onMessage = (_data, { peerId }) => {
+    // 連打への自衛。同じ相手には NUDGE_ACCEPT_MS に1回しか応じない（上の定義参照）。
+    if (tooSoon(call.nudgeSeen, peerId, NUDGE_ACCEPT_MS)) return
+    // 頼まれた側から見て相手が既に切れている（＝こちらは見失っている）ことがある。その時の
+    // addStream は失敗するが、頼んだ側の状況は改善しようがないので黙って諦める。
+    try { if (call.stream && call.room) call.room.addStream(call.stream, { target: peerId }) } catch {}
+  }
+
+  if (call.stream) call.room.addStream(call.stream)   // 配信部屋の聞き役はマイクを持っていない
+  call.room.onPeerStream = (stream, id) => {
+    // ★受信側の門番。**無視した相手／配信部屋で承認されていない相手の音は、ここで捨てる。**
+    // 送信側の善意に頼らないので、改造クライアントが勝手に喋っても誰の耳にも届かない。
+    if (!canHear(id)) return
+    // 同じ相手から何度もストリームが来る（再ネゴ、そして「送り直して」を頼んだ結果）。
+    // 足し続けると無音の <audio> と古い MediaStream への参照が溜まるので、1人につき1本に保つ。
+    const cur = call.audios.get(id) || []
+    if (cur.some(a => a.srcObject && a.srcObject.id === stream.id)) return   // 同じものの再到着
+    dropAudios(id)            // 別のストリームに入れ替わった＝古い方は用済み
+    const a = document.createElement('audio')
+    a.srcObject = stream; a.autoplay = true; a.playsInline = true
+    document.body.appendChild(a)
+    call.audios.set(id, [a])
+    addAnalyser(id, stream)   // 相手の音量を測って絵文字を跳ねさせる（中で古い方を外している）
+    routePeer(id)             // 音量が 100% でなければマスター音量の経路に繋ぎ替える
+    play(a)
+  }
+
+  // 「退出します」の合図。**退出する側が抜ける前に送る。**受け取っていれば正規の退出、
+  // 来ないまま消えたら「接続が切れた」と書き分ける（下の onPeerLeave）。
+  // 古いクライアントは送ってこないので、その相手は常に「切れた」扱いになる＝**過剰に警告する側**へ倒す。
+  call.byeAction = call.room.makeAction('bye')
+  call.byeAction.onMessage = (_d, { peerId }) => call.byeSeen.add(peerId)
+
+  call.chatAction = call.room.makeAction('chat')
+  call.chatAction.onMessage = (data, { peerId }) => {
+    if (call.ignored.has(peerId)) return               // 無視した相手のものは出さない
+    const text = capText(data, CHAT_MAX)               // ★受け取った文字は必ずここを通す
+    if (!text) return
+    if (tooSoon(call.chatSeen, peerId, CHAT_ACCEPT_MS)) return
+    showBubble(peerId, text)
+    if (call.tab !== 'chat') $('tabChat').classList.add('unread')   // 見ていない間に届いた＝未読の点
+  }
+
+  // 配信部屋の名簿。**古いクライアントはこの action を知らないので黙って捨てる**（Trystero の
+  // 仕様。2026-08-15 に実測で確認済み）＝ベータ先行で出しても本番の人を壊さない。
+  call.bcAction = call.room.makeAction('bc')
+  call.bcAction.onMessage = d => { acceptRoster(d) }
+
+  // おたより。**受け取る条件が向きで違う**のが要点（上の「おたより」の項を参照）：
+  //   ・投稿（post）を受け取れるのは**枠主だけ**
+  //   ・募集/公開（open/close/show/hide）を受け取るのは**枠主が出したものだけ**
+  //     ＝ peerId が署名済み名簿の配信者と一致するときに限る（名乗るだけでは偽れない）
+  call.mailAction = call.room.makeAction('mail')
+  call.mailAction.onMessage = (d, { peerId }) => {
+    if (!call.bcast || !d || typeof d !== 'object') return
+    if (d.k === 'ask') {
+      // 「いまの募集を教えて」。枠主だけが答えられる。連打には応じない
+      if (!call.ownerKey) return
+      const now = Date.now()
+      if (now - (call.mailAskAt.get(peerId) || 0) < MAIL_ACCEPT_MS) return
+      call.mailAskAt.set(peerId, now)
+      mailSync(peerId)
+      return
+    }
+    if (d.k === 'post') {
+      if (!call.ownerKey || !call.mailOpen) return       // 枠主以外は投稿を受け取らない
+      if (call.ignored.has(peerId)) return               // 無視した相手のものは並べない
+      if (tooSoon(call.mailSeen, peerId, MAIL_ACCEPT_MS)) return
+      const text = capText(d.x, MAIL_TEXT_MAX)
+      if (!text) { call.mailInbox.delete(peerId); renderMail(); return }   // 空＝取り下げ
+      if (!call.mailInbox.has(peerId) && call.mailInbox.size >= MAIL_INBOX_MAX) return
+      const p = call.profiles.get(peerId) || {}
+      // 1人1通。**送り直しは差し替え**（Map のキーが peerId なので自然にそうなる）
+      call.mailInbox.set(peerId, {
+        name: capText(p.name, 20) || 'ゲスト', emoji: capText(p.emoji, 8, '🙂'), text
+      })
+      renderMail()
+      return
+    }
+    // ★ここから下は枠主が出したものだけ。この1行がこの機能の要。
+    if (!call.ownerPeer || peerId !== call.ownerPeer) return
+    if (d.k === 'open') { call.mailOpen = true; call.mailTitle = capText(d.t, MAIL_TITLE_MAX); call.mailSent = '' }
+    else if (d.k === 'close') { call.mailOpen = false; call.mailSent = ''; call.mailShown = null }
+    else if (d.k === 'show') {
+      call.mailShown = {
+        name: capText(d.n, 20) || 'ゲスト', emoji: capText(d.e, 8, '🙂'), text: capText(d.x, MAIL_TEXT_MAX)
+      }
+      if (!call.mailShown.text) call.mailShown = null
+      call.mailPop = !!call.mailShown          // 新しいお便りが来たら紙を開く（閉じていても開き直る）
+    } else if (d.k === 'hide') { call.mailShown = null; call.mailPop = false }
+    else return
+    renderMail(); renderMailNow(); renderTabs()
+  }
+
+  call.reactAction = call.room.makeAction('react')
+  call.reactAction.onMessage = (data, { peerId }) => {
+    // ★受け取った値をそのまま描かない。**添字として検査**し、一覧の中のものだけを出す。
+    if (!Number.isInteger(data) || data < 0 || data >= REACTIONS.length) return
+    if (call.ignored.has(peerId)) return          // 無視した相手のリアクションは出さない
+    if (tooSoon(call.reactSeen, peerId, REACT_ACCEPT_MS)) return   // 連打への自衛
+    flyReaction(peerId, data)
+  }
+
+  call.room.onPeerJoin = id => { call.peers.add(id); call.peerSince.set(id, Date.now()); if (call.stream) call.room.addStream(call.stream, { target: id }); sendProfile(id); sendMeta(id); if (call.bcast) { forwardRoster(id); mailSync(id) }; call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin(); scheduleCapacityCheck() }
+  call.room.onPeerLeave = id => {
+    // 'bye' が来ていなければ異常な切断。本物の回線障害でも出るが、**理由は分からなくても
+    // 「何かおかしい」と分かる**ほうがよい（自分の回線のせいだと思い込まないため）。
+    if (!call.byeSeen.has(id)) {
+      const who = (call.profiles.get(id) || {}).name || '相手'
+      showPeerNotice('🔌 ' + who + ' との接続が切れました（退出ではありません）')
+      call.lostPeer = true        // 自動復帰の判定材料（普通の退出と区別する）
+    }
+    call.peers.delete(id); call.profiles.delete(id); call.peerSince.delete(id)
+    call.nudges.delete(id); call.nudgeSeen.delete(id); call.byeSeen.delete(id)
+    call.ignored.delete(id)   // peerId は使い捨て。入り直すと別人なので、無視も持ち越さない
+    // 登壇の許可も同じ理由で持ち越さない（入り直した人は別の peerId＝改めて許可し直す）。
+    // オーナーは原本から消すが、**名簿を配り直さない**：残った人の許可は変わらないので、
+    // 抜けた人ぶんの署名をやり直す必要が無い（次の grant/revoke か定期配布で揃う）。
+    call.grants.delete(id); call.speakers.delete(id)
+    dropAudios(id); removeAnalyser(id)
+    setCount(); render(); renderMembers(); renderAudioWarn([]); soundLeave()
+  }
+}
+
+// ───────── 参加が成立した後の処理（runJoin の尻尾・v0.14.13 で分離） ─────────
+// ここから先で確保するもの（タイマー・解析・BGM・小窓・在室）は**すべて leaveCall が返す**（対称性）。
+const armJoined = (roomId, name, bcast) => {
+  call.wantWake = true; wake()
+  call.joinedId = roomId; call.joinedAt = performance.now(); call.warn = ''
+  call.meta = { name, tag: '', tagBy: '', tagAt: 0 }   // 名前は自分が持って来たもの。相手のほうが先なら meta で上書きされる
+  render(); renderMembers(); renderBcNote()
+  if (bcast && !call.ownerKey) startBcEndWatch()   // 聞き役：配信者が居なくなったら 60 秒待って終わる
+  // 配信部屋のオーナー：自分を載せた名簿をまず配る。以後は grant/revoke のたびと、
+  // 取りこぼしの自己修復として定期的に配り直す（署名は1回1ms程度なので負荷にはならない）。
+  if (call.ownerKey) {
+    broadcastRoster()
+    clearInterval(call.bcTimer)
+    call.bcTimer = setInterval(broadcastRoster, ROSTER_EVERY_MS)
+  }
+  location.hash = 'room=' + roomId + '&name=' + encodeURIComponent(name)   // 参加が成立してから URL に焼き付ける（失敗時は元のまま）
+  // 入室音のガード：参加直後は「既にいる人ぶん」の onPeerJoin が連発するので、1.5秒は鳴らさない。
+  // 前回のタイマーが生きていると、入り直した直後にそれが発火して早く解禁されてしまう（＝入室音が
+  // 1回多く鳴る）。掛け直す前に必ず捨てる。leave 側でも捨てている（join/leave の対称）。
+  call.soundsArmed = false
+  clearTimeout(call.soundsTimer)
+  call.soundsTimer = setTimeout(() => { call.soundsArmed = true; call.soundsTimer = null }, 1500)
+  // 経路の凡例は参加直後だけ開いて出し、読める時間が過ぎたら畳んで1行に戻す（居座らせない）。
+  // 途中で自分で開け閉めしたら toggle ハンドラがこのタイマーを引っ込める。
+  legendEl.open = true
+  clearTimeout(call.legendTimer)
+  call.legendTimer = setTimeout(() => { legendEl.open = false; call.legendTimer = null }, LEGEND_OPEN_MS)
+  syncShare()   // call.joinedId が入ったのでラベルを「共有リンク」に切り替える（冒頭の呼び出しは未参加のまま）
+  addAnalyser('self', call.stream)   // 自分のマイク音量でも絵文字を跳ねさせる（ミュート中は無反応）
+  startEq()                       // 点字EQの飾りを開始（音量で下から伸びる）
+  // ★音の出口（<audio>）は**参加のタップの流れの中で**用意する。最初の音が鳴るときに作ると、
+  //   そのときはもうユーザー操作の文脈が切れていて play() が弾かれ、**iPhone で音が細る側**
+  //   （ctx.destination）へ落ちてしまう。
+  try { ensureOut() } catch {}
+  startWakeWatch()                // 中断されても、相手が音を手放したら戻す（見張り）
+  startBgm()                      // BGM（選ばれていれば）。部屋名から曲を決めるので通信は増えない
+  startPipFeed(); renderPip()     // 小窓（PiP）の映像を用意してボタンを出す。**押す前に再生しておく**
+  stopAudioWatch(); call.audioWatch = setInterval(checkAudioArrival, 2000)   // 音が来ない相手に送り直しを頼む監視を開始
+  clearInterval(call.iceTimer)   // 長い通話の途中で資格情報が切れないよう、定期的に入れ替える
+  call.iceTimer = setInterval(refreshIce, ICE_REFRESH_MS)
+  startHeartbeat()                // ロビーへ自分の在室（部屋名・名前・絵文字）を定期発信
+  renderLobby()                   // 自分の部屋を一覧に即反映（here ハイライト）
+  // 成長：参加回数と「使った日数」を加算し、通話中は30秒ごとに時間を貯める
+  stats.joins++
+  const d = localDay(); if (stats.lastDay !== d) { stats.days++; stats.lastDay = d }
+  saveStats(); renderGrow()
+  call.growTimer = setInterval(() => { stats.seconds += 30; saveStats(); renderGrow(); renderMembers() }, 30000)
+  $('join').style.display = 'none'; $('leave').style.display = 'flex'
+  renderSpeak()   // ミュート／「マイクを使う」のどちらを出すかは、マイクを持っているかで決まる
+  // 前の通話で出た「音声を有効化」を必ず消す。隠すのは resetJoinedUI だけだったが、あれは
+  // つなぎ直しの途中では呼ばれない。＝一度出たボタンが居座り、押しても再生するものが無い、
+  // という「効かないボタン」になっていた（join と leave の非対称）。
+  $('unlock').style.display = 'none'
+  $('sndPeerRow').style.display = 'flex'   // 入室・退出音のトグルは通話中だけ表示（ミュート/退出と同じ）
+  $('sndReactRow').style.display = 'flex'
+  $('retry').hidden = false
+  roomInput.disabled = true; lockProfile(true); syncKindRow(); syncCreateBox()
+  // 通話中は名前も部屋名も変えられないので、入力欄ごと畳む（名前は参加者リスト、部屋名は状態表示に出ている）
+  $('setupFields').classList.add('collapsed')
+}
+
+const runJoin = async () => {
+  const muteOnJoin = joinMuted; joinMuted = false   // 失敗しても次の参加に持ち越さないよう、先に消費する
+  // 空欄のときは名前から作る。名前も無ければ促して中止。
+  const target = joinTarget()
+  if (!target) return
+  const { name, roomId, bcast, owner, wantMic } = target
   // location.hash はここでは書かない。参加が成立してから焼き付ける（下の joinedId 設定の直後）。
   // マイクを拒否した等で中断したのに URL だけ書き換わると、その部屋名がリンクとして残ってしまう。
   syncShare()   // 入力中の部屋名で「招待リンク（まだ参加していません）」を更新する
@@ -3905,175 +4153,7 @@ const runJoin = async () => {
     }
     call.lastRoom = call.room
 
-    // プロフィール交換：接続が張れた相手に自分の名前・絵文字・ミュート状態を送る。相手も同じことを
-    // するので、双方の onPeerJoin だけで両方向が揃う。名前・絵文字は通話中不変だが、muted は変わるので
-    // ミュート切替時に同じペイロードを再送する（下の #mute ハンドラ）。
-    // onMessage は最初のピア接続イベントより前（この同期ブロック内）に必ず代入しておく。
-    call.profileAction = call.room.makeAction('profile')
-    call.profileAction.onMessage = (data, { peerId }) => {
-      const prev = call.profiles.get(peerId) || {}
-      call.profiles.set(peerId, {
-        name: capText(data?.name ?? prev.name, 20),
-        emoji: capText(data?.emoji ?? prev.emoji, 8, '🙂'),
-        muted: !!data?.muted,
-        stage: capText(data?.stage ?? prev.stage, 4),
-        // 経路は boolean のときだけ採用（旧クライアントは送らない→undefinedのまま＝アイコン非表示）
-        relay: typeof data?.relay === 'boolean' ? data.relay : prev.relay,
-        // 相手が部屋に入った時刻（こちらの時計での推定）。届いた「経過秒」を受信時刻から引く。
-        // 満室のときに**誰が抜けるか**の順位づけに使う。旧クライアントは送ってこない＝undefined のままで、
-        // その場合は「自分より先にいた人」として扱う（＝抜けるのは自分側に倒す。下の checkCapacity）。
-        // 上限30日は自己申告の暴走ガード（「自分は大昔から居る」と言い張って居座らせない）。
-        joinedAt: Number.isFinite(data?.since) && data.since >= 0 && data.since < 30 * 24 * 3600
-          ? Date.now() - data.since * 1000
-          : prev.joinedAt
-      })
-      renderMembers()
-      scheduleCapacityCheck()   // 到着時刻が分かった＝満室の順位を数え直す
-    }
-    const sendProfile = id => sendTo(call.profileAction, myProfilePayload(), id)
-    // 部屋のメタデータ（名前・タグ）。入室時に互いに送り合う。名前は**先にいた人のもの**を採用
-    // （自分が持って来た名前より相手の meta が優先＝作った人が付けた名前が固定される）。
-    // タグは tagAt が新しいほうが勝つ（誰でも上書き・履歴なし・付けた人の名前を添える）。
-    call.metaAction = call.room.makeAction('meta')
-    call.metaAction.onMessage = d => {
-      if (!d || typeof d !== 'object') return
-      const m = call.meta, name = capRoom(String(d.name ?? ''))
-      let changed = false
-      if (name && !m.name) {   // 名前が無いときだけ受け取る（持って来た名前は変えない）
-        m.name = name; changed = true
-        try { startPipFeed() } catch {}   // 小窓の絵は参加時に録ってあるので、名前が届いたら録り直す（ハッシュのまま残さない）
-      }
-      const at = Math.min(Number(d.tagAt) || 0, Date.now() + 60000)
-      if (at > (m.tagAt || 0)) { m.tag = capText(d.tag, ROOM_MAX); m.tagBy = capText(d.tagBy, 20); m.tagAt = at; changed = true }
-      if (changed) { render(); syncShare(); if (call.joinedId) location.hash = 'room=' + call.joinedId + '&name=' + encodeURIComponent(m.name); sendHeartbeat() }
-    }
-    const sendMeta = id => sendTo(call.metaAction, call.meta, id)
-
-    // 「音が届いていないので送り直して」の受け口。頼まれた側は自分のストリームを相手へ入れ直す＝
-    // 相手が入り直したときに起きることと同じ。onMessage は profile と同じくピア接続より前に置く。
-    call.nudgeAction = call.room.makeAction('nudge')
-    call.nudgeAction.onMessage = (_data, { peerId }) => {
-      // 連打への自衛。同じ相手には NUDGE_ACCEPT_MS に1回しか応じない（上の定義参照）。
-      if (tooSoon(call.nudgeSeen, peerId, NUDGE_ACCEPT_MS)) return
-      // 頼まれた側から見て相手が既に切れている（＝こちらは見失っている）ことがある。その時の
-      // addStream は失敗するが、頼んだ側の状況は改善しようがないので黙って諦める。
-      try { if (call.stream && call.room) call.room.addStream(call.stream, { target: peerId }) } catch {}
-    }
-
-    if (call.stream) call.room.addStream(call.stream)   // 配信部屋の聞き役はマイクを持っていない
-    call.room.onPeerStream = (stream, id) => {
-      // ★受信側の門番。**無視した相手／配信部屋で承認されていない相手の音は、ここで捨てる。**
-      // 送信側の善意に頼らないので、改造クライアントが勝手に喋っても誰の耳にも届かない。
-      if (!canHear(id)) return
-      // 同じ相手から何度もストリームが来る（再ネゴ、そして「送り直して」を頼んだ結果）。
-      // 足し続けると無音の <audio> と古い MediaStream への参照が溜まるので、1人につき1本に保つ。
-      const cur = call.audios.get(id) || []
-      if (cur.some(a => a.srcObject && a.srcObject.id === stream.id)) return   // 同じものの再到着
-      dropAudios(id)            // 別のストリームに入れ替わった＝古い方は用済み
-      const a = document.createElement('audio')
-      a.srcObject = stream; a.autoplay = true; a.playsInline = true
-      document.body.appendChild(a)
-      call.audios.set(id, [a])
-      addAnalyser(id, stream)   // 相手の音量を測って絵文字を跳ねさせる（中で古い方を外している）
-      routePeer(id)             // 音量が 100% でなければマスター音量の経路に繋ぎ替える
-      play(a)
-    }
-
-    // 「退出します」の合図。**退出する側が抜ける前に送る。**受け取っていれば正規の退出、
-    // 来ないまま消えたら「接続が切れた」と書き分ける（下の onPeerLeave）。
-    // 古いクライアントは送ってこないので、その相手は常に「切れた」扱いになる＝**過剰に警告する側**へ倒す。
-    call.byeAction = call.room.makeAction('bye')
-    call.byeAction.onMessage = (_d, { peerId }) => call.byeSeen.add(peerId)
-
-    call.chatAction = call.room.makeAction('chat')
-    call.chatAction.onMessage = (data, { peerId }) => {
-      if (call.ignored.has(peerId)) return               // 無視した相手のものは出さない
-      const text = capText(data, CHAT_MAX)               // ★受け取った文字は必ずここを通す
-      if (!text) return
-      if (tooSoon(call.chatSeen, peerId, CHAT_ACCEPT_MS)) return
-      showBubble(peerId, text)
-      if (call.tab !== 'chat') $('tabChat').classList.add('unread')   // 見ていない間に届いた＝未読の点
-    }
-
-    // 配信部屋の名簿。**古いクライアントはこの action を知らないので黙って捨てる**（Trystero の
-    // 仕様。2026-08-15 に実測で確認済み）＝ベータ先行で出しても本番の人を壊さない。
-    call.bcAction = call.room.makeAction('bc')
-    call.bcAction.onMessage = d => { acceptRoster(d) }
-
-    // おたより。**受け取る条件が向きで違う**のが要点（上の「おたより」の項を参照）：
-    //   ・投稿（post）を受け取れるのは**枠主だけ**
-    //   ・募集/公開（open/close/show/hide）を受け取るのは**枠主が出したものだけ**
-    //     ＝ peerId が署名済み名簿の配信者と一致するときに限る（名乗るだけでは偽れない）
-    call.mailAction = call.room.makeAction('mail')
-    call.mailAction.onMessage = (d, { peerId }) => {
-      if (!call.bcast || !d || typeof d !== 'object') return
-      if (d.k === 'ask') {
-        // 「いまの募集を教えて」。枠主だけが答えられる。連打には応じない
-        if (!call.ownerKey) return
-        const now = Date.now()
-        if (now - (call.mailAskAt.get(peerId) || 0) < MAIL_ACCEPT_MS) return
-        call.mailAskAt.set(peerId, now)
-        mailSync(peerId)
-        return
-      }
-      if (d.k === 'post') {
-        if (!call.ownerKey || !call.mailOpen) return       // 枠主以外は投稿を受け取らない
-        if (call.ignored.has(peerId)) return               // 無視した相手のものは並べない
-        if (tooSoon(call.mailSeen, peerId, MAIL_ACCEPT_MS)) return
-        const text = capText(d.x, MAIL_TEXT_MAX)
-        if (!text) { call.mailInbox.delete(peerId); renderMail(); return }   // 空＝取り下げ
-        if (!call.mailInbox.has(peerId) && call.mailInbox.size >= MAIL_INBOX_MAX) return
-        const p = call.profiles.get(peerId) || {}
-        // 1人1通。**送り直しは差し替え**（Map のキーが peerId なので自然にそうなる）
-        call.mailInbox.set(peerId, {
-          name: capText(p.name, 20) || 'ゲスト', emoji: capText(p.emoji, 8, '🙂'), text
-        })
-        renderMail()
-        return
-      }
-      // ★ここから下は枠主が出したものだけ。この1行がこの機能の要。
-      if (!call.ownerPeer || peerId !== call.ownerPeer) return
-      if (d.k === 'open') { call.mailOpen = true; call.mailTitle = capText(d.t, MAIL_TITLE_MAX); call.mailSent = '' }
-      else if (d.k === 'close') { call.mailOpen = false; call.mailSent = ''; call.mailShown = null }
-      else if (d.k === 'show') {
-        call.mailShown = {
-          name: capText(d.n, 20) || 'ゲスト', emoji: capText(d.e, 8, '🙂'), text: capText(d.x, MAIL_TEXT_MAX)
-        }
-        if (!call.mailShown.text) call.mailShown = null
-        call.mailPop = !!call.mailShown          // 新しいお便りが来たら紙を開く（閉じていても開き直る）
-      } else if (d.k === 'hide') { call.mailShown = null; call.mailPop = false }
-      else return
-      renderMail(); renderMailNow(); renderTabs()
-    }
-
-    call.reactAction = call.room.makeAction('react')
-    call.reactAction.onMessage = (data, { peerId }) => {
-      // ★受け取った値をそのまま描かない。**添字として検査**し、一覧の中のものだけを出す。
-      if (!Number.isInteger(data) || data < 0 || data >= REACTIONS.length) return
-      if (call.ignored.has(peerId)) return          // 無視した相手のリアクションは出さない
-      if (tooSoon(call.reactSeen, peerId, REACT_ACCEPT_MS)) return   // 連打への自衛
-      flyReaction(peerId, data)
-    }
-
-    call.room.onPeerJoin = id => { call.peers.add(id); call.peerSince.set(id, Date.now()); if (call.stream) call.room.addStream(call.stream, { target: id }); sendProfile(id); sendMeta(id); if (call.bcast) { forwardRoster(id); mailSync(id) }; call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin(); scheduleCapacityCheck() }
-    call.room.onPeerLeave = id => {
-      // 'bye' が来ていなければ異常な切断。本物の回線障害でも出るが、**理由は分からなくても
-      // 「何かおかしい」と分かる**ほうがよい（自分の回線のせいだと思い込まないため）。
-      if (!call.byeSeen.has(id)) {
-        const who = (call.profiles.get(id) || {}).name || '相手'
-        showPeerNotice('🔌 ' + who + ' との接続が切れました（退出ではありません）')
-        call.lostPeer = true        // 自動復帰の判定材料（普通の退出と区別する）
-      }
-      call.peers.delete(id); call.profiles.delete(id); call.peerSince.delete(id)
-      call.nudges.delete(id); call.nudgeSeen.delete(id); call.byeSeen.delete(id)
-      call.ignored.delete(id)   // peerId は使い捨て。入り直すと別人なので、無視も持ち越さない
-      // 登壇の許可も同じ理由で持ち越さない（入り直した人は別の peerId＝改めて許可し直す）。
-      // オーナーは原本から消すが、**名簿を配り直さない**：残った人の許可は変わらないので、
-      // 抜けた人ぶんの署名をやり直す必要が無い（次の grant/revoke か定期配布で揃う）。
-      call.grants.delete(id); call.speakers.delete(id)
-      dropAudios(id); removeAnalyser(id)
-      setCount(); render(); renderMembers(); renderAudioWarn([]); soundLeave()
-    }
+    wireRoom()
   } catch (e) {
     // 部屋は掴めたが後続で失敗した場合、掴んだまま抜けると次の参加がゾンビ検出に引っかかって
     // 「再読み込みしてください」になる。ここで手放しておけば、もう一度押すだけでやり直せる。
@@ -4081,62 +4161,7 @@ const runJoin = async () => {
     failJoin('つながりませんでした: ' + (e.message || e)); return
   }
 
-  call.wantWake = true; wake()
-  call.joinedId = roomId; call.joinedAt = performance.now(); call.warn = ''
-  call.meta = { name, tag: '', tagBy: '', tagAt: 0 }   // 名前は自分が持って来たもの。相手のほうが先なら meta で上書きされる
-  render(); renderMembers(); renderBcNote()
-  if (bcast && !call.ownerKey) startBcEndWatch()   // 聞き役：配信者が居なくなったら 60 秒待って終わる
-  // 配信部屋のオーナー：自分を載せた名簿をまず配る。以後は grant/revoke のたびと、
-  // 取りこぼしの自己修復として定期的に配り直す（署名は1回1ms程度なので負荷にはならない）。
-  if (call.ownerKey) {
-    broadcastRoster()
-    clearInterval(call.bcTimer)
-    call.bcTimer = setInterval(broadcastRoster, ROSTER_EVERY_MS)
-  }
-  location.hash = 'room=' + roomId + '&name=' + encodeURIComponent(name)   // 参加が成立してから URL に焼き付ける（失敗時は元のまま）
-  // 入室音のガード：参加直後は「既にいる人ぶん」の onPeerJoin が連発するので、1.5秒は鳴らさない。
-  // 前回のタイマーが生きていると、入り直した直後にそれが発火して早く解禁されてしまう（＝入室音が
-  // 1回多く鳴る）。掛け直す前に必ず捨てる。leave 側でも捨てている（join/leave の対称）。
-  call.soundsArmed = false
-  clearTimeout(call.soundsTimer)
-  call.soundsTimer = setTimeout(() => { call.soundsArmed = true; call.soundsTimer = null }, 1500)
-  // 経路の凡例は参加直後だけ開いて出し、読める時間が過ぎたら畳んで1行に戻す（居座らせない）。
-  // 途中で自分で開け閉めしたら toggle ハンドラがこのタイマーを引っ込める。
-  legendEl.open = true
-  clearTimeout(call.legendTimer)
-  call.legendTimer = setTimeout(() => { legendEl.open = false; call.legendTimer = null }, LEGEND_OPEN_MS)
-  syncShare()   // call.joinedId が入ったのでラベルを「共有リンク」に切り替える（冒頭の呼び出しは未参加のまま）
-  addAnalyser('self', call.stream)   // 自分のマイク音量でも絵文字を跳ねさせる（ミュート中は無反応）
-  startEq()                       // 点字EQの飾りを開始（音量で下から伸びる）
-  // ★音の出口（<audio>）は**参加のタップの流れの中で**用意する。最初の音が鳴るときに作ると、
-  //   そのときはもうユーザー操作の文脈が切れていて play() が弾かれ、**iPhone で音が細る側**
-  //   （ctx.destination）へ落ちてしまう。
-  try { ensureOut() } catch {}
-  startWakeWatch()                // 中断されても、相手が音を手放したら戻す（見張り）
-  startBgm()                      // BGM（選ばれていれば）。部屋名から曲を決めるので通信は増えない
-  startPipFeed(); renderPip()     // 小窓（PiP）の映像を用意してボタンを出す。**押す前に再生しておく**
-  stopAudioWatch(); call.audioWatch = setInterval(checkAudioArrival, 2000)   // 音が来ない相手に送り直しを頼む監視を開始
-  clearInterval(call.iceTimer)   // 長い通話の途中で資格情報が切れないよう、定期的に入れ替える
-  call.iceTimer = setInterval(refreshIce, ICE_REFRESH_MS)
-  startHeartbeat()                // ロビーへ自分の在室（部屋名・名前・絵文字）を定期発信
-  renderLobby()                   // 自分の部屋を一覧に即反映（here ハイライト）
-  // 成長：参加回数と「使った日数」を加算し、通話中は30秒ごとに時間を貯める
-  stats.joins++
-  const d = localDay(); if (stats.lastDay !== d) { stats.days++; stats.lastDay = d }
-  saveStats(); renderGrow()
-  call.growTimer = setInterval(() => { stats.seconds += 30; saveStats(); renderGrow(); renderMembers() }, 30000)
-  $('join').style.display = 'none'; $('leave').style.display = 'flex'
-  renderSpeak()   // ミュート／「マイクを使う」のどちらを出すかは、マイクを持っているかで決まる
-  // 前の通話で出た「音声を有効化」を必ず消す。隠すのは resetJoinedUI だけだったが、あれは
-  // つなぎ直しの途中では呼ばれない。＝一度出たボタンが居座り、押しても再生するものが無い、
-  // という「効かないボタン」になっていた（join と leave の非対称）。
-  $('unlock').style.display = 'none'
-  $('sndPeerRow').style.display = 'flex'   // 入室・退出音のトグルは通話中だけ表示（ミュート/退出と同じ）
-  $('sndReactRow').style.display = 'flex'
-  $('retry').hidden = false
-  roomInput.disabled = true; lockProfile(true); syncKindRow(); syncCreateBox()
-  // 通話中は名前も部屋名も変えられないので、入力欄ごと畳む（名前は参加者リスト、部屋名は状態表示に出ている）
-  $('setupFields').classList.add('collapsed')
+  armJoined(roomId, name, bcast)
 }
 // 「部屋を作る」トグル。**既定は畳む**（名前 → ロビーで部屋を選ぶ、を主導線にするため）。
 // ただし**共有リンクから来た人は部屋名が入っている**ので、その場合は開いた状態で見せる
