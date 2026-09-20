@@ -3,31 +3,237 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>ぽっと通話 ― 使い方</title>
-<meta name="description" content="画面の順に沿った詳しい使い方と、困ったときの対処。">
-<meta name="robots" content="noindex">
+<title>ぽっと通話の使い方</title>
+<meta name="description" content="ぽっと通話の使い方。テーブルの取り方と招待、通話中の画面（ひとこと・相づち・話題タグ・小窓・つなぎ直す・音量・BGM）、主のお茶会（配信部屋）とおたより、無視、音が出ないときの対処、よくある質問。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="ぽっと通話の使い方">
+<meta property="og:description" content="テーブルの取り方から、音が出ないときの対処まで。画面の順に沿った使い方。">
+<meta property="og:url" content="https://potalk.app/manual/">
+<meta property="og:image" content="https://potalk.app/images/ogp.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="canonical" href="https://potalk.app/manual/">
 <link rel="icon" href="/favicon.ico" sizes="48x48 96x96">
+<link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
 <script>if (!/^(potalk\.app|localhost|127\.0\.0\.1)$/.test(location.hostname)) location.replace('https://potalk.app' + location.pathname.replace(/^\/po_call/, '') + location.hash)</script>
 <link rel="stylesheet" href="../common/docs.css">
+<style>
+  /* このページだけ：目次と、見出しに飛んだときの上の余白 */
+  .toc{ background:var(--card); border:1px solid var(--card-border); border-radius:16px; padding:14px 18px; margin-top:16px }
+  .toc ol{ margin:6px 0 0; padding-left:1.3em; columns:2; column-gap:24px; max-width:none } .toc li{ break-inside:avoid; margin:3px 0 }
+  @media (max-width:520px){ .toc ol{ columns:1 } }
+  h2{ scroll-margin-top:16px } h3{ scroll-margin-top:16px }
+  .kbd{ display:inline-block; border:1px solid var(--border); border-radius:8px; padding:0 8px; background:var(--chip); color:var(--text); font-size:.95em; white-space:nowrap }
+  dl{ margin:8px 0; max-width:44em } dt{ color:var(--text); font-weight:700; margin-top:12px } dd{ margin:2px 0 0 0 }
+  .qa dt::before{ content:"Q. "; color:var(--accent-soft) } .qa dd::before{ content:"A. "; color:var(--note) }
+  .warn{ border-left:3px solid var(--red); padding:6px 14px; background:var(--card); border-radius:0 12px 12px 0; font-size:15px }
+  table{ border-collapse:collapse; font-size:15px; margin:8px 0 } th,td{ border:1px solid var(--border-soft); padding:6px 10px; text-align:left; vertical-align:top } th{ background:var(--chip); color:var(--text); font-weight:700; white-space:nowrap }
+  .tw{ overflow-x:auto }
+</style>
 </head>
 <body>
 <div class="wrap">
   <nav class="nav" aria-label="案内">
     <a class="brand" href="../">🫖 ぽっと通話</a>
     <a href="../start/">はじめに</a>
-    <a href="../manual/" aria-current="page">使い方</a>
+    <a href="./" aria-current="page">使い方</a>
     <a href="../tech/">しくみ</a>
     <a href="../about/">運営</a>
   </nav>
-  <h1 style="margin-top:28px">使い方</h1>
-  <p>画面の順に沿った詳しい使い方と、困ったときの対処。</p>
-  <p class="note">このページは準備中です。いまはアプリの中のヘルプ（画面右上の ❓）に同じ内容があります。</p>
-  <p style="margin-top:20px"><a class="btn ghost" href="../start/">はじめにへ戻る</a> <a class="btn" href="../">アプリを開く</a></p>
+
+  <h1 style="margin-top:24px">ぽっと通話の使い方</h1>
+  <p>画面に出てくる順に書いてあります。困ったときは<a href="#trouble">「困ったとき」</a>へ。急いでいる人は<a href="../start/">はじめに</a>の 3 ステップだけで始められます。</p>
+
+  <nav class="toc" aria-label="目次">
+    <b>目次</b>
+    <ol>
+      <li><a href="#first">最初の画面</a></li>
+      <li><a href="#table">テーブルを取る・席につく</a></li>
+      <li><a href="#invite">友だちを呼ぶ</a></li>
+      <li><a href="#call">通話中の画面</a></li>
+      <li><a href="#members">メンバーの見方</a></li>
+      <li><a href="#chat">ひとこと・相づち・話題タグ</a></li>
+      <li><a href="#settings">音量・BGM・通知の音・昼と夜</a></li>
+      <li><a href="#pip">小窓・つなぎ直す・退出</a></li>
+      <li><a href="#broadcast">主のお茶会（配信部屋）</a></li>
+      <li><a href="#mail">おたより</a></li>
+      <li><a href="#ignore">無視（この人の声を受け取らない）</a></li>
+      <li><a href="#fixed">いつも用意してある席</a></li>
+      <li><a href="#trouble">困ったとき</a></li>
+      <li><a href="#faq">よくある質問</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="first">1. 最初の画面</h2>
+  <p>開くと、上に<strong>名前と絵文字</strong>、その下に<strong>部屋を作る</strong>欄、下のほうに<strong>☎️ 通話中の部屋</strong>の一覧があります。</p>
+  <dl>
+    <dt>名前と絵文字</dt>
+    <dd>本名でなくて大丈夫です（20 文字まで）。ブラウザが覚えていて、次に開いたときも同じです。絵文字は使うほど育ちます（🌱 → 🌿 → 🌷 か 🌻 → ❓）。</dd>
+    <dt>☎️ 通話中の部屋</dt>
+    <dd>いま人がいるテーブルが、部屋の名前・人数・続いている時間・話題タグと一緒に並びます。ぽっと通話に<strong>非公開の部屋はありません</strong>。人がいる部屋はかならずここに出ます。</dd>
+    <dt>はじめて開いたとき</dt>
+    <dd>短いヘルプが自動で開きます。「今後表示しない」を付けると次回から出ません。画面右上の ❓ からいつでも読み直せます。</dd>
+  </dl>
+
+  <h2 id="table">2. テーブルを取る・席につく</h2>
+  <h3>人のいる席につく</h3>
+  <p>「通話中の部屋」で入りたい部屋をタップし、その下に出る<span class="kbd">参加する</span>を押します。マイクの許可を一度だけ聞かれます。</p>
+  <h3>新しいテーブルを取る</h3>
+  <p>「部屋を作る」に部屋の名前を入れて<span class="kbd">参加する</span>。名前は 30 文字まで。空のまま押すと「（あなたの名前）の部屋」になります。同じ名前の部屋がすでにあっても、別のテーブルになります（<strong>合流は名前ではなくリンクで</strong>します。次の節）。</p>
+  <h3>席の種類</h3>
+  <p>名前の下で選べます。ふだんは <span class="kbd">🏠 雑談部屋にする</span>（全員で話せる）。自分の声だけを流したいときは <span class="kbd">📣 配信部屋にする</span>（<a href="#broadcast">主のお茶会</a>）。</p>
+  <p class="note">一つのテーブルに座れるのは 8 人まで（配信部屋は 15 人）。全員が全員につながる仕組みなので、多いと音が途切れやすくなります。快適なのは 4〜6 人くらいです。</p>
+
+  <h2 id="invite">3. 友だちを呼ぶ</h2>
+  <p>席についたら、画面の下に<strong>共有リンク</strong>が出ます。</p>
+  <ul>
+    <li><span class="kbd">🔗 招待リンクをコピー</span>：「部屋名 - あなたの名前」と URL がコピーされます。SNS やメッセージに貼ってください。</li>
+    <li>表示されているリンクそのものをタップすると、<strong>URL だけ</strong>がコピーされます（アドレスバーに貼るとき用）。</li>
+    <li><span class="kbd">📱 QR コード</span>：隣にいる人はこれを読み取るのが早いです。</li>
+  </ul>
+  <p>リンクを開いた人は、その部屋が開いていれば<span class="kbd">参加する</span>ですぐ座れます。部屋がもう終わっていたら「誰もいないみたいです」と出て、新しくテーブルを取る道が案内されます。</p>
+
+  <h2 id="call">4. 通話中の画面</h2>
+  <p>上から順に：部屋の名前と状態、<span class="kbd">📱 小窓</span> <span class="kbd">🔄 つなぎ直す</span>、いま一緒にいる人数、話題タグ、<strong>👥 メンバー／💬 ひとこと／⚙️ 設定</strong>のタブ、相づちの絵文字、経路の印、<span class="kbd">ミュート</span>と<span class="kbd">退出</span>、共有リンク。</p>
+  <dl>
+    <dt>ミュート</dt>
+    <dd>自分のマイクを切ります。相手の画面にも「ミュート中」の印が出ます。もう一度押すと戻ります。</dd>
+    <dt>経路の印（☁️ 中継／↔ 直接）</dt>
+    <dd>声の通り道です。ふだんは ☁️ Cloudflare の中継を通り、相手にあなたの IP アドレスは見えません。中継が使えないときだけ ↔ 直接つながり、そのときは相手に IP アドレスが見えます。人ごとに印が付きます。</dd>
+  </dl>
+
+  <h2 id="members">5. メンバーの見方</h2>
+  <p>一行に、絵文字・状態・名前・右端の操作、の順です。</p>
+  <div class="tw"><table>
+    <tr><th>印</th><th>意味</th></tr>
+    <tr><td>絵文字が跳ねる</td><td>その人がいま話しています</td></tr>
+    <tr><td>🎤 に斜線</td><td>ミュート中</td></tr>
+    <tr><td>☁️ / ↔</td><td>その人との経路（中継／直接）</td></tr>
+    <tr><td>📣 / 🎙</td><td>配信部屋の主／話してよい人</td></tr>
+    <tr><td>❤️ / 割れたハート</td><td>右端。押すと<a href="#ignore">無視</a>の切り替え</td></tr>
+    <tr><td>🌱 🌿 🌷 🌻 ❓</td><td>名前の横。その人の育ち具合</td></tr>
+  </table></div>
+
+  <h2 id="chat">6. ひとこと・相づち・話題タグ</h2>
+  <dl>
+    <dt>💬 ひとこと</dt>
+    <dd>短い文字（60 文字まで）を全員に送ります。タブを切り替えて書き、<span class="kbd">送る</span>か Enter。日本語の変換中の Enter では送られません。読んでいないひとことがあると、タブに小さな点が付きます。</dd>
+    <dt>相づち</dt>
+    <dd>👏 😂 ✨ 👍 🤔 😮 🎉 🍵 の 8 つ。押した人の絵文字から浮かび、小さな音が鳴ります（音は設定で消せます）。</dd>
+    <dt>🏷️ 話題タグ</dt>
+    <dd>「いま何の話をしているか」の札です（30 文字まで）。誰でも付け替えられ、通話中の部屋の一覧にも出ます。部屋の名前は変えられませんが、タグは話題が変わるたびに変えてかまいません。</dd>
+  </dl>
+
+  <h2 id="settings">7. 音量・BGM・通知の音・昼と夜</h2>
+  <p>通話中の <strong>⚙️ 設定</strong>タブにあります。</p>
+  <dl>
+    <dt>🔊 音量</dt>
+    <dd><strong>この通話の音だけ</strong>を下げます。動画や音楽と一緒に聞くとき用で、ほかのアプリの音はそのままです。</dd>
+    <dt>🎚 BGM</dt>
+    <dd>🔇 なし／🎵 軽快な音楽／🌫 アンビエント空間。<strong>自分にだけ</strong>鳴り、相手には流れません。曲は部屋の名前で決まります。イヤホン推奨。</dd>
+    <dt>🔔 通知の音</dt>
+    <dd>入室・退出の音、相づちの音を、それぞれ切れます。最初の画面には「新しい部屋ができたら音で知らせる」もあります（タブを開いている間だけ）。</dd>
+    <dt>🌗 昼と夜</dt>
+    <dd>画面の一番下で選べます。「時刻で変わる」だと、昼はミルクティー色、正午に朝の空の色、夜は紺になります。「ずっと昼」「ずっと夜」「端末に合わせる」も選べます。</dd>
+  </dl>
+
+  <h2 id="pip">8. 小窓・つなぎ直す・退出</h2>
+  <dl>
+    <dt>📱 小窓</dt>
+    <dd>部屋の名前を書いた小さな窓が最前面に浮きます。ほかのアプリを見ている間も通話中だと分かり、タップで戻れます。ホーム画面に追加したアプリでは使えません。</dd>
+    <dt>🔄 つなぎ直す</dt>
+    <dd>相手の声が来ない、切れたまま戻らない、というときに押します。いったん抜けて同じ部屋に入り直します（ミュートの状態は引き継ぎます）。ふつうは押さなくても、声が来なければ 10 秒ほどで自動的に送り直しを頼み、それでも駄目なら自動でつなぎ直します。</dd>
+    <dt>退出</dt>
+    <dd>押すと「退出する／やめる」の確認が出ます。退出すると部屋から消え、人がいなくなった部屋は無くなります。過去の会話は残りません。</dd>
+  </dl>
+
+  <h2 id="broadcast">9. 主のお茶会（配信部屋）</h2>
+  <p>「あなたが話し、ほかの人は聞く」形の席です。作るときに <span class="kbd">📣 配信部屋にする</span> を選びます。</p>
+  <ul>
+    <li><strong>聞き役で入った人はマイクを使いません</strong>（許可も求められません）。共有リンクは 1 種類だけで、主だけの秘密のリンクはありません。</li>
+    <li>誰かに話してもらいたくなったら、メンバーの 🎙 を押すと<strong>その人も話せます</strong>（もう一度押すと戻ります）。許された人の画面には「マイクを使う」が出て、押すまでマイクは入りません。</li>
+    <li>主かどうかは URL ではなく<strong>部屋を作った端末</strong>で決まります（鍵をブラウザに保存しています）。別の端末や、データを消したあとでは、同じ部屋の主には戻れません。</li>
+    <li>「話してよい人」の一覧は主が署名して配り、各自のブラウザが確かめてから音を鳴らします。<strong>名乗るだけでは主になれません</strong>。</li>
+    <li>主がいなくなると、聞き役の画面は 60 秒待ちます。戻れば何事もなく続き、戻らなければ「配信が終了しました」と出て 15 秒後に一覧へ戻ります。</li>
+  </ul>
+
+  <h2 id="mail">10. おたより</h2>
+  <p>ラジオの投稿コーナーです（配信部屋だけ）。</p>
+  <ol>
+    <li>主：📮 おたよりタブでお題を書いて<span class="kbd">募集する</span>（例：最近食べて美味しかったもの）。</li>
+    <li>聞いている人：同じタブにお題が出るので、お便り（120 文字まで）を書いて<span class="kbd">送る</span>。1 人 1 通、送り直せます。</li>
+    <li>主：集まったお便りから選んで<span class="kbd">公開</span>。全員の画面に紙のように大きく出ます。</li>
+  </ol>
+  <p>送ったお便りは<strong>主にしか届きません</strong>。公開されるのはいつも 1 通だけで、次を公開すると入れ替わります。「公開をやめる」で下げられます。</p>
+
+  <h2 id="ignore">11. 無視（この人の声を受け取らない）</h2>
+  <p>メンバーの右端の ❤️ を押すと、その人の声を<strong>自分だけ</strong>受け取らなくなります。印が割れたハートに変わります。</p>
+  <ul>
+    <li>相手には伝わりません。相手の画面は何も変わらず、人数も減りません。</li>
+    <li>その人のひとことや相づちはそのまま見えます。止まるのは声だけです。</li>
+    <li>もう一度押すと戻ります。</li>
+  </ul>
+  <p class="warn">「みんなに無視されているのに気づけない」を防ぐため、無視は席を離す以上のことはしません。本当に困る相手がいるときは、部屋を移るか、<a href="../about/">運営</a>の窓口へ。</p>
+
+  <h2 id="fixed">12. いつも用意してある席</h2>
+  <dl>
+    <dt>🫖 ぽっと通話にようこそ</dt>
+    <dd>はじめての人向けの案内が流れています。一人で入っても声が聞こえます。</dd>
+    <dt>🫖 はじめましての席</dt>
+    <dd>出会うための空の席。入って待つと、次に来た人と話せます。</dd>
+    <dt>⛰️ 声を試す席（やまびこ）</dt>
+    <dd>話すと自分の声が 5 秒後に返ってきます。マイクとスピーカーの確認に。ほかの人がいれば、その人の声はそのまま聞こえ、自分の声だけが遅れて返ります。イヤホン推奨です。</dd>
+  </dl>
+  <p><small>案内とやまびこは運営の PC で動いているので、動いていない時間帯は一覧に出ないことがあります。<a href="../start/">はじめに</a>のバナーで、いま人がいるかが分かります。</small></p>
+
+  <h2 id="trouble">13. 困ったとき</h2>
+  <dl>
+    <dt>音が聞こえない（iPhone で多い）</dt>
+    <dd>「🔊 音声を有効化」のボタンが出ていたら、画面のどこかをタップしてください。iPhone はページを開き直した直後、こちらから音を鳴らせないことがあります。それでも聞こえなければ、⚙️ 設定の音量が下がっていないか、端末のマナーモードとボリュームを確かめてください。</dd>
+    <dt>相手の声だけが来ない</dt>
+    <dd>10 秒ほど待ってください。自動で相手に「送り直して」と頼みます。それでも来なければ<span class="kbd">🔄 つなぎ直す</span>。相手のブラウザが古いと自動で直らないことがあるので、相手にも開き直してもらうと確実です。</dd>
+    <dt>マイクの許可が出ない・使えない</dt>
+    <dd>LINE・X・Instagram・Facebook などの中で開いたブラウザ（アプリ内ブラウザ）はマイクが使えないことがあります。画面上の案内から Safari や Chrome で開き直してください。一度「許可しない」を押した場合は、ブラウザの設定でそのサイトのマイクを許可に戻します。</dd>
+    <dt>ほかのアプリに切り替えたら音が止まった（iPhone）</dt>
+    <dd>音を出すほかのアプリ（写真・動画など）に切り替えると、通話の音が一時的に止まります。iOS の仕様で、そのアプリの音が止まれば自動で鳴り直します。</dd>
+    <dt>画面を閉じると切れる</dt>
+    <dd>スマホでは、ブラウザを完全に閉じたり長く放置したりすると切れます。ほかのことをしながら続けたいときは<span class="kbd">📱 小窓</span>を使ってください。</dd>
+    <dt>「誰もいないみたいです」と出る</dt>
+    <dd>そのリンクの部屋はもう終わっています。同じ名前で新しくテーブルを取るか、「通話中の部屋」から選んでください。</dd>
+    <dt>満室で入れない</dt>
+    <dd>ふつうの部屋は 8 人、配信部屋は 15 人までです。隣に新しいテーブルを取ってください。</dd>
+    <dt>名前や育ちが消えた</dt>
+    <dd>ブラウザは別々に扱われます（スマホと PC、Safari と Chrome、ホーム画面に追加したものも別）。同じブラウザで開くと戻ります。</dd>
+  </dl>
+
+  <h2 id="faq">14. よくある質問</h2>
+  <dl class="qa">
+    <dt>録音されますか？</dt><dd>いいえ。録音の機能はなく、声はお互いのブラウザどうしを直接つなぐので、途中で保存されることもありません。</dd>
+    <dt>登録は要りますか？お金は？</dt><dd>どちらも要りません。メールアドレスも電話番号もお伺いしません。</dd>
+    <dt>非公開の部屋は作れますか？</dt><dd>作れません。人がいる部屋はかならず一覧に出ます（部屋の名前・人数・続いている時間・話題タグ）。会話の中身は出ません。</dd>
+    <dt>相手に何が見えますか？</dt><dd>名前・絵文字・ミュート中かどうか・経路の印・育ち具合です。IP アドレスはふだん見えません（中継が使えず ↔ 直接になったときだけ見えます）。</dd>
+    <dt>何人まで話せますか？</dt><dd>ふつうの部屋は 8 人、配信部屋は 15 人まで。快適なのは 4〜6 人です。</dd>
+    <dt>パソコンとスマホで同じ名前になりますか？</dt><dd>なりません。ブラウザごとに別の人として扱われます。</dd>
+    <dt>不具合や要望はどこへ？</dt><dd><a href="https://z.wikiwiki.jp/potalk/">ご意見・質問ばん</a>へ。アカウント不要・匿名で書けます。「いつ／どの端末とブラウザ／どうなったか」があると助かります。</dd>
+  </dl>
+
+  <p style="margin-top:28px"><a class="btn ghost" href="../start/">はじめにへ</a> <a class="btn" href="../">アプリを開く</a></p>
+
   <footer class="foot">
     <span>🫖 ぽっと通話〈実験版〉</span>
-    <a href="../">アプリを開く</a><a href="../start/">はじめに</a><a href="https://github.com/po-talk/po-talk.github.io">GitHub</a>
+    <a href="../">アプリを開く</a>
+    <a href="../start/">はじめに</a>
+    <a href="../tech/">しくみ</a>
+    <a href="../about/">運営</a>
+    <a href="https://github.com/po-talk/po-talk.github.io">GitHub</a>
   </footer>
 </div>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+ {"@type":"Question","name":"録音されますか？","acceptedAnswer":{"@type":"Answer","text":"いいえ。録音の機能はなく、声はお互いのブラウザどうしを直接つなぐので、途中で保存されることもありません。"}},
+ {"@type":"Question","name":"登録は要りますか？お金は？","acceptedAnswer":{"@type":"Answer","text":"どちらも要りません。メールアドレスも電話番号もお伺いしません。"}},
+ {"@type":"Question","name":"非公開の部屋は作れますか？","acceptedAnswer":{"@type":"Answer","text":"作れません。人がいる部屋はかならず一覧に出ます。会話の中身は出ません。"}},
+ {"@type":"Question","name":"何人まで話せますか？","acceptedAnswer":{"@type":"Answer","text":"ふつうの部屋は 8 人、配信部屋は 15 人まで。快適なのは 4〜6 人です。"}}
+]}
+</script>
 </body>
 </html>
