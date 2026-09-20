@@ -3,13 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>ぽっと通話 ― 運営</title>
-<meta name="description" content="制作者、実験版であること、ご意見の窓口、プライバシー。">
-<meta name="robots" content="noindex">
+<title>ぽっと通話の運営について</title>
+<meta name="description" content="ぽっと通話の運営について。制作者、実験版であること、ご意見と不具合の窓口、プライバシー（何を保存し、何を送るか）、利用のお願い、ライセンス。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="ぽっと通話の運営について">
+<meta property="og:description" content="制作者、窓口、プライバシー、利用のお願い、ライセンス。">
+<meta property="og:url" content="https://potalk.app/about/">
+<meta property="og:image" content="https://potalk.app/images/ogp.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="canonical" href="https://potalk.app/about/">
 <link rel="icon" href="/favicon.ico" sizes="48x48 96x96">
+<link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
 <script>if (!/^(potalk\.app|localhost|127\.0\.0\.1)$/.test(location.hostname)) location.replace('https://potalk.app' + location.pathname.replace(/^\/po_call/, '') + location.hash)</script>
 <link rel="stylesheet" href="../common/docs.css">
+<style>
+  h2{ scroll-margin-top:16px }
+  table{ border-collapse:collapse; font-size:15px; margin:8px 0 } th,td{ border:1px solid var(--border-soft); padding:6px 10px; text-align:left; vertical-align:top } th{ background:var(--chip); color:var(--text); font-weight:700; white-space:nowrap }
+  .tw{ overflow-x:auto }
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -18,15 +29,58 @@
     <a href="../start/">はじめに</a>
     <a href="../manual/">使い方</a>
     <a href="../tech/">しくみ</a>
-    <a href="../about/" aria-current="page">運営</a>
+    <a href="./" aria-current="page">運営</a>
   </nav>
-  <h1 style="margin-top:28px">運営</h1>
-  <p>制作者、実験版であること、ご意見の窓口、プライバシー。</p>
-  <p class="note">このページは準備中です。いまはアプリのヘルプ「運営について」「💬 ご意見・質問・不具合報告」をご覧ください。</p>
-  <p style="margin-top:20px"><a class="btn ghost" href="../start/">はじめにへ戻る</a> <a class="btn" href="../">アプリを開く</a></p>
+
+  <h1 style="margin-top:24px">運営について</h1>
+  <p>ぽっと通話は、個人が作って公開している<strong>実験版</strong>のサービスです。運営組織はなく、個別のサポートもできません。そのぶん、しくみを公開し、質問や不具合は掲示板でみんなで助け合う形にしています。</p>
+
+  <h2 id="who">制作者</h2>
+  <p>♨️🦈 <a href="https://www.popopo.com/users/BRhRf3YRbFTgfJD7SLKYmZ8f2Z42">qramo（クラモ）on POPOPO</a>。配信アプリ POPOPO にインスパイアされて作り、POPOPO の枠で開発の様子を配信しています。開発は AI（Claude Code）と一緒に進めています。</p>
+
+  <h2 id="contact">ご意見・質問・不具合報告</h2>
+  <p><a href="https://z.wikiwiki.jp/potalk/">ぽっと通話 ご意見・質問ばん</a>へどうぞ。アカウント不要・匿名で書けます。不具合は「いつ／どの端末とブラウザ／どうなったか」があると助かります。</p>
+  <p><small>掲示板は外部サービス（zawazawa）です。書いた内容はそのサービス側に公開されます。</small></p>
+
+  <h2 id="privacy">プライバシー</h2>
+  <p>運営はサーバを持たないので、<strong>運営の手元に利用者のデータは集まりません</strong>。それでも「どこに何が残るか」は書いておきます。</p>
+  <div class="tw"><table>
+    <tr><th>どこに</th><th>何が</th><th>補足</th></tr>
+    <tr><td>あなたのブラウザ（localStorage）</td><td>名前・絵文字・育ち具合・設定（音量、BGM、通知の音、昼夜）・配信部屋の主の鍵・無視の説明を読んだかどうか</td><td>ブラウザごとに別。消すと名前や育ちは最初からになります</td></tr>
+    <tr><td>同じ部屋の相手のブラウザ</td><td>名前・絵文字・ミュート中か・経路の印・育ち具合・ひとこと・相づち・話題タグ・おたより（主にだけ）</td><td>通話中だけ。保存されません</td></tr>
+    <tr><td>ロビー（ページを開いている人どうしのメッシュ）</td><td>通話中の部屋の名前・人数・続いている時間・話題タグ・参加者の名前と絵文字</td><td>非公開の部屋はありません。人がいる部屋はかならず一覧に出ます</td></tr>
+    <tr><td>公開の Nostr リレー（第三者）</td><td>相手探しの合図（暗号化）と、在室の合図（部屋名のハッシュと絵文字だけ）</td><td>部屋名や人の名前は載せません</td></tr>
+    <tr><td>Cloudflare（第三者）</td><td>中継を通る暗号化された音声（中身は読めない）と、中継の鍵の発行</td><td>ふだんの声の通り道。<a href="../tech/#voice">しくみ</a>参照</td></tr>
+    <tr><td>Cloudflare Web Analytics</td><td>アクセス数だけ</td><td>Cookie 不使用・個人を特定しません。集計は <a href="https://github.com/po-talk/po-talk.github.io#-アクセス状況透明性のため公開">README</a> で公開</td></tr>
+  </table></div>
+  <ul>
+    <li>声は録音されず、保存もされません。過去の会話は残りません。</li>
+    <li>相手にあなたの IP アドレスはふだん見えません。中継が使えず直接つながったときだけ見えます（参加者の行に ↔ が出ます）。</li>
+    <li>メールアドレスも電話番号もお伺いしません。</li>
+  </ul>
+
+  <h2 id="rules">利用のお願い</h2>
+  <ul>
+    <li>実験版です。切断や不具合が起きることがあります。利用で生じた損害は自己責任でお願いします。</li>
+    <li>一般的なモラルを守ってお使いください。ほかの人を不快にする言動、迷惑行為、違法な行為はしないでください。</li>
+    <li>合わない相手がいたら「無視」で自分の画面からその人の声と文字を消せます。相手には伝わりません。それでも困るときは席を立ってください。</li>
+    <li>非公開の部屋はありません。人がいる部屋はかならず一覧に出るので、そのつもりでお使いください。</li>
+    <li>年齢や人によって向かない話題もあります。周りの人に配慮してください。</li>
+  </ul>
+  <p><small>正式な利用ガイドラインは作成中です。それまでは上のお願いが指針です。</small></p>
+
+  <h2 id="license">ライセンス・公開</h2>
+  <p>コードは <a href="https://github.com/po-talk/po-talk.github.io">GitHub</a> で MIT ライセンスとして公開しています。自由に使用・改変・再配布できます（著作権表示の保持が条件）。同梱している第三者ソフトウェアの表示もリポジトリにあります。更新の記録は README の「これまでの歩み」にあります。</p>
+
+  <p style="margin-top:28px"><a class="btn ghost" href="../start/">はじめにへ</a> <a class="btn" href="../">アプリを開く</a></p>
+
   <footer class="foot">
     <span>🫖 ぽっと通話〈実験版〉</span>
-    <a href="../">アプリを開く</a><a href="../start/">はじめに</a><a href="https://github.com/po-talk/po-talk.github.io">GitHub</a>
+    <a href="../">アプリを開く</a>
+    <a href="../start/">はじめに</a>
+    <a href="../manual/">使い方</a>
+    <a href="../tech/">しくみ</a>
+    <a href="https://github.com/po-talk/po-talk.github.io">GitHub</a>
   </footer>
 </div>
 </body>
