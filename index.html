@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.1
+  ぽっと通話〈実験版〉 v0.14.2
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -215,6 +215,14 @@
   .mic-slash{ visibility:hidden }
   #mute.muted .mic-slash{ visibility:visible }
   /* 参加後の操作は横並び（ミュート／退出を半々に） */
+  /* 退出の確認（ページ内・止まらない）。注意の枠と同じ温度で、ボタンは小さく横に */
+  .leave-confirm{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px; padding:9px 11px;
+    border-radius:10px; font-size:13px; line-height:1.5; background:var(--warn-bg); border:1px solid var(--warn-border); color:var(--text) }
+  .leave-confirm[hidden]{ display:none }
+  .leave-confirm span{ flex:1; min-width:0 }
+  .leave-confirm button{ flex:none; width:auto; margin:0; padding:6px 12px; font-size:13px; border-radius:999px }
+  #leaveYes{ background:var(--red); color:#fff }
+  #leaveNo{ background:var(--chip); color:var(--chip-fg) }
   .actions{ display:flex; gap:12px }
   .actions button{ flex:1; width:auto }
   /* 入口の案内（お休み中／いま開いています）。注意の枠と同じ温度で */
@@ -1077,6 +1085,15 @@
          比率は ミュート：退出 ＝ 3：2（よく押すほうを大きく／退出は誤タップしにくく）。
          🔊 音声を有効化も同じ理由でここ（v0.11.8）。出ている間は最優先なので、ミュート／退出の直上 -->
     <button id="unlock">🔊 音声を有効化（タップ）</button>
+    <!-- 退出の確認（v0.14.2）。★confirm() は使わない：ダイアログが開いている間はページの JS が止まり、
+         BGM の譜面送りも復帰の見張りも止まる→閉じた瞬間にまとめて動いて音が連なる（v0.11.9 で直した
+         連射がこの経路で再発した・2026-09-20）。ページ内の2択なら何も止まらない。
+         ★display を書いたら [hidden] も書くこと -->
+    <div id="leaveConfirm" class="leave-confirm" hidden>
+      <span id="leaveConfirmText"></span>
+      <button id="leaveYes" type="button">退出する</button>
+      <button id="leaveNo" type="button">やめる</button>
+    </div>
     <div class="actions">
       <!-- 配信部屋で登壇を許されたときだけ出る。**押すまでマイクは取らない**（許可ダイアログが
            何の脈絡もなく出るのを避ける＝聞き役でいるつもりの人を驚かせない） -->
@@ -1332,7 +1349,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.1'
+const APP_VERSION = 'v0.14.2'
 
 const $ = id => document.getElementById(id)
 
@@ -4222,6 +4239,7 @@ const resetJoinedUI = () => {
   $('pip').hidden = true
   $('tagRow').hidden = true; $('tagForm').hidden = true   // 話題タグの行（join/leave の対称）
   $('tabChat').classList.remove('unread')                // ひとことの未読の点も持ち越さない
+  clearTimeout(leaveConfirmTimer); $('leaveConfirm').hidden = true   // 退出の確認も畳む
   // ★退出したら URL から部屋を落とす。参加時に焼き付けたままだと、**次に開いたとき
   //   「共有リンクから来た人」と区別がつかない**（＝最初の画面で「部屋を作る」が開いてしまう。
   //   2026-09-12 に利用者が遭遇）。URL としても、居ない部屋を指したままなのは嘘。
@@ -4363,7 +4381,20 @@ const leaveCall = () => {
 }
 // 退出は確認してから（v0.13.5・利用者の要望）。誤タップで会話から落ちるのを防ぐ。
 // ★確認を出すのは**ボタンを押したときだけ**。つなぎ直し・ロビーからの部屋移動・自動復帰は leaveCall を直接呼ぶ
-$('leave').onclick = () => { if (confirm('「' + roomLabel(call.joinedId) + '」から退出しますか？')) leaveCall() }
+// 退出は確認してから（v0.13.5）。★v0.14.2 から confirm() ではなく**ページ内の2択**（理由は HTML 側のコメント）。
+// 押すたびに出し入れ。8秒で自動で畳む（出しっぱなしを残さない）。確認を出すのはこのボタンだけで、
+// つなぎ直し・ロビーからの部屋移動・自動復帰・配信の終わりは leaveCall を直接呼ぶ
+let leaveConfirmTimer = null
+const hideLeaveConfirm = () => { clearTimeout(leaveConfirmTimer); $('leaveConfirm').hidden = true }
+$('leave').onclick = () => {
+  const box = $('leaveConfirm')
+  if (!box.hidden) { hideLeaveConfirm(); return }
+  $('leaveConfirmText').textContent = '「' + roomLabel(call.joinedId) + '」から退出しますか？'
+  box.hidden = false
+  clearTimeout(leaveConfirmTimer); leaveConfirmTimer = setTimeout(hideLeaveConfirm, 8000)
+}
+$('leaveYes').onclick = () => { hideLeaveConfirm(); leaveCall() }
+$('leaveNo').onclick = hideLeaveConfirm
 
 // つなぎ直しの後半：リロード後に自分で入り直す（予約は上の rejoin で読み取り済み）。
 // マイク許可が要求される場面なので、失敗しても普通の参加エラーとして見えればよい（部屋名は残る）。
