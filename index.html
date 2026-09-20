@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.6
+  ぽっと通話〈実験版〉 v0.14.7
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1374,7 +1374,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.6'
+const APP_VERSION = 'v0.14.7'
 
 const $ = id => document.getElementById(id)
 
@@ -1575,10 +1575,18 @@ const drawQr = async () => {
   } catch { img.textContent = '❌ QRの生成に失敗しました' }
 }
 
-const copyLink = async btn => {
+// 招待リンクのコピーは**「部屋名 - 名前」＋改行＋URL**（v0.14.7・利用者の提案）。SNS に貼ったときに
+// 何の部屋か・誰の部屋かが見える（OGP は # より後ろがサーバに届かないので部屋名を出せない）。
+// 配信部屋は 📣、それ以外は 🫖。アプリ内ブラウザのバナー（copyTop）は「Safari で開く」ためなので URL だけ
+const shareText = () => {
+  const id = pendingRoom()
+  const who = (profile.name || '').trim() || 'ゲスト'
+  return (isBcRoom(id) ? '📣 ' : '🫖 ') + pendingRoomName() + ' - ' + who + '\n' + shareUrl()
+}
+const copyLink = async (btn, text = shareUrl()) => {
   const original = btn.dataset.label || (btn.dataset.label = btn.textContent)  // 初回の文言を保持
   try {
-    await navigator.clipboard.writeText(shareUrl())
+    await navigator.clipboard.writeText(text)
     btn.textContent = 'コピーしました ✓'
     $('share').classList.add('full')   // 何をコピーしたか確かめられるよう、この間だけ全文を見せる
     clearTimeout(btn._revert); btn._revert = setTimeout(() => {
@@ -1589,8 +1597,8 @@ const copyLink = async btn => {
     btn.textContent = '長押しでコピー: ' + shareUrl()  // 失敗時はURLを残す（長押しでコピーできるように）
   }
 }
-$('copyTop').onclick = () => copyLink($('copyTop'))
-$('copy').onclick    = () => copyLink($('copy'))
+$('copyTop').onclick = () => copyLink($('copyTop'))                 // URL だけ（Safari で開くため）
+$('copy').onclick    = () => copyLink($('copy'), shareText())      // 「部屋名 - 名前」＋URL
 
 // 部屋名は「識別子」なので途中で切ると別の部屋になる（＝ロビーからタップしても相手と繋がらない）。
 // **参加時と受信時で必ず同じ処理を通すこと**。表示上の省略は CSS の text-overflow に任せる（データは削らない）。
