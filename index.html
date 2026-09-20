@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.21
+  ぽっと通話〈実験版〉 v0.14.22
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1055,6 +1055,8 @@
          本物の回線障害でも出るが、**集団で無視されたときに「自分の回線のせい」と
          思い込まされないため**でもある（HANDOFF「無視」の項の"秘密の部屋"参照） -->
     <div id="peerNotice" class="audio-warn" hidden></div>
+    <!-- β だけの診断窓（🔬）。既定は隠し、**4本指タップ／版数の長押し**で出し入れする（下の diag 参照） -->
+    <div id="diag" class="audio-warn" hidden></div>
     <!-- 小窓（PiP）の中身。canvas に描いた絵を映像トラックにして、この <video> を PiP に入れる。
          **display:none にしないこと**（消えている要素は PiP に入れられない）。画面外に置く。 -->
     <!-- このアプリが合成する音（BGM・効果音・音量調整を通した相手の声）の出口。
@@ -1333,7 +1335,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.21'
+const APP_VERSION = 'v0.14.22'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -4090,9 +4092,12 @@ const wireRoom = () => {
 
 // ───────── 参加が成立した後の処理（runJoin の尻尾・v0.14.13 で分離） ─────────
 // ここから先で確保するもの（タイマー・解析・BGM・小窓・在室）は**すべて leaveCall が返す**（対称性）。
-// β だけの診断（2026-09-20）：iPhone Safari で「つなぎ直す」後に相手の声が戻らない件。解錠の案内も
-// 「届いていない」警告も出ないので、要素は再生中なのに鳴っていない疑い。どこで消えているかを実機から読む。
-// 本番（potalk.app）では出さない。原因が分かったら消すこと
+// β だけの診断窓（2026-09-20）：iPhone Safari で「つなぎ直す」後に相手の声が戻らない件で作った。要素・トラック・
+// AudioContext・音量・相手の数を 1 行で見せる（実機ではこれで track.muted が読めて原因に辿り着いた）。
+// **既定は隠し、普段しない操作で出す**（利用者の指定・v0.14.22）：4本指タップ（iPhone。iPad は OS が横取りして
+// 取れないことがある）か、版数「v0.xx.x」の 1.5 秒長押し（PC やタッチ 4 点が取れない端末の逃げ道）。もう一度で消える。
+// 出ている間は 2 秒おきに更新。本番（potalk.app）では操作しても何も起きない
+let diagTimer = null, diagSince = 0
 const diagAudio = () => {
   try {
     const els = [...document.querySelectorAll('audio:not(#appAudio)')]
@@ -4103,13 +4108,42 @@ const diagAudio = () => {
       '要素' + els.length,
       e ? (e.paused ? '停止' : '再生中') + ' t=' + e.currentTime.toFixed(1) + ' rs=' + e.readyState + (e.muted ? ' muted' : '') + ' vol=' + e.volume : '',
       tr ? 'track:' + tr.readyState + (tr.muted ? '/muted' + (e.mutedSince ? Math.round((Date.now() - e.mutedSince) / 1000) + 's' : '') : '/live') + (tr.enabled ? '' : '/disabled') : 'track:なし', 'flow=' + [...call.peers].filter(audioFlowing).length,
-      'ctx=' + ctx, '音量=' + Math.round(masterVol * 100) + '%', 'peers=' + call.peers.size, 'hear=' + [...call.peers].filter(canHear).length
+      'ctx=' + ctx, '音量=' + Math.round(masterVol * 100) + '%', 'peers=' + call.peers.size, 'hear=' + [...call.peers].filter(canHear).length,
+      diagSince ? '参加' + Math.round((Date.now() - diagSince) / 1000) + 's' : '未参加'
     ]
-    showPeerNotice('🔬 ' + parts.filter(Boolean).join(' / '))
-  } catch (err) { showPeerNotice('🔬 診断でエラー: ' + err.message) }
+    $('diag').textContent = '🔬 ' + parts.filter(Boolean).join(' / ')
+  } catch (err) { $('diag').textContent = '🔬 診断でエラー: ' + err.message }
+}
+const toggleDiag = () => {
+  const on = $('diag').hidden
+  $('diag').hidden = !on
+  clearInterval(diagTimer); diagTimer = null
+  if (on) { diagAudio(); diagTimer = setInterval(diagAudio, 2000) }
+}
+if (location.hostname !== 'potalk.app') {
+  // 4本指タップ：4本以上が触れて、動かずに 350ms 以内に全部離れたときだけ（持っている・スクロール中は弾く）
+  let t4 = 0, moved = false
+  addEventListener('touchstart', e => { if (e.touches.length >= 4) { t4 = Date.now(); moved = false } }, { passive: true })
+  addEventListener('touchmove', () => { moved = true }, { passive: true })
+  addEventListener('touchcancel', () => { t4 = 0 }, { passive: true })
+  addEventListener('touchend', e => {
+    if (!t4 || e.touches.length) return
+    if (!moved && Date.now() - t4 < 350) toggleDiag()
+    t4 = 0
+  }, { passive: true })
+  // 版数の長押し 1.5 秒（離す・動かす・外れるで取り消し）
+  let hold = null
+  const ver = $('ver')
+  ver.style.userSelect = 'none'; ver.style.webkitUserSelect = 'none'; ver.style.webkitTouchCallout = 'none'
+  let hx = 0, hy = 0
+  const unhold = () => { clearTimeout(hold); hold = null }
+  ver.addEventListener('pointerdown', e => { unhold(); hx = e.clientX; hy = e.clientY; hold = setTimeout(() => { hold = null; toggleDiag() }, 1500) })
+  ;['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => ver.addEventListener(ev, unhold))
+  ver.addEventListener('pointermove', e => { if (Math.hypot(e.clientX - hx, e.clientY - hy) > 10) unhold() })   // 指の震えは許す
+  ver.addEventListener('contextmenu', e => e.preventDefault())
 }
 const armJoined = (roomId, name, bcast) => {
-  if (location.hostname !== 'potalk.app') [6000, 20000, 40000].forEach(ms => setTimeout(diagAudio, ms))
+  diagSince = Date.now()
   call.wantWake = true; wake()
   call.joinedId = roomId; call.joinedAt = performance.now(); call.warn = ''
   call.meta = { name, tag: '', tagBy: '', tagAt: 0 }   // 名前は自分が持って来たもの。相手のほうが先なら meta で上書きされる
@@ -4435,6 +4469,7 @@ const leaveCall = () => {
   clearInterval(call.bcEndTimer)                               // 配信の終わりの見張りも止める（join/leave の対称）
   clearTimeout(call.capTimer)                                  // 満室判定の待ちも捨てる
   stopAudioWatch()   // 音声到着の監視を停止＋待ち時間と催促回数の記憶を捨てる
+  diagSince = 0      // 診断窓の「参加から何秒」を戻す（窓そのものは出しっぱなしでよい）
   stopBgm()                          // BGM を止める（**stopVad より先に**＝AudioContext を閉じる前に畳む）
   stopPipFeed()                      // 小窓を閉じて映像トラックも止める（join/leave の対称）
   stopWakeWatch()                    // 復帰の見張りも止める（join/leave の対称）
