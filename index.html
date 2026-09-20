@@ -1,13 +1,12 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.9
+  ぽっと通話〈実験版〉 v0.14.10
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
   https://github.com/po-talk/po-talk.github.io
 
-  ※ 版を上げるときは、この番号と <script> 内の APP_VERSION の両方を直すこと。
--->
+  ※ 版を上げるときは、この番号と <script> 内の APP_VERSION の両方を直すこと。 -->
 <!-- SPDX-License-Identifier: MIT / © 2026 qramo ・ 第三者ソフトの表示は THIRD_PARTY_NOTICES.md -->
 <html lang="ja">
 <head>
@@ -106,6 +105,10 @@
      1分ごとの小さな変化では出さない（毎分ページを止めるわけにいかない）。判定はエンジン側 */
   ::view-transition-old(root), ::view-transition-new(root){ animation-duration:.5s }
   *{ box-sizing:border-box }
+  /* ★hidden 属性は display を書いた要素でも必ず勝つ（!important）。以前は要素ごとに
+     `.x[hidden]{display:none}` を書いていて、書き忘れで「消えない」事故を 4 度踏んだ（2026-08-15 ほか）。
+     これ1行で終わり。hidden を付けたまま CSS で見せる使い方はしない */
+  [hidden]{ display:none !important }
   body{ margin:0; font-family:system-ui,"Hiragino Sans",sans-serif;
     background:radial-gradient(1000px 700px at 80% -10%,var(--g1),var(--g2) 60%,var(--g3));
     color:var(--text); min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px }
@@ -224,7 +227,6 @@
   /* 退出の確認（ページ内・止まらない）。注意の枠と同じ温度で、ボタンは小さく横に */
   .leave-confirm{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px; padding:9px 11px;
     border-radius:10px; font-size:13px; line-height:1.5; background:var(--warn-bg); border:1px solid var(--warn-border); color:var(--text) }
-  .leave-confirm[hidden]{ display:none }
   .leave-confirm span{ flex:1; min-width:0 }
   .leave-confirm button{ flex:none; width:auto; margin:0; padding:6px 12px; font-size:13px; border-radius:999px }
   #leaveYes{ background:var(--red); color:#fff }
@@ -237,37 +239,27 @@
   /* 入口の案内（お休み中／いま開いています）。注意の枠と同じ温度で */
   .entry-note{ margin-top:12px; padding:10px 12px; border-radius:10px; font-size:13px; line-height:1.6;
     background:var(--warn-bg); border:1px solid var(--warn-border); color:var(--text) }
-  .entry-note[hidden]{ display:none }
   .entry-note p{ margin:0 }
   .entry-actions{ display:flex; flex-direction:column; gap:0 }   /* 文言が長いので縦に */
-  .entry-actions[hidden]{ display:none }
   .entry-actions button{ flex:1; width:auto; margin-top:8px; padding:9px 6px; font-size:13px;
     background:var(--chip); color:var(--chip-fg) }
-  .entry-actions button[hidden]{ display:none }
   #join:disabled{ opacity:.6; cursor:default }
-  #join[hidden]{ display:none }   /* ★display:flex を書いているので [hidden] も書く（お休み中は隠す） */
   /* ミュート（登壇なら「マイクを使う」）：退出 ＝ 3：2（利用者の指定・2026-09-18） */
   #mute, #speak{ flex:3 }
   #leave{ flex:2 }
   /* 通知音のトグル（入室・退出音＝通話カード／新部屋音＝ロビー）。help-hide と同系の控えめな見た目 */
   .snd-opt{ display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; color:var(--sub); cursor:pointer; user-select:none }
   .snd-opt input{ width:auto; margin:0; padding:0; accent-color:var(--accent); flex:none }
-  /* ★display を書いたら [hidden] も書くこと。ブラウザ既定の [hidden]{display:none} より
-     クラス指定のほうが強いので、hidden を付けても消えない（2026-08-15 に踏んだ）。
-     部屋の種類の2択は hidden で出し入れするので、これが無いと隠れない */
-  .snd-opt[hidden]{ display:none }
   #sndPeerRow, #sndReactRow{ margin-top:4px }   /* 人数表示のすぐ下に寄せる */
   /* 音量スライダー。行の形はトグル（.snd-opt）と同じだが、input の扱いが逆
      （.snd-opt input は width:auto 固定、こちらは横いっぱいに伸ばしたい）ので別クラスにする。
      range は共通の input{} が持つ枠・背景・余白を全部剥がさないと太い箱に見える */
   .vol-opt{ display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; color:var(--sub); user-select:none }
-  .vol-opt[hidden]{ display:none }
   .vol-opt input[type=range]{ flex:1; width:auto; min-width:0; margin:0; padding:0; border:0;
     background:transparent; accent-color:var(--accent); cursor:pointer }
   .vol-ic, .vol-lbl{ flex:none }
   .vol-val{ flex:none; width:3.4em; text-align:right; font-variant-numeric:tabular-nums }
   .vol-note{ margin:4px 0 0; font-size:11.5px; color:var(--note); line-height:1.5 }
-  .vol-note[hidden]{ display:none }
   .bgm-row{ margin-top:14px }
   #copy{ background:var(--chip); color:var(--chip-fg); margin-top:8px; padding:10px; font-size:14px }
   /* 版の表示。共有ボタンの右下に、目に留まらない濃さで置く（普段は意識させない） */
@@ -350,7 +342,6 @@
   .create > summary .char-count{ display:none }
   .create[open] > summary .char-count{ display:inline; margin-left:auto }   /* 文字数だけ右端 */
   .cr-body > div{ padding-top:2px }
-  .create[hidden]{ display:none }
   .profile > summary{ list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px;
     padding:12px 14px; border-radius:12px; background:var(--panel); border:1px solid var(--border);
     transition:padding .28s ease, background-color .28s ease, border-color .28s ease }
@@ -380,16 +371,11 @@
      ★display を書いた要素には [hidden] も書くこと（参加前はタブごと出さない）。 */
   .tabs{ display:flex; align-items:flex-end; gap:4px; margin-top:14px;
     border-bottom:1px solid var(--border-soft) }
-  .tabs[hidden]{ display:none }
   /* ★ラベルは**絶対に折り返さない**。実機（CSS幅390px）で4タブのとき「メンバ／ー」と
      割れた（2026-08-17）。折り返す代わりに、狭い画面では詰めて、最後に設定の文字を落とす。 */
   .tab{ width:auto; margin:0; padding:8px 11px; font-size:13px; font-weight:700; line-height:1.2;
     white-space:nowrap; display:inline-flex; align-items:center; gap:5px;
     background:transparent; color:var(--tab); border-radius:10px 10px 0 0; position:relative }
-  /* ★display を書いたら [hidden] も書くこと。**これを忘れて、普通の部屋でも
-     「おたより」タブが出ていた**（2026-08-18・v0.8.2 で display:inline-flex を足したときの見落とし）。
-     このファイルで同じ罠を踏むのは3度目。display を足したら必ず対で書く。 */
-  .tab[hidden]{ display:none }
   .t-em{ font-size:13px; line-height:1 }
   /* 未読の点：別のタブを見ている間にひとことが届いたら出す。開いたら消える（v0.13.4・利用者の要望） */
   .t-dot{ display:none; width:7px; height:7px; border-radius:50%; background:var(--red); margin-left:1px; flex:none }
@@ -417,7 +403,6 @@
     .tab{ padding:8px 11px }
     .t-em{ font-size:15px }
   }
-  .panel[hidden]{ display:none }
   /* パネル先頭の余白は中身が持っているので、タブ直下は詰める */
   .panel > .members{ margin-top:10px }
   /* ★高さは「5人ぶん」で決め打ちにする（可変にしない）。
@@ -446,18 +431,16 @@
   .members.scroll.more-below{ --fade-bottom:34px }
   .members.scroll.more-above{ --fade-top:22px }
   /* ひとことは**入力欄を下端に置く**（上に向かって流れが伸びる、見慣れた形）。
-     ★display を書いたので [hidden] も id で書き直すこと。**.panel[hidden] より id のほうが強い**ので、
+。**.panel[hidden] より id のほうが強い**ので、
        ここを忘れるとタブを切り替えてもひとことが消えない（優先度の罠） */
   /* ★ここは min-height ではなく **height（固定）**。min-height だと中身が増えたぶんパネルごと
      伸びてしまい、`flex:1`（余った高さを埋める）が働かない＝**ログが下へ伸び続ける**
      （2026-08-16 に実際にそうなった）。高さを固定して初めて「入力欄を引いた残り」が決まり、
      溢れた古い行が上へ抜ける。 */
   #panChat{ display:flex; flex-direction:column; justify-content:flex-end; height:var(--panel-min) }
-  #panChat[hidden]{ display:none }
   /* おたより。**高さは他のパネルと同じ固定**（理由は上と同じ）。
      枠主のときは集まった投稿が伸びるので、本文だけ内部スクロールにする（吹き出しは無いので切れて困らない）。 */
   #panMail{ display:flex; flex-direction:column; height:var(--panel-min) }
-  #panMail[hidden]{ display:none }
   .mail-head{ margin-top:10px; font-size:13px; line-height:1.6; color:var(--sub) }
   .mail-head b{ color:var(--text) }
   .mail-body{ flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:8px;
@@ -477,7 +460,6 @@
   /* 募集を立てる欄／お便りを書く欄。入力は全幅にしてボタンを中に重ねる
      （**iOS は半端な幅の入力欄にフォーカスすると勝手に拡大する**。2026-08-15 に踏んだ） */
   .mail-form{ position:relative; margin-top:8px }
-  .mail-form[hidden]{ display:none }
   .mail-form input{ padding-right:74px }
   .mail-form button{ position:absolute; right:5px; top:50%; transform:translateY(-50%);
     width:auto; margin:0; padding:7px 12px; font-size:13px; background:var(--mute); color:var(--text); border-radius:9px }
@@ -485,19 +467,16 @@
      こちらは「中身」なので少し明るく、送り主が分かる形にする */
   .mail-now{ margin-top:10px; padding:9px 11px; border-radius:10px; font-size:13px; line-height:1.6;
     background:rgba(0,229,204,.07); border:1px solid rgba(0,229,204,.22); color:var(--text) }
-  .mail-now[hidden]{ display:none }
   .mail-now .mn-cap{ display:block; font-size:11.5px; color:var(--accent-soft); margin-bottom:2px }
   .mail-now .mn-who{ color:var(--sub) }
   .mail-now{ cursor:pointer }   /* 押すと下の紙を開き直せる */
   /* ── 公開されたお便りを大きく出す紙 ──
      ★**モーダルにしない。**背面を塞ぐと読み上げ中にミュート・退出が押せなくなる。
        だから覆う層は pointer-events:none にして、**紙の上だけ**操作を受ける。
-       画面はうっすら暗くするが、後ろのボタンはそのまま押せる。
-     ★display を書いたので [hidden] も書くこと（この罠はこのファイルで何度も出ている） */
+       画面はうっすら暗くするが、後ろのボタンはそのまま押せる。 */
   .mail-pop{ position:fixed; inset:0; z-index:70; display:flex; align-items:center; justify-content:center;
     padding:20px; background:rgba(3,8,18,.42); pointer-events:none;
     animation:mail-in .22s ease-out }
-  .mail-pop[hidden]{ display:none }
   @keyframes mail-in{ from{ opacity:0 } to{ opacity:1 } }
   @media (prefers-reduced-motion:reduce){ .mail-pop{ animation:none } }
   .mp-card{ pointer-events:auto; width:min(100%, 460px); max-height:72vh; overflow-y:auto;
@@ -521,10 +500,8 @@
      「いま自分は話せるのか」が一番の関心なので、参加者リストより上に出す */
   .bc-note{ margin-top:10px; padding:9px 11px; border-radius:10px; font-size:13px; line-height:1.5;
     background:rgba(0,229,204,.09); border:1px solid rgba(0,229,204,.30); color:var(--accent-soft) }
-  /* 部屋の種類（部屋名の下の2択）。通知音トグルと同じ控えめな見た目に揃え、行間だけ詰める。
-     ★display を書いたので [hidden] も書くこと（他人の配信部屋を開いている間は丸ごと隠す） */
+  /* 部屋の種類（部屋名の下の2択）。通知音トグルと同じ控えめな見た目に揃え、行間だけ詰める。 */
   .kind{ display:grid; gap:2px; margin-top:8px }
-  .kind[hidden]{ display:none }
   .kind .snd-opt{ margin-top:0 }
   .kind .sel{ color:var(--accent-soft) }   /* 選ばれているほうを少しだけ明るく（点だけでは目が滑るため） */
   /* 点字ブロック（U+2800〜）で作るオーディオEQ風の飾り。各セルが2×3ドットなので
@@ -581,9 +558,8 @@
   /* リアクション。参加者リストの真下＝**飛び出す先のすぐ下**に置く（視線がつながる）。
      共通の button{} の width と margin をどちらも打ち消すこと（.m-ig と同じ罠） */
   .reactions{ margin-top:8px; display:flex; gap:5px }
-  /* ★display を書いたら [hidden] も書くこと。ブラウザ既定の [hidden]{display:none} より
+  /*。ブラウザ既定の [hidden]{display:none} より
      クラス指定のほうが強いので、hidden を付けても消えない（2026-08-15 に踏んだ） */
-  .reactions[hidden]{ display:none }
   /* 押せると分かる見た目にする：**面をカードより一段明るく**（アプリ内で押せるチップに使っている色）、
      枠を立て、上辺に細いハイライトを入れて浮かせる。押すと沈んで色が変わる＝指に返る。 */
   /* 絵文字は文字なので、長押しで選択・コピー・「調べる」が出てしまう。連打する場所なので殺す */
@@ -607,7 +583,6 @@
      どちらも `user-scalable=no` では解決しない（拡大できないと困る人がいるので使わない）。 */
   /* 話題タグの行（通話中だけ）。状態の行と同じ温度。タグがあれば本文色、無ければ薄く */
   .tag-row{ display:flex; align-items:center; gap:7px; margin-top:8px; font-size:13px; line-height:1.5 }
-  .tag-row[hidden]{ display:none }
   .tag-ic{ flex:none }
   .tag-text{ flex:1; min-width:0; color:var(--sub); overflow-wrap:anywhere }
   .tag-text b{ color:var(--text); font-size:14px }
@@ -616,7 +591,6 @@
   /* ロビー：タグが付いた部屋は**タグを大きく・部屋名を小さく**（利用者の指定・2026-09-18） */
   .room-sub{ font-size:12px; color:var(--sub); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px }
   .chat-row{ margin-top:6px; position:relative }
-  .chat-row[hidden]{ display:none }
   .chat-row input{ width:100%; padding:9px 76px 9px 11px; border-radius:10px; font-size:16px;
     background:var(--panel); color:var(--text); border:1px solid var(--border-soft) }
   .chat-row input::placeholder{ color:var(--placeholder) }
@@ -643,15 +617,13 @@
     100% { opacity:0; transform:translateY(-14px) }
   }
   /* ひとことのタイムライン（入力欄の真上）。**高さを固定して中でスクロール**させる＝
-     行が増えてもページ全体が伸びず、下の共有リンクやロビーが押し出されない。
-     ★display を書いたので [hidden] も書くこと（1件も無いうちは出さない） */
+     行が増えてもページ全体が伸びず、下の共有リンクやロビーが押し出されない。 */
   /* **パネルの高さを目一杯使い、下から上へ流す。**スクロールはしない＝古い行は上へ抜けて消える
      （読み返すためのものではなく「見逃した直後の受け皿」なので、追える範囲だけ残ればよい）。
      justify-content:flex-end ＋ overflow:hidden で、新しい行が下に積まれ、溢れた分は上で切れる。 */
   .chat-log{ flex:1; min-height:0; display:flex; flex-direction:column; justify-content:flex-end;
     gap:3px; margin-top:8px; overflow:hidden;
     padding:6px 8px; border-radius:10px; background:var(--log); font-size:12.5px; line-height:1.5 }
-  .chat-log[hidden]{ display:none }
   .cl-row{ display:flex; align-items:baseline; gap:5px }
   .cl-em{ flex:none; font-size:13px; line-height:1 }
   /* 名前は詰めてよい（誰かはアバター絵文字でも分かる）。本文は折り返して全部見せる */
@@ -950,8 +922,7 @@
            （ロビーから入るときはこのボタンを通らない） -->
   <button id="join"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg><span id="joinLbl">参加する</span></button>
   <!-- 入口の案内（リンクで来た人だけ・v0.12.0）。ロビーでその部屋が開いているかを見てから入る。
-       開いていなければ「お休み中」と案内してロビーへ誘導し、作る意思があれば「この名前で新しく開く」。
-       ★display を書いたら [hidden] も書くこと（.entry-note[hidden]） -->
+       開いていなければ「お休み中」と案内してロビーへ誘導し、作る意思があれば「この名前で新しく開く」。 -->
   <div id="entryNote" class="entry-note" hidden>
     <p id="entryText"></p>
     <div id="entryActions" class="entry-actions" hidden>
@@ -981,7 +952,7 @@
     <div style="margin-top:8px">いま一緒にいる人：<span class="peers" id="count">0</span> 人</div>
     <!-- 人数が多くなってきたときだけ出る注意（上限に達したら言い方が変わる） -->
     <!-- 話題タグ（v0.13.1）。話題が変わった部屋に「今の話題」を後付けする。誰でも上書き（最新1つ・履歴なし）。
-         抑止として付けた人の名前を全員に出す。★display を書いたら [hidden] も書くこと -->
+         抑止として付けた人の名前を全員に出す。 -->
     <div id="tagRow" class="tag-row" hidden>
       <span class="tag-ic" aria-hidden="true">🏷</span>
       <span id="tagText" class="tag-text"></span>
@@ -1060,7 +1031,7 @@
       <!-- BGM。**既定は「なし」**（通話アプリで勝手に音が鳴るのは事故）。
            選択肢は性格が一番遠い2つだけ＝曲を流すか、地の音を敷くか。
            部屋名から曲を決めるので**通信は一切増えない**（送らずに導出する。リアクションで
-           絵文字ではなく添字を送ると決めたのと同じ原理）。★display を書いたら [hidden] も書くこと -->
+           絵文字ではなく添字を送ると決めたのと同じ原理）。 -->
       <div id="bgmRow" class="kind bgm-row" role="radiogroup" aria-label="BGM">
         <label class="snd-opt"><input type="radio" name="bgm" id="bgmOff" checked> 🔇 BGMなし</label>
         <label class="snd-opt"><input type="radio" name="bgm" id="bgmTune"> 🎵 軽快な音楽</label>
@@ -1095,8 +1066,7 @@
     <button id="unlock">🔊 音声を有効化（タップ）</button>
     <!-- 退出の確認（v0.14.2）。★confirm() は使わない：ダイアログが開いている間はページの JS が止まり、
          BGM の譜面送りも復帰の見張りも止まる→閉じた瞬間にまとめて動いて音が連なる（v0.11.9 で直した
-         連射がこの経路で再発した・2026-09-20）。ページ内の2択なら何も止まらない。
-         ★display を書いたら [hidden] も書くこと -->
+         連射がこの経路で再発した・2026-09-20）。ページ内の2択なら何も止まらない。 -->
     <div id="leaveConfirm" class="leave-confirm" hidden>
       <span id="leaveConfirmText"></span>
       <button id="leaveYes" type="button">退出する</button>
@@ -1372,13 +1342,18 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.9'
+const APP_VERSION = 'v0.14.10'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
 // getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
 const lsGet = (k, d = null) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
 const lsSet = (k, v) => { try { localStorage.setItem(k, v) } catch {} }
+// データチャネルへの送信は**必ずここを通す**。action が未生成（参加前・退出後）でも同期例外にならず、
+// 送信の reject も握る（届かない相手がいても他の処理を止めない）。target を渡せば1人宛て
+const sendTo = (act, data, target) => { try { act?.send(data, target ? { target } : undefined).catch(() => {}) } catch {} }
+// 受信側の連打抑止：同じ相手からは ms に1回だけ受け付ける（map: peerId → 最後に受け付けた時刻）
+const tooSoon = (map, key, ms) => { const now = Date.now(); if (now - (map.get(key) || 0) < ms) return true; map.set(key, now); return false }
 
 // ⓪ 通話の状態。**読込時に syncShare() が call.joinedId を読む**ので、他の何より先に
 // 宣言しておくこと（後ろに置くと TDZ で「Cannot access 'call' before initialization」に
@@ -3083,7 +3058,7 @@ const setTag = text => {
   if (!call.joinedId || !call.metaAction) return
   const m = call.meta
   m.tag = capText(text, ROOM_MAX); m.tagBy = m.tag ? (profile.name || 'ゲスト') : ''; m.tagAt = Date.now()
-  call.metaAction.send(m).catch(() => {})   // 全員へ（tagAt が新しいので採用される）
+  sendTo(call.metaAction, m)   // 全員へ（tagAt が新しいので採用される）
   renderTag(); sendHeartbeat()              // ロビーにもすぐ出す
 }
 $('tagEdit').onclick = () => {
@@ -3175,7 +3150,7 @@ const checkAudioArrival = () => {
     if (st.n >= NUDGE_MAX) { stuck.push(id); return }              // 頼み尽くした＝接続自体が壊れている
     if (now - st.at < NUDGE_EVERY_MS) return
     // 相手のクライアントが古いと 'nudge' を知らないので無反応。その場合は回数を使い切って下の表示に落ちる。
-    if (call.nudgeAction) call.nudgeAction.send(1, { target: id }).catch(() => {})
+    sendTo(call.nudgeAction, 1, id)
     call.nudges.set(id, { n: st.n + 1, at: now })
   })
   renderAudioWarn(stuck)
@@ -3235,7 +3210,7 @@ const unignorePeer = id => {
   call.ignored.delete(id)
   // 音は捨ててあるので、相手に送り直してもらう。「音が届いていない」ときと同じ頼み方。
   // 配信部屋で名簿に載っていない相手には頼まない（送ってもらっても鳴らさないので無駄になる）。
-  if (canHear(id)) try { call.nudgeAction?.send(1, { target: id }).catch(() => {}) } catch {}
+  if (canHear(id)) sendTo(call.nudgeAction, 1, id)
   call.peerSince.set(id, Date.now())   // 監視の待ち時間を数え直す（すぐ警告を出さない）
   renderMembers()
 }
@@ -3398,7 +3373,7 @@ const sendReaction = idx => {
   const now = Date.now()
   if (now - call.reactAt < REACT_EVERY_MS) return
   call.reactAt = now
-  call.reactAction.send(idx).catch(() => {})
+  sendTo(call.reactAction, idx)
   flyReaction('self', idx)                 // 自分の分は自分で出す（送信は自分に返らない）
 }
 REACTIONS.forEach((e, i) => {
@@ -3466,7 +3441,7 @@ const sendChat = () => {
   const now = Date.now()
   if (now - call.chatAt < CHAT_EVERY_MS) return
   call.chatAt = now
-  call.chatAction.send(text).catch(() => {})
+  sendTo(call.chatAction, text)
   showBubble('self', text)                 // 送信は自分に返らないので自分の分は自分で出す
   chatText.value = ''
 }
@@ -3554,7 +3529,7 @@ const setSpeakers = ids => {
     // 昇格したのに音が無い＝相手は既にストリームを送り終えている可能性がある。無視を戻すときと
     // 同じやり方で「送り直して」を頼む（こちらの都合で捨てた分を取り戻す）。
     if (!before && now && !call.ignored.has(id) && !(call.audios.get(id) || []).length) {
-      try { call.nudgeAction?.send(1, { target: id }).catch(() => {}) } catch {}
+      sendTo(call.nudgeAction, 1, id)
       call.peerSince.set(id, Date.now())   // 監視の待ち時間を数え直す（すぐ警告を出さない）
     }
   })
@@ -3580,14 +3555,14 @@ const broadcastRoster = async (target = null) => {
   call.rosterT = t; call.rosterSeen = t; call.ownerPeer = own
   const roster = { pk: call.ownerPub, t, o: own, ids, sig }
   call.roster = roster
-  try { call.bcAction?.send(roster, target ? { target } : undefined).catch(() => {}) } catch {}
+  sendTo(call.bcAction, roster, target)
   if (!target) setSpeakers(ids)
 }
 // 新しく来た人へ、いま持っている名簿をそのまま渡す。**署名済みなので誰が転送してもよい**
 // ＝オーナーが去った後に入ってきた人も、残った人から受け取って検証できる。
 const forwardRoster = id => {
   if (call.ownerKey) { broadcastRoster(id); return }
-  if (call.roster) { try { call.bcAction?.send(call.roster, { target: id }).catch(() => {}) } catch {} }
+  if (call.roster) sendTo(call.bcAction, call.roster, id)
 }
 // 受け取った名簿の検証。**ここを緩めると配信部屋の意味が無くなる**ので、条件は全部残すこと。
 const acceptRoster = async d => {
@@ -3695,7 +3670,7 @@ const startSpeaking = async () => {
   call.muted = false; renderMute()
   try { call.room.addStream(call.stream) } catch {}
   addAnalyser('self', call.stream)   // 自分の絵文字も跳ねるようにする（話せている実感）
-  if (call.profileAction) call.profileAction.send(myProfilePayload()).catch(() => {})
+  sendTo(call.profileAction, myProfilePayload())
   renderSpeak(); renderMembers(); sendHeartbeat()
 }
 // 許可が外れた／自分でやめたときにマイクを返す。**掴んだままにしない**（録音インジケータが
@@ -3707,7 +3682,7 @@ const stopSpeaking = () => {
   call.stream = null; call.muted = false
   removeAnalyser('self')
   renderMute(); renderSpeak(); renderMembers()
-  if (call.profileAction) call.profileAction.send(myProfilePayload()).catch(() => {})
+  sendTo(call.profileAction, myProfilePayload())
   sendHeartbeat()
 }
 $('speak').onclick = startSpeaking
@@ -3730,7 +3705,7 @@ const MAIL_EVERY_MS = 2000    // 送る側の下限
 const MAIL_ACCEPT_MS = 1500   // 受け取る側の下限。**送る側より短く**（nudge で踏んだ罠）
 const mailText = $('mailText'), mailSend = $('mailSend'), mailForm = $('mailForm')
 const sendMail = (payload, target) => {
-  try { call.mailAction?.send(payload, target ? { target } : undefined).catch(() => {}) } catch {}
+  sendTo(call.mailAction, payload, target)
 }
 
 // いま読まれているお便り。**行（タブの外・常時表示）と、大きく出す紙**の両方をここで描く。
@@ -4023,7 +3998,7 @@ const runJoin = async () => {
       renderMembers()
       scheduleCapacityCheck()   // 到着時刻が分かった＝満室の順位を数え直す
     }
-    const sendProfile = id => call.profileAction.send(myProfilePayload(), { target: id }).catch(() => {})
+    const sendProfile = id => sendTo(call.profileAction, myProfilePayload(), id)
     // 部屋のメタデータ（名前・タグ）。入室時に互いに送り合う。名前は**先にいた人のもの**を採用
     // （自分が持って来た名前より相手の meta が優先＝作った人が付けた名前が固定される）。
     // タグは tagAt が新しいほうが勝つ（誰でも上書き・履歴なし・付けた人の名前を添える）。
@@ -4040,16 +4015,14 @@ const runJoin = async () => {
       if (at > (m.tagAt || 0)) { m.tag = capText(d.tag, ROOM_MAX); m.tagBy = capText(d.tagBy, 20); m.tagAt = at; changed = true }
       if (changed) { render(); syncShare(); if (call.joinedId) location.hash = 'room=' + call.joinedId + '&name=' + encodeURIComponent(m.name); sendHeartbeat() }
     }
-    const sendMeta = id => call.metaAction.send(call.meta, { target: id }).catch(() => {})
+    const sendMeta = id => sendTo(call.metaAction, call.meta, id)
 
     // 「音が届いていないので送り直して」の受け口。頼まれた側は自分のストリームを相手へ入れ直す＝
     // 相手が入り直したときに起きることと同じ。onMessage は profile と同じくピア接続より前に置く。
     call.nudgeAction = call.room.makeAction('nudge')
     call.nudgeAction.onMessage = (_data, { peerId }) => {
       // 連打への自衛。同じ相手には NUDGE_ACCEPT_MS に1回しか応じない（上の定義参照）。
-      const now = Date.now()
-      if (now - (call.nudgeSeen.get(peerId) || 0) < NUDGE_ACCEPT_MS) return
-      call.nudgeSeen.set(peerId, now)
+      if (tooSoon(call.nudgeSeen, peerId, NUDGE_ACCEPT_MS)) return
       // 頼まれた側から見て相手が既に切れている（＝こちらは見失っている）ことがある。その時の
       // addStream は失敗するが、頼んだ側の状況は改善しようがないので黙って諦める。
       try { if (call.stream && call.room) call.room.addStream(call.stream, { target: peerId }) } catch {}
@@ -4085,9 +4058,7 @@ const runJoin = async () => {
       if (call.ignored.has(peerId)) return               // 無視した相手のものは出さない
       const text = capText(data, CHAT_MAX)               // ★受け取った文字は必ずここを通す
       if (!text) return
-      const now = Date.now()
-      if (now - (call.chatSeen.get(peerId) || 0) < CHAT_ACCEPT_MS) return
-      call.chatSeen.set(peerId, now)
+      if (tooSoon(call.chatSeen, peerId, CHAT_ACCEPT_MS)) return
       showBubble(peerId, text)
       if (call.tab !== 'chat') $('tabChat').classList.add('unread')   // 見ていない間に届いた＝未読の点
     }
@@ -4116,9 +4087,7 @@ const runJoin = async () => {
       if (d.k === 'post') {
         if (!call.ownerKey || !call.mailOpen) return       // 枠主以外は投稿を受け取らない
         if (call.ignored.has(peerId)) return               // 無視した相手のものは並べない
-        const now = Date.now()
-        if (now - (call.mailSeen.get(peerId) || 0) < MAIL_ACCEPT_MS) return
-        call.mailSeen.set(peerId, now)
+        if (tooSoon(call.mailSeen, peerId, MAIL_ACCEPT_MS)) return
         const text = capText(d.x, MAIL_TEXT_MAX)
         if (!text) { call.mailInbox.delete(peerId); renderMail(); return }   // 空＝取り下げ
         if (!call.mailInbox.has(peerId) && call.mailInbox.size >= MAIL_INBOX_MAX) return
@@ -4150,9 +4119,7 @@ const runJoin = async () => {
       // ★受け取った値をそのまま描かない。**添字として検査**し、一覧の中のものだけを出す。
       if (!Number.isInteger(data) || data < 0 || data >= REACTIONS.length) return
       if (call.ignored.has(peerId)) return          // 無視した相手のリアクションは出さない
-      const now = Date.now()
-      if (now - (call.reactSeen.get(peerId) || 0) < REACT_ACCEPT_MS) return   // 連打への自衛
-      call.reactSeen.set(peerId, now)
+      if (tooSoon(call.reactSeen, peerId, REACT_ACCEPT_MS)) return   // 連打への自衛
       flyReaction(peerId, data)
     }
 
@@ -4286,7 +4253,7 @@ const toggleMute = () => {
   if (!call.stream) return
   call.muted = !call.muted; call.stream.getAudioTracks().forEach(t => t.enabled = !call.muted)
   renderMute()
-  if (call.profileAction) call.profileAction.send(myProfilePayload()).catch(() => {})  // 全員へミュート状態を配信
+  sendTo(call.profileAction, myProfilePayload())  // 全員へミュート状態を配信
   sendHeartbeat()  // ロビーの自分にもミュート状態を反映
   renderMembers(); renderLobby()  // 自分の行／ロビーの 🔇 を即反映
 }
@@ -4398,7 +4365,7 @@ const leaveCall = () => {
   // 「退出します」を先に配る。**これを受け取った側は「退出」、受け取らないまま消えたら「接続が切れた」**
   // と書き分ける。④の leave() は非同期に走るので、その前にここで送っておく（届かなくても実害は
   // 「相手の画面に切断として出る」だけ＝安全側）。
-  try { call.byeAction?.send(1).catch(() => {}) } catch {}
+  sendTo(call.byeAction, 1)
   clearTimeout(call.noticeTimer); showPeerNotice('')            // 前の通知を残さない
   if (call.stream) call.stream.getTracks().forEach(t => t.stop())
   ;[...call.audios.keys()].forEach(dropAudios)                 // **reset で Map ごと捨てる前に** DOM を消す
