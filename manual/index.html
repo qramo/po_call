@@ -18,6 +18,8 @@
 <link rel="stylesheet" href="../common/docs.css">
 <style>
   /* このページだけ：目次と、見出しに飛んだときの上の余白 */
+  .quick{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px } .quick .btn{ min-height:40px; font-size:15px; padding:0 14px }
+  .sec-chip{ display:inline-block; vertical-align:middle; margin-left:10px; font-size:12px; font-weight:500; color:var(--accent-soft); background:var(--accent-dim); border-radius:999px; padding:2px 10px }
   .toc{ background:var(--card); border:1px solid var(--card-border); border-radius:16px; padding:14px 18px; margin-top:16px }
   .toc ol{ margin:6px 0 0; padding-left:1.3em; columns:2; column-gap:24px; max-width:none } .toc li{ break-inside:avoid; margin:3px 0 }
   @media (max-width:520px){ .toc ol{ columns:1 } }
@@ -42,10 +44,15 @@
   </nav>
 
   <h1 style="margin-top:24px">ぽっと通話の使い方</h1>
-  <p>画面に出てくる順に書いてあります。困ったときは<a href="#trouble">「困ったとき」</a>へ。急いでいる人は<a href="../start/">はじめに</a>の 3 ステップだけで始められます。</p>
+  <p>画面に出てくる順に書いてあります。全部読まなくても使えます。</p>
 
+  <div class="quick" aria-label="早わかり">
+    <a class="btn ghost" href="../start/#how-h">まず読むなら：はじめに（3 ステップ）</a>
+    <a class="btn ghost" href="#trouble">困ったら：困ったとき</a>
+    <a class="btn ghost" href="#faq">よくある質問</a>
+  </div>
   <nav class="toc" aria-label="目次">
-    <b>目次</b>
+    <b>目次（詳しく知るなら）</b>
     <ol>
       <li><a href="#first">最初の画面</a></li>
       <li><a href="#table">部屋に入る・部屋を作る</a></li>
@@ -99,7 +106,7 @@
     <dt>ミュート</dt>
     <dd>自分のマイクを切ります。相手の画面にも「ミュート中」の印が出ます。もう一度押すと戻ります。</dd>
     <dt>経路の印（☁️ 中継／↔ 直接）</dt>
-    <dd>声の通り道です。ふだんは ☁️ Cloudflare の中継を通り、相手にあなたの IP アドレスは見えません。中継が使えないときだけ ↔ 直接つながり、そのときは相手に IP アドレスが見えます。人ごとに印が付きます。</dd>
+    <dd>声の通り道です。ふだんは ☁️ Cloudflare の中継を通り、相手にあなたの IP アドレスは見えません。中継が使えないときだけ ↔ 直接つながり、そのときは相手に IP アドレスが見えます。人ごとに印が付きます。くわしくは<a href="../tech/#voice">しくみ</a>へ。</dd>
   </dl>
 
   <h2 id="members">5. メンバーの見方</h2>
@@ -147,17 +154,17 @@
     <dd>押すと「退出する／やめる」の確認が出ます。退出すると部屋から消え、人がいなくなった部屋は無くなります。過去の会話は残りません。</dd>
   </dl>
 
-  <h2 id="broadcast">9. 主のお茶会（配信部屋）</h2>
+  <h2 id="broadcast">9. 主のお茶会（配信部屋）<span class="sec-chip">配信したい人向け</span></h2>
   <p>「あなたが話し、ほかの人は聞く」形の部屋です。作るときに <span class="kbd">📣 配信部屋にする</span> を選びます。</p>
   <ul>
     <li><strong>聞き役で入った人はマイクを使いません</strong>（許可も求められません）。共有リンクは 1 種類だけで、主だけの秘密のリンクはありません。</li>
     <li>誰かに話してもらいたくなったら、メンバーの 🎙 を押すと<strong>その人も話せます</strong>（もう一度押すと戻ります）。許された人の画面には「マイクを使う」が出て、押すまでマイクは入りません。</li>
     <li>主かどうかは URL ではなく<strong>部屋を作った端末</strong>で決まります（鍵をブラウザに保存しています）。別の端末や、データを消したあとでは、同じ部屋の主には戻れません。</li>
-    <li>「話してよい人」の一覧は主が署名して配り、各自のブラウザが確かめてから音を鳴らします。<strong>名乗るだけでは主になれない</strong>仕組みです。</li>
+    <li>「話してよい人」の一覧は主が署名して配り、各自のブラウザが確かめてから音を鳴らします。<strong>名乗るだけでは主になれない</strong>仕組みです（<a href="../tech/#broadcast">しくみ</a>）。</li>
     <li>主がいなくなると、聞き役の画面は 60 秒待ちます。戻れば何事もなく続き、戻らなければ「配信が終了しました」と出て 15 秒後に一覧へ戻ります。</li>
   </ul>
 
-  <h2 id="mail">10. おたより</h2>
+  <h2 id="mail">10. おたより<span class="sec-chip">配信部屋だけ</span></h2>
   <p>ラジオの投稿コーナーです（配信部屋だけ）。</p>
   <ol>
     <li>主：📮 おたよりタブでお題を書いて<span class="kbd">募集する</span>（例：最近食べて美味しかったもの）。</li>
