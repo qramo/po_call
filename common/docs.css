@@ -61,7 +61,11 @@ code{ font-family:ui-monospace,Menlo,monospace; font-size:.92em; background:var(
 .note{ border-left:3px solid var(--warm); padding:6px 14px; color:var(--note); font-size:15px; background:var(--card); border-radius:0 12px 12px 0 }
 /* 固定部屋のバナー（在室は common/presence.js が書く） */
 .pots{ display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); margin-top:14px }
-/* 押せる（アプリが開く）ことを、読むだけの面（.card .trust .env）と見た目で分ける：
+/* ★ライブバナーの正本（2026-09-21・利用者の方針）：「押すとアプリが開く」ものはすべてこの見た目に揃える。
+   今後の埋め込みバナー（tools/banner.html＝ブログ用 iframe）や部屋ごとの「ライブ中」バッジもここに合わせる。
+   仕様：角丸 22px／輪郭 2px ティール（--accent-soft）／影 0 4px 16px／右端に「›」／在室があれば --accent の輪郭＋光彩／
+   ホバーで 2px 浮く。読むだけの面は 1px の薄い輪郭・影なし・角丸 14〜16px（.card .trust .env）。
+   押せる（アプリが開く）ことを、読むだけの面と見た目で分ける：
    太いティールの輪郭＋影＋右端の矢印。読む面は 1px の薄い輪郭で影なし */
 .pot{ position:relative; display:grid; grid-template-columns:auto 1fr; gap:12px 14px; align-items:center; padding:16px 44px 16px 16px; border-radius:22px;
   background:var(--panel); border:2px solid var(--accent-soft); box-shadow:0 4px 16px rgba(0,0,0,.08); color:var(--body); text-decoration:none;
