@@ -153,7 +153,12 @@
   .help-links{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:0 0 14px }
   .help-links a{ display:flex; flex-direction:column; gap:2px; padding:10px 12px; border-radius:12px; background:var(--chip); color:var(--text); text-decoration:none; border:1px solid var(--border-soft) }
   .help-links a:hover{ background:var(--chip-hover) }
+  .help-links a{ position:relative; padding-right:30px }
+  .help-links a::after{ content:''; position:absolute; right:10px; top:11px; width:14px; height:14px; opacity:.55;
+    background:currentColor; -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 3h6v6'/%3E%3Cpath d='M10 14 21 3'/%3E%3Cpath d='M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5'/%3E%3C/svg%3E") center/contain no-repeat;
+    mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 3h6v6'/%3E%3Cpath d='M10 14 21 3'/%3E%3Cpath d='M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5'/%3E%3C/svg%3E") center/contain no-repeat }
   .help-links b{ font-size:14px } .help-links span{ font-size:12px; color:var(--note) }
+  .help-links-note{ font-size:12px; color:var(--note); margin:-8px 0 14px !important }
   .help-dialog code{ background:var(--panel); padding:1px 5px; border-radius:5px; font-size:12px }
   .help-dialog p.help-sub{ margin:12px 0 3px; font-size:12px; font-weight:700; color:var(--sub) }
   .help-dialog p.help-tip{ background:var(--panel); border:1px solid var(--border-faint); border-radius:10px; padding:10px 12px; font-size:12.5px; line-height:1.7 }
@@ -1163,8 +1168,9 @@
     <a href="https://potalk.app/start/" target="_blank" rel="noopener"><b>はじめに</b><span>初めての方へ</span></a>
     <a href="https://potalk.app/manual/" target="_blank" rel="noopener"><b>使い方</b><span>画面の順に説明</span></a>
     <a href="https://potalk.app/tech/" target="_blank" rel="noopener"><b>しくみ</b><span>サーバなしで動く理由</span></a>
-    <a href="https://potalk.app/about/" target="_blank" rel="noopener"><b>運営</b><span>制作者・プライバシー</span></a>
+    <a href="https://potalk.app/about/" target="_blank" rel="noopener"><b>運営</b><span>制作者と方針</span></a>
   </div>
+  <p class="help-links-note">↗ 別のタブで開きます。通話は切れません</p>
 
   <details class="help-sec" open><summary>はじめての参加方法</summary>
     <ol>
