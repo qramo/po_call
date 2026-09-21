@@ -9,6 +9,9 @@ const STALE_MS = 90000   // これだけ新着が無ければ「その人は席�
 const GRACE_MS = 8000    // 接続直後、これだけ待って在室が無ければ「冷めている」で確定（それまでは「確認中」）
 
 const pots = [...document.querySelectorAll('.pot[data-room]')]
+// ★リンクは data-room から機械的に組む（手で %-エンコードした href が、全角の「５」と半角の「5」を取り違えて
+//   別の部屋を作っていた。2026-09-21・やまびこ部屋）。固定の部屋は ID＝名前なので room と name に同じ値を入れる
+for (const el of pots) { const q = encodeURIComponent(el.dataset.room); el.href = '../#room=' + q + '&name=' + q }
 if (pots.length) {
   const hash = async name => {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('potto:' + name))
