@@ -61,14 +61,18 @@ code{ font-family:ui-monospace,Menlo,monospace; font-size:.92em; background:var(
 .note{ border-left:3px solid var(--warm); padding:6px 14px; color:var(--note); font-size:15px; background:var(--card); border-radius:0 12px 12px 0 }
 /* 固定部屋のバナー（在室は common/presence.js が書く） */
 .pots{ display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); margin-top:14px }
-.pot{ display:grid; grid-template-columns:auto 1fr; gap:12px 14px; align-items:center; padding:14px 16px; border-radius:16px;
-  background:var(--panel); border:1px solid var(--border); color:var(--body); text-decoration:none; transition:transform .15s }
-.pot:hover{ transform:translateY(-1px); color:var(--body) }
+/* 押せる（アプリが開く）ことを、読むだけの面（.card .trust .env）と見た目で分ける：
+   太いティールの輪郭＋影＋右端の矢印。読む面は 1px の薄い輪郭で影なし */
+.pot{ position:relative; display:grid; grid-template-columns:auto 1fr; gap:12px 14px; align-items:center; padding:16px 44px 16px 16px; border-radius:22px;
+  background:var(--panel); border:2px solid var(--accent-soft); box-shadow:0 4px 16px rgba(0,0,0,.08); color:var(--body); text-decoration:none;
+  transition:transform .15s, box-shadow .15s }
+.pot::after{ content:"›"; position:absolute; right:16px; top:50%; transform:translateY(-50%); font-size:30px; line-height:1; color:var(--accent-soft) }
+.pot:hover{ transform:translateY(-2px); box-shadow:0 8px 22px rgba(0,0,0,.12); color:var(--body) }
 .pot .ic{ font-size:30px; line-height:1; width:40px; text-align:center; grid-row:span 2 }
 .pot .name{ font-weight:700; color:var(--text) }
 .pot .state{ font-size:14px; color:var(--note) }
 .pot .state b{ color:var(--accent-soft); font-weight:700 }
-.pot.live{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim) }
+.pot.live{ border-color:var(--accent); box-shadow:0 0 0 4px var(--accent-dim), 0 4px 16px rgba(0,0,0,.08) }
 .pot.live .ic{ animation:steam 2.2s ease-in-out infinite }
 @keyframes steam{ 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-2px) } }
 @media (prefers-reduced-motion:reduce){ .pot.live .ic{ animation:none } }
