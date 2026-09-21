@@ -79,7 +79,7 @@
 
   <h2 id="overview">1. 全体像</h2>
   <div class="fig">
-    <svg viewBox="0 0 720 340" role="img" aria-label="全体像。声は暗号化したまま中央の Cloudflare TURN 中継を通ってブラウザどうしを行き来し、相手探しは公開 Nostr リレー、中継の鍵は小さな Worker が配る。直接接続は中継が使えないときだけの予備">
+    <svg viewBox="0 0 720 350" role="img" aria-label="全体像。声は暗号化したまま中央の Cloudflare TURN 中継を通ってブラウザどうしを行き来し、相手探しは公開 Nostr リレー、中継の鍵は小さな Worker が両方のブラウザに配る。直接接続は中継が使えないときだけの予備">
       <!-- 上：相手探し -->
       <rect class="box" x="270" y="16" width="180" height="56" rx="12"/>
       <text class="lbl" x="360" y="39" text-anchor="middle">公開 Nostr リレー</text>
@@ -100,15 +100,16 @@
       <path class="voice" d="M190 163 H255"/>
       <path class="voice" d="M465 163 H530"/>
       <text class="cap" x="360" y="116" text-anchor="middle">声（WebRTC・暗号化）</text>
-      <!-- 下：予備の直接接続と、鍵を配る Worker -->
-      <path class="fb" d="M150 208 C 250 290, 470 290, 570 208"/>
-      <text class="cap" x="360" y="290" text-anchor="middle" style="font-size:10.5px;opacity:.75">直接接続（中継が使えないときだけの予備）</text>
-      <rect class="op" x="20" y="280" width="220" height="48" rx="12"/>
-      <text class="lbl" x="130" y="300" text-anchor="middle">pot-turn（運営の Worker）</text>
-      <text class="sub" x="130" y="317" text-anchor="middle">中継の合鍵を配るだけ。声は通らない</text>
-      <path class="sig" d="M60 208 V280"/>
+      <!-- 下：予備の直接接続と、鍵を配る Worker（両方のブラウザが取りに行く） -->
+      <path class="fb" d="M150 208 C 250 262, 470 262, 570 208"/>
+      <text class="cap" x="360" y="238" text-anchor="middle" style="font-size:10.5px;opacity:.75">直接接続（中継が使えないときだけの予備）</text>
+      <rect class="op" x="250" y="286" width="220" height="48" rx="12"/>
+      <text class="lbl" x="360" y="306" text-anchor="middle">pot-turn（運営の Worker）</text>
+      <text class="sub" x="360" y="323" text-anchor="middle">中継の合鍵を配るだけ。声は通らない</text>
+      <path class="sig" d="M40 208 V310 H250"/>
+      <path class="sig" d="M680 208 V310 H470"/>
     </svg>
-    <p class="figcap">太い線＝声（ふだんは中継を通る。相手にあなたの IP は見えない）、点線＝合図、薄い点線＝中継が使えないときだけの直接接続。運営が動かしているのは破線の枠の Worker だけで、それは短命の鍵を発行するだけです。</p>
+    <p class="figcap">太い線＝声（ふだんは中継を通る。相手にあなたの IP は見えない）、点線＝合図、薄い点線＝中継が使えないときだけの直接接続。運営が動かしているのは破線の枠の Worker だけで、それは両方のブラウザに短命の鍵を発行するだけです。</p>
   </div>
   <p>ブラウザに読み込まれるのは <code>index.html</code> 1 枚と、実行時に CDN から読む Trystero というライブラリだけです。ビルドも、パッケージ管理も、バックエンドもありません。</p>
 
