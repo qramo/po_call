@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.24
+  ぽっと通話〈実験版〉 v0.14.25
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -148,6 +148,12 @@
   .help-dialog ul, .help-dialog ol{ margin:0 0 12px; padding-left:1.3em; font-size:13.5px; color:var(--body); line-height:1.65 }
   .help-dialog li{ margin:4px 0 }
   .help-dialog a{ color:var(--link) }
+  /* 案内ページへの導線（v0.14.25・ヘルプのダイエット：詳しい説明は potalk.app/start/ 以下へ移した）。
+     通話中に同じタブで飛ぶと通話が切れるので、**必ず別タブ**（target=_blank） */
+  .help-links{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:0 0 14px }
+  .help-links a{ display:flex; flex-direction:column; gap:2px; padding:10px 12px; border-radius:12px; background:var(--chip); color:var(--text); text-decoration:none; border:1px solid var(--border-soft) }
+  .help-links a:hover{ background:var(--chip-hover) }
+  .help-links b{ font-size:14px } .help-links span{ font-size:12px; color:var(--note) }
   .help-dialog code{ background:var(--panel); padding:1px 5px; border-radius:5px; font-size:12px }
   .help-dialog p.help-sub{ margin:12px 0 3px; font-size:12px; font-weight:700; color:var(--sub) }
   .help-dialog p.help-tip{ background:var(--panel); border:1px solid var(--border-faint); border-radius:10px; padding:10px 12px; font-size:12.5px; line-height:1.7 }
@@ -171,7 +177,6 @@
   .help-sec[open] > summary::after{ transform:rotate(180deg) }
   .help-sec > *:not(summary):first-of-type{ margin-top:2px }
   .help-sec > *:last-child{ margin-bottom:10px }
-  .help-follow{ display:block; width:100%; max-width:240px; margin:6px auto 12px; border-radius:14px }
   .help-dialog p.help-credit{ font-size:12.5px; color:var(--sub) }
   .help-hide{ display:flex; align-items:center; gap:8px; margin:20px 0 12px; font-size:13px; color:var(--sub); cursor:pointer }
   .help-hide input{ width:auto; margin:0; padding:0; accent-color:var(--accent) }
@@ -1150,110 +1155,44 @@
   <button id="helpX" class="help-x" type="button" aria-label="閉じる">✕</button>
   <h2>🫖 これはなに？</h2>
 
-  <p>同じ部屋名を開いた人どうしが、そのまま音声でおしゃべりできる実験的なミニ通話Webアプリです。アプリのインストールはいらず、ブラウザだけで使えます。配信アプリ <b>POPOPO</b> にインスパイアされて作りました。</p>
+  <p>登録なし・インストールなしで、居合わせた人と<b>声だけで話せる</b>小さなお茶の席です。同じ部屋を開いた人どうしが、そのまま話せます。配信アプリ POPOPO にインスパイアされて作りました。</p>
   <p class="help-warn">⚠️ 実験中です。ご利用は自己責任で！</p>
 
-  <details class="help-sec"><summary>つかいかた</summary>
-    <p class="help-sub">まず（共通）</p>
-    <ul><li>名前とアバター（絵文字）を決める（ブラウザに保存され、次回も引き継ぎます）</li></ul>
-    <p class="help-sub">部屋を作る</p>
-    <ol><li>部屋名を入れて「参加する」→ マイクを許可</li><li>同じ部屋名・共有リンク・QRコードを相手に渡す</li></ol>
-    <p class="help-sub">部屋に入る</p>
-    <ul><li>「通話中の部屋」から選んでタップ（共有リンク／QRからも入れます）→ マイクを許可</li></ul>
-    <p class="help-tip">💡 共有リンク＝その部屋への入口です。開けば同じ部屋に入れます（同じ名前でも別の部屋が作れるので、名前ではなくリンクで合流します）。</p>
-  </details>
+  <!-- 詳しい説明は案内ページへ（v0.14.25 で本体のヘルプを短くした）。別タブで開く＝通話を切らない -->
+  <div class="help-links">
+    <a href="https://potalk.app/start/" target="_blank" rel="noopener"><b>はじめに</b><span>初めての方へ</span></a>
+    <a href="https://potalk.app/manual/" target="_blank" rel="noopener"><b>使い方</b><span>画面の順に説明</span></a>
+    <a href="https://potalk.app/tech/" target="_blank" rel="noopener"><b>しくみ</b><span>サーバなしで動く理由</span></a>
+    <a href="https://potalk.app/about/" target="_blank" rel="noopener"><b>運営</b><span>制作者・プライバシー</span></a>
+  </div>
 
-  <details class="help-sec"><summary>📣 配信部屋</summary>
-    <p>「あなたが話し、ほかの人は聞く」形の部屋です。部屋名の下で <b>📣 配信部屋にする</b> を選んで参加すると作れます（既定は <b>🏠 雑談部屋</b>＝全員で話せる、これまでどおりの部屋）。共有リンクは <b>1種類だけ</b>（配信者用の秘密のリンクはありません）。</p>
-    <ul>
-      <li>聞き役で入った人は <b>マイクを使いません</b>（許可を求められません）</li>
-      <li>誰かに話してもらいたくなったら、参加者リストの 🎙 を押すと <b>その人も話せます</b>（もう一度押すと戻ります）</li>
-      <li>許された人の画面には「マイクを使う」が出ます。<b>押すまでマイクは入りません</b></li>
-    </ul>
-    <p class="help-tip">💡 配信者かどうかは URL ではなく <b>部屋を作った端末</b>で決まります（鍵をブラウザに保存しています）。別の端末やデータを消したあとでは、同じ部屋の配信者に戻れません。</p>
-    <p class="help-tip">💡 「話してよい人」の一覧は配信者が署名して配っており、各自のブラウザが確かめてから音を鳴らします。<b>名乗るだけでは配信者になれません。</b></p>
-  </details>
-
-  <details class="help-sec"><summary>📮 おたより（配信部屋）</summary>
-    <p>ラジオの投稿コーナーです。配信者がお題を出して募集し、聞いている人が書いて送り、<b>配信者が選んだお便りだけ</b>が部屋に出ます。</p>
+  <details class="help-sec" open><summary>はじめての参加方法</summary>
     <ol>
-      <li>配信者：<b>📮 おたより</b>タブでお題を書いて「募集する」（例：最近食べて美味しかったもの）</li>
-      <li>聞いている人：同じタブにお題が出るので、お便りを書いて「送る」（<b>送り直せます</b>。1人1通）</li>
-      <li>配信者：集まったお便りから選んで「公開」。全員の画面に出ます</li>
+      <li><b>部屋を選ぶ</b>：下の「通話中の部屋」から。誰もいなくても、入って待てば次に来た人と話せます</li>
+      <li><b>名前を決めて「参加する」</b>：本名でなくて大丈夫。マイクの使用を聞かれたら「許可」（一度だけ）</li>
+      <li><b>ひとこと挨拶する</b>：「こんにちは」だけで十分。聞いているだけでもかまいません</li>
     </ol>
-    <p class="help-tip">💡 <b>送ったお便りは配信者にしか届きません</b>（ほかの人の画面には出ません）。公開されたものだけが部屋に出ます。</p>
-    <p class="help-tip">💡 公開されるのは<b>いつも1通だけ</b>。次を公開すると入れ替わります。読み終えたら「公開をやめる」で下げられます。</p>
+    <p>友だちを呼ぶときは、部屋に入ってから<b>共有リンク</b>か <b>QR コード</b>を渡します。リンクがそのまま部屋の入口です。</p>
   </details>
 
-  <details class="help-sec"><summary>できること</summary>
+  <details class="help-sec"><summary>注意</summary>
     <ul>
-      <li>☎️ ロビー：いま通話中の部屋が一覧で見える（続いている時間も）</li>
-      <li>👥 参加者：名前・絵文字が出て、話している人の絵文字が跳ねる／ミュートも表示</li>
-      <li>🌱 育てる：使うほどあなたの絵文字が成長（🌱→🌿→🌷or🌻→❓）</li>
-      <li>🔔 音：入室・退出や新しい部屋を音で知らせる（それぞれオン/オフ。新しい部屋の音はタブを開いている間だけ）</li>
-      <li>🔊 音量：通話中の ⚙️ 設定タブで、<b>この通話の音だけ</b>を下げられる（動画や音楽と一緒に聞くとき用。他のアプリの音はそのまま）</li>
-      <li>🎵 BGM：⚙️ 設定タブで <b>軽快な音楽</b> か <b>アンビエント空間</b> を選べる（既定はオフ。<b>自分にだけ鳴り</b>、曲は部屋名で決まります。イヤホン推奨）</li>
-      <li>📱 iPhone の注意：<b>音を出す他のアプリ（写真・動画など）に切り替えると、通話の音が一時的に止まります</b>（iOS の仕様で、こちらからは防げません。ふつうの音声配信サイトでも同じです）。そのアプリの音が止まれば自動で鳴り直します</li>
-      <li>📱 小窓：通話中に <b>📱 小窓</b> を押すと、部屋名を書いた小さな窓が最前面に浮きます。他のアプリを見ている間も<b>通話中だと分かり、タップで一発で戻れます</b>。ホーム画面に追加したアプリでは使えません</li>
-      <li>👥 人数：ふつうの部屋は <b>8人</b>、📣 配信部屋は <b>15人</b>まで（全員が全員に繋がる仕組みなので、多いと音が途切れます）</li>
+      <li>マイクの許可が必要です。<b>Safari / Chrome で開いてください</b>（LINE や X の中のブラウザは不可）</li>
+      <li>iPhone では「音声を有効化」が出ることがあります。画面のどこかをタップすると鳴ります</li>
+      <li>快適なのは <b>4〜6 人</b>くらいまで（全員が全員につながる方式のため）</li>
+      <li>非公開の部屋はありません。人がいる部屋はかならず一覧に出ます</li>
+      <li>過去の会話は残りません（録音・保存なし）。ブラウザが違えば別の人として扱われます</li>
     </ul>
-  </details>
-
-  <details class="help-sec"><summary>いつもある部屋</summary>
-    <ul>
-      <li>🫖 <b>ぽっと通話にようこそ</b>：はじめての人向けの案内が流れています。一人で入っても声が聞こえます</li>
-      <li>⛰️ <b>やまびこ部屋</b>：接続テスト用。話すと自分の声が<b>5秒後に返ってきます</b>（ちゃんと繋がっているかの確認に）。<b>イヤホン推奨</b>（スピーカーだと自分の声が繰り返すことがあります）</li>
-    </ul>
-    <p class="help-tip">💡 これらは運営PCで動いている部屋なので、動いていない時間帯は一覧に出ないことがあります。</p>
-  </details>
-
-  <details class="help-sec"><summary>しくみ・プライバシー</summary>
-    <ul>
-      <li>通話は<b>ブラウザどうしを直接つなぐ仕組み（WebRTC）</b>です。運営はサーバを持たず（サーバレス）、通話の中身が運営の手元を通ることはありません</li>
-      <li>音声は<b>暗号化</b>してやり取り（サーバに録音・保存されません）。ふだんは Cloudflare の中継を通すので、<b>相手にあなたの IP アドレスは見えません</b>（中継先も暗号化された中身は聞けません）</li>
-      <li>中継を通せなかったときは、そのまま<b>相手と直接つなぎます</b>。通話はふつうに使えますが、<b>そのときだけ相手にあなたの IP アドレスが見えます</b>。いまどちらかは、参加者リストの右端の印（<b>☁️＝中継／↔＝直接</b>）で一人ずつ分かります</li>
-      <li><b>非公開の部屋は作れません。</b>通話中の部屋は<b>かならずロビーに出ます</b>（部屋名・参加者・どのくらい続いているか・話しているかどうか）。隠す設定はどこにもない、というつくりです</li>
-      <li>通話中は「その部屋が今ライブか」を外部（ブログのバナー等）が表示できるよう、在室情報を公開Nostrリレーに送っています。<b>部屋名そのものは送らず、伏せた値（ハッシュ）</b>にしているので、部屋名を知らない人に一覧で覗かれることはありません（運営サーバは介しません）</li>
-      <li>アクセス数の測定に Cloudflare Web Analytics を使用（Cookie不使用・個人は特定しません）</li>
-    </ul>
-  </details>
-
-  <details class="help-sec"><summary>注意（実験版）</summary>
-    <ul>
-      <li>実験中のため、切断や不具合が起きることがあります</li>
-      <li>マイクの許可が必要です。<b>Safari / Chrome</b> で開いてください（アプリ内ブラウザは不可）</li>
-      <li>iPhoneでは「音声を有効化」ボタンが出ることがあります</li>
-      <li>快適なのは <b>4〜6人</b> くらいまで（全員が全員につながる方式のため）</li>
-      <li>回線によっては稀につながらないことがあります</li>
-      <li>過去の会話は残りません（録音保存なし）</li>
-      <li>ブラウザは別々に扱われます：スマホとPCは別、PCでもSafari/Chromeなど別ソフトは別、同じChromeでもプロファイルが違えば別ブラウザ扱い（名前や成長は引き継がれません）。<b>ホーム画面に追加したものも別扱い</b>です（追加すると名前と絵文字は選び直しから、育てるも最初からになります）</li>
-      <li>利用で生じた損害は自己責任で。一般的なモラルを守ってお使いください。（利用ガイドライン作成中）</li>
-    </ul>
+    <p>詳しくは<a href="https://potalk.app/manual/#trouble" target="_blank" rel="noopener">使い方の「困ったとき」</a>へ。</p>
   </details>
 
   <details class="help-sec"><summary>💬 ご意見・質問・不具合報告</summary>
-    <p>質問・ご意見・不具合報告は掲示板へどうぞ。<b>アカウント不要・匿名で書けます</b>。みんなで助け合おう。</p>
-    <p><a href="https://z.wikiwiki.jp/potalk/" target="_blank" rel="noopener">ぽっと通話 ご意見・質問ばん<svg style="width:.85em;height:.85em;vertical-align:-2px;margin-left:4px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/></svg></a></p>
-    <p class="help-tip">💡 不具合は「いつ／どの端末・ブラウザ／どうなったか」を書いてもらえると助かります。</p>
-    <p style="font-size:12px;color:#9fb0c7;margin-top:8px">※ 掲示板は外部サービス（<a href="https://z.wikiwiki.jp/" target="_blank" rel="noopener">zawazawa</a>）を利用しています。書いた内容は外部サービス側に公開されます。</p>
-  </details>
-
-  <details class="help-sec"><summary>運営について</summary>
-    <p><a href="https://github.com/po-talk/po-talk.github.io" target="_blank" rel="noopener">オープンソース</a>・自由利用の精神で公開しています。運営なし・個別サポートはできませんが、質問やご意見は<a href="https://z.wikiwiki.jp/potalk/" target="_blank" rel="noopener">掲示板</a>へどうぞ（ごめんね、そのぶんみんなで助け合えたら）。</p>
-  </details>
-
-  <details class="help-sec"><summary>POPOPOから来た方へ</summary>
-    <ul>
-      <li>ホロスーツはありません、ごめんね🙏</li>
-      <li>画像投稿は<b>計画中</b>（応援よろしく！）</li>
-      <li>その他要望募集中</li>
-    </ul>
+    <p><a href="https://z.wikiwiki.jp/potalk/" target="_blank" rel="noopener">ぽっと通話 ご意見・質問ばん</a>へどうぞ。アカウント不要・匿名で書けます。「いつ／どの端末・ブラウザ／どうなったか」があると助かります。</p>
+    <p style="font-size:12px;color:#9fb0c7;margin-top:8px">※ 掲示板は外部サービス（<a href="https://z.wikiwiki.jp/" target="_blank" rel="noopener">zawazawa</a>）です。書いた内容は外部サービス側に公開されます。</p>
   </details>
 
   <details class="help-sec"><summary>制作者</summary>
-    <p>♨️🦈 <b>qramo(ｸﾗﾓ) on POPOPO</b> ／ 📡 POPOPO枠で開発配信中！<br>スマホで読み取ってフォローしてね👇</p>
-    <img class="help-follow" src="images/popopo-follow.png" alt="POPOPO で qramo をフォロー（QRコード）" loading="lazy">
-    <p><a href="https://www.popopo.com/users/BRhRf3YRbFTgfJD7SLKYmZ8f2Z42" target="_blank" rel="noopener">POPOPOのプロフィール →</a></p>
+    <p>♨️🦈 qramo（クラモ）<a href="https://x.com/qraPo3" target="_blank" rel="noopener">@qraPo3</a>。開発の報告や勉強会は、ぽっと通話の部屋で開きます（日時は X で）。</p>
     <p class="help-credit">🤖 開発は <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a> と一緒に</p>
   </details>
 
@@ -1335,7 +1274,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.24'
+const APP_VERSION = 'v0.14.25'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
