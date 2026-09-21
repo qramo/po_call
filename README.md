@@ -304,12 +304,57 @@ python3 -m http.server 8000
 
 このアプリは [Cloudflare Web Analytics](https://www.cloudflare.com/web-analytics/)（**Cookie不使用・個人を特定しない匿名集計**）で**アクセス数だけ**を測っています。透明性のため、その集計を公開します。個々の通話内容・在室・音声は一切測っていません（そもそも測る仕組みがありません）。
 
-**集計期間：2026/07/12〜07/25（JST）／累計訪問数：610**
+**集計期間：2026/08/23〜09/21（JST）／累計訪問数：2,200**
 
-> ※ この数字は 2026/07/25 時点のものです（最終更新 2026/09/14）。次の集計で差し替えます。
-数値は Cloudflare 側で10単位に丸められた概数、2026/07/26 時点のスナップショットです。公開した 7/19 以降に立ち上がり、告知を広げた **7/24 に約160/日でピーク**。
+> ※ この数字は 2026/09/21 時点のものです（最終更新 2026/09/21）。次の集計で差し替えます。**このぶんから、本番（potalk.app）と旧URL（β・qramo.github.io/po_call/）を合算**しています（下の過去の集計は旧URLのみ）。
+数値は Cloudflare 側で10単位に丸められた概数。**9/19 に約430/日でピーク**。
 
 ![訪問数の推移（Cloudflare Web Analytics）](images/readme/analytics-visits.png)
+
+**ホスト別（本番 / 旧URL）**
+
+| ホスト | 訪問 |
+|---|--:|
+| potalk.app（本番） | 1,870 |
+| qramo.github.io（旧URL・β） | 330 |
+
+**国別**
+
+| 国 | 訪問 |
+|---|--:|
+| 日本 | 2,150 |
+| アメリカ | 50 |
+
+![国別アクセス（日本 / アメリカ）](images/readme/analytics-countries.png)
+
+**参照元（どこから来たか・上位5）**
+
+| 参照元 | 訪問 |
+|---|--:|
+| なし（直接アクセス） | 1,410 |
+| t.co（X / Twitter） | 350 |
+| www.google.com（検索） | 230 |
+| wanderingdj.jp | 140 |
+| jp.naver.line.android（LINE） | 40 |
+
+**デバイス / OS / ブラウザ**
+
+| デバイス | 訪問 | | OS | 訪問 | | ブラウザ | 訪問 |
+|---|--:|---|---|--:|---|---|--:|
+| モバイル | 1,610 | | iOS | 860 | | Chrome Mobile | 780 |
+| デスクトップ | 550 | | Android | 620 | | Mobile Safari | 660 |
+| タブレット | 40 | | macOS | 300 | | Chrome | 210 |
+| | | | 不明 | 190 | | 不明 | 190 |
+| | | | Linux | 130 | | Firefox | 130 |
+
+![参照元・パス・ホスト・ブラウザ・OS・デバイスの内訳](images/readme/analytics-sources.png)
+
+<details>
+<summary>📜 過去の集計（2026/07/12〜07/25・旧URLのみ・累計訪問数 610）</summary>
+
+数値は Cloudflare 側で10単位に丸められた概数、2026/07/26 時点のスナップショットです。公開した 7/19 以降に立ち上がり、告知を広げた **7/24 に約160/日でピーク**。当時はすべてページ全体（当時のURL `qramo.github.io/po_call/`）へのアクセスです。
+
+![訪問数の推移（2026/07）](images/readme/archive/2026-07-25/analytics-visits.png)
 
 **国別**
 
@@ -318,7 +363,7 @@ python3 -m http.server 8000
 | 日本 | 590 |
 | アメリカ | 20 |
 
-![国別アクセス（日本 / アメリカ）](images/readme/analytics-countries.png)
+![国別アクセス（2026/07）](images/readme/archive/2026-07-25/analytics-countries.png)
 
 **参照元（どこから来たか）**
 
@@ -340,9 +385,11 @@ python3 -m http.server 8000
 | | | | Windows | 30 | | Firefox | 10 |
 | | | | 不明 | 30 | | 不明 | ※ |
 
-![参照元・パス・ホスト・ブラウザ・OS・デバイスの内訳](images/readme/analytics-sources.png)
+![参照元・パス・ホスト・ブラウザ・OS・デバイスの内訳（2026/07）](images/readme/archive/2026-07-25/analytics-sources.png)
 
-※ ブラウザの「不明（Unknown）」は元画面で数値が隠れていたため未記載。すべてページ全体（当時のURL `qramo.github.io/po_call/`）へのアクセスです。
+※ ブラウザの「不明（Unknown）」は元画面で数値が隠れていたため未記載。
+
+</details>
 
 ---
 
