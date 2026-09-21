@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ぽっと通話 ― 知らない人と、アフタヌーンティー</title>
-<meta name="description" content="登録なし、アプリなし。リンクひとつで、居合わせた人と声だけで話せる小さなお茶の席。ブラウザを開いて、名前を決めて、ポットが温かいテーブルへどうぞ。">
+<meta name="description" content="はじめての方へ。ぽっと通話は、登録なし・アプリなしで、居合わせた人と声だけで話せる小さなお茶の席です。参加方法の 3 ステップと、いま人がいるテーブル、はじめての人がよく聞くこと。">
 <meta property="og:type" content="website">
 <meta property="og:title" content="ぽっと通話 ― 知らない人と、アフタヌーンティー">
-<meta property="og:description" content="登録なし、アプリなし。リンクひとつで、居合わせた人と声だけで話せる小さなお茶の席。">
+<meta property="og:description" content="登録なし・アプリなしで、居合わせた人と声だけで話せる小さなお茶の席。はじめての参加方法はこちら。">
 <meta property="og:url" content="https://potalk.app/start/">
 <meta property="og:image" content="https://potalk.app/images/ogp.png">
 <meta property="og:image:width" content="1200">
@@ -44,6 +44,16 @@
   .trust{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); margin-top:12px }
   .trust div{ padding:12px 14px; border-radius:14px; background:var(--accent-dim); color:var(--text); font-size:15px }
   .trust b{ display:block }
+  .eyebrow{ display:inline-block; font-size:13px; letter-spacing:.06em; color:var(--accent-soft); background:var(--accent-dim); border-radius:999px; padding:2px 12px; margin-bottom:10px }
+  .hero .plain{ font-size:17px; color:var(--text); max-width:34em; margin-top:8px }
+  .hero .lead{ margin-top:6px }
+  .jump{ display:flex; flex-wrap:wrap; gap:10px; margin-top:18px }
+  .jump a{ min-height:44px; font-size:16px }
+  .ease{ margin-top:14px; padding:12px 16px; border-radius:14px; background:var(--accent-dim); color:var(--text); max-width:none }
+  .faq{ margin:8px 0; max-width:44em } .faq dt{ color:var(--text); font-weight:700; margin-top:14px } .faq dt::before{ content:"Q. "; color:var(--accent-soft) }
+  .faq dd{ margin:2px 0 0 0 } .faq dd::before{ content:"A. "; color:var(--note) }
+  details.more{ margin-top:14px } details.more summary{ cursor:pointer; color:var(--sub); font-weight:700; padding:6px 0 }
+  details.more summary::-webkit-details-marker{ color:var(--accent-soft) }
 </style>
 </head>
 <body>
@@ -58,8 +68,14 @@
 
   <header class="hero">
     <div>
+      <span class="eyebrow">はじめての方へ</span>
       <h1>知らない人と、<br>アフタヌーンティー。</h1>
-      <p class="lead">テーブルは、いくつあってもかまいません。空いている席に座るか、新しいテーブルをとるか。<b>ポットが温かければ、誰かがいる合図。</b>名前も登録もいりません。カップを置いて席を立てば、それでおしまい。</p>
+      <p class="plain">ぽっと通話は、<b>登録なし・アプリなし</b>で、居合わせた人と<b>声だけで話せる</b>小さなお茶の席です。ブラウザとマイクがあれば、いまから入れます。</p>
+      <p class="lead">ポットが温かければ、誰かがいる合図。カップを置いて席を立てば、それでおしまい。</p>
+      <div class="jump">
+        <a class="btn" href="#how-h">はじめての参加方法を見る</a>
+        <a class="btn ghost" href="#pots-h">いま参加できるテーブルを見る</a>
+      </div>
     </div>
     <svg class="art" viewBox="0 0 260 200" role="img" aria-label="湯気の立つティーポットと、ティーカップ">
       <!-- 湯気（ポット） -->
@@ -79,9 +95,20 @@
     </svg>
   </header>
 
+  <section aria-labelledby="how-h">
+    <h2 id="how-h">はじめての参加方法</h2>
+    <ol class="steps">
+      <li><b>テーブルを選ぶ</b>このページの下にある 2 つのテーブルか、アプリの「通話中の部屋」から選びます。誰もいなくても大丈夫。入って待つと、次に来た人と話せます。</li>
+      <li><b>名前を決めて「参加する」</b>名前と絵文字を決めます。本名でなくて大丈夫。ブラウザがマイクの使用を聞いてくるので「許可」を押します（一度だけ）。</li>
+      <li><b>ひとこと挨拶する</b>「こんにちは」だけで十分です。話すのが苦手なら、聞いているだけでもかまいません。</li>
+    </ol>
+    <p class="ease">はじめての参加でも大丈夫です。まずは気になるテーブルを、のぞいてみる感覚でどうぞ。</p>
+    <p><small>友だちと話したいときは、アプリで自分の部屋を作り、招待リンクか QR コードを送ります。リンクがそのまま席への入口です。</small></p>
+  </section>
+
   <section aria-labelledby="pots-h">
-    <h2 id="pots-h">いつもポットが温かいテーブル</h2>
-    <p>ふたつだけ、いつも用意してあるテーブルです。人がいれば「温かい」と出ます。いなくても、入って待っていれば次に来た人と話せます。</p>
+    <h2 id="pots-h">いま参加できるテーブル</h2>
+    <p>いつも用意してあるテーブルが 2 つあります。人がいれば「ポットが温かい」と出ます。押すとアプリが開き、その席につけます。</p>
     <div class="pots">
       <a class="pot" data-room="はじめましての部屋" href="../#room=%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%A6%E3%81%AE%E9%83%A8%E5%B1%8B&name=%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%A6%E3%81%AE%E9%83%A8%E5%B1%8B">
         <span class="ic">🫖</span>
@@ -96,39 +123,22 @@
         <span class="cta" data-fixed>5 秒後に自分の声が返ってきます。マイクの確認にどうぞ →</span>
       </a>
     </div>
-    <p><small>一つのテーブルに座れるのは 8 人まで。いっぱいなら、隣に新しいテーブルをとれます。</small></p>
+    <p><small>ほかにも、いま人がいるテーブルはアプリの「通話中の部屋」に並びます。一つのテーブルに座れるのは 8 人まで。いっぱいなら、新しい部屋を作れます。</small></p>
   </section>
 
-  <section aria-labelledby="how-h">
-    <h2 id="how-h">はじめかた</h2>
-    <ol class="steps">
-      <li><b>開く</b>ブラウザで potalk.app を開きます。アプリのインストールも、登録もいりません。</li>
-      <li><b>名前を決める</b>名前と絵文字を決めます。本名でなくて大丈夫。ブラウザが覚えていて、次回も同じです。</li>
-      <li><b>席につく</b>「通話中の部屋」から選んで入るか、部屋の名前をつけて新しいテーブルをとります。マイクの許可を一度だけ聞かれます。</li>
-    </ol>
-    <p>友だちを呼ぶときは、招待リンクか QR コードを送ります。リンクがそのまま席への入口です。</p>
-  </section>
-
-  <section aria-labelledby="can-h">
-    <h2 id="can-h">テーブルでできること</h2>
-    <ul class="feat">
-      <li><span class="ic">🎙️</span><div><b>声だけで話す</b><span>顔は出ません。ミュートはいつでも。</span></div></li>
-      <li><span class="ic">💬</span><div><b>ひとことと相づち</b><span>短い文字と、8 種類の絵文字のリアクション。</span></div></li>
-      <li><span class="ic">🏷️</span><div><b>話題タグ</b><span>いま何の話をしているか、席に札を立てられます。</span></div></li>
-      <li><span class="ic">📣</span><div><b>主のお茶会（配信部屋）</b><span>主の声だけが流れる席。聞くだけの人も座れます。おたよりも送れます。</span></div></li>
-      <li><span class="ic">🎵</span><div><b>BGM と小窓</b><span>静かな BGM を流したり、小さな窓に畳んでほかの画面を見ながら。</span></div></li>
-      <li><span class="ic">🌗</span><div><b>昼と夜</b><span>時刻で色が変わります。昼はミルクティー、夜は紺。</span></div></li>
-    </ul>
-  </section>
-
-  <section aria-labelledby="env-h">
-    <h2 id="env-h">使える環境</h2>
-    <div class="env">
-      <div><b>iPhone / iPad</b><br>Safari か Chrome。</div>
-      <div><b>Android</b><br>Chrome。</div>
-      <div><b>パソコン</b><br>Chrome、Edge、Safari、Firefox。</div>
-    </div>
-    <p class="note">LINE や X、Instagram の中で開いたブラウザではマイクが使えないことがあります。その場合は画面の案内から Safari や Chrome で開き直してください。</p>
+  <section aria-labelledby="faq-h">
+    <h2 id="faq-h">はじめての人がよく聞くこと</h2>
+    <dl class="faq">
+      <dt>はじめてでも参加できますか？</dt>
+      <dd>はい。登録も予約もいりません。空いているテーブルに入って、ひとこと挨拶すれば参加できます。</dd>
+      <dt>誰もいないときは？</dt>
+      <dd>入って待っていると、次に来た人と話せます。上のテーブルは、人がいるかどうかが見えます。</dd>
+      <dt>入ったら何をすればいいですか？</dt>
+      <dd>まず「こんにちは」とひとこと。話題タグを見ると、いま何の話をしているかが分かります。</dd>
+      <dt>話すのが苦手でも大丈夫ですか？</dt>
+      <dd>聞いているだけでも大丈夫です。相づちの絵文字や、短い文字の「ひとこと」でも参加できます。ミュートはいつでも。</dd>
+    </dl>
+    <p><small>もっと詳しくは<a href="../manual/#faq">使い方のよくある質問</a>へ。</small></p>
   </section>
 
   <section aria-labelledby="trust-h">
@@ -142,11 +152,32 @@
     <p><small>実験版です。予告なく変わることがあります。合わない人の声は「無視」で自分にだけ聞こえなくできます。詳しくは<a href="../manual/">使い方</a>と<a href="../tech/">しくみ</a>へ。</small></p>
   </section>
 
+  <section aria-labelledby="env-h">
+    <h2 id="env-h">使える環境</h2>
+    <div class="env">
+      <div><b>iPhone / iPad</b><br>Safari か Chrome。</div>
+      <div><b>Android</b><br>Chrome。</div>
+      <div><b>パソコン</b><br>Chrome、Edge、Safari、Firefox。</div>
+    </div>
+    <p class="note">LINE や X、Instagram の中で開いたブラウザではマイクが使えないことがあります。その場合は画面の案内から Safari や Chrome で開き直してください。</p>
+    <details class="more">
+      <summary>テーブルでできること</summary>
+      <ul class="feat">
+        <li><span class="ic">🎙️</span><div><b>声だけで話す</b><span>顔は出ません。ミュートはいつでも。</span></div></li>
+        <li><span class="ic">💬</span><div><b>ひとことと相づち</b><span>短い文字と、8 種類の絵文字のリアクション。</span></div></li>
+        <li><span class="ic">🏷️</span><div><b>話題タグ</b><span>いま何の話をしているか、席に札を立てられます。</span></div></li>
+        <li><span class="ic">📣</span><div><b>主のお茶会（配信部屋）</b><span>主の声だけが流れる席。聞くだけの人も座れます。おたよりも送れます。</span></div></li>
+        <li><span class="ic">🎵</span><div><b>BGM と小窓</b><span>静かな BGM を流したり、小さな窓に畳んでほかの画面を見ながら。</span></div></li>
+        <li><span class="ic">🌗</span><div><b>昼と夜</b><span>時刻で色が変わります。昼はミルクティー、夜は紺。</span></div></li>
+      </ul>
+    </details>
+  </section>
+
   <section aria-labelledby="go-h">
     <h2 id="go-h">では、席へ</h2>
-    <p>読むのはここまでで十分です。あとはテーブルを見て、空いている席へどうぞ。</p>
-    <div class="cta" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:14px">
-      <a class="btn" href="../">テーブルを見る</a>
+    <p>読むのはここまでで十分です。アプリを開いて、空いている席へどうぞ。</p>
+    <div class="jump">
+      <a class="btn" href="../">アプリを開いて席につく</a>
       <a class="btn ghost" href="../manual/">使い方を読む</a>
     </div>
   </section>
