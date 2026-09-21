@@ -7,6 +7,7 @@
   --text:#1e3a33; --sub:#4c6b61; --note:#5e766d; --body:#2c4a42; --link:#00685e; --accent:#00c9b0; --accent-soft:#0a7a6b; --accent-dim:#e8f6f2;
   --red:#e0502f; --relay:#d86a0a; --warm:#e9b35a; --steam:rgba(30,58,51,.35);
   --join-bg:#0a7a6b; --join-fg:#fffdf9;
+  --art-hl:.7; --art-shade:1;   /* /start/ のポットの絵：光と陰影の強さ（夜は弱める） */
 }
 @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
   --g1:#1c2b48; --g2:#0d1424; --g3:#090e1a; --panel:#0d1526; --card:rgba(255,255,255,.04); --card-border:rgba(255,255,255,.09);
@@ -14,6 +15,7 @@
   --text:#eef2f8; --sub:#b9c4d6; --note:#9fb0c6; --body:#d8e0ec; --link:#7ee0d0; --accent:#00c9b0; --accent-soft:#2ac5ae; --accent-dim:rgba(0,201,176,.14);
   --red:#ff7a5c; --relay:#f0934a; --warm:#f2c374; --steam:rgba(238,242,248,.35);
   --join-bg:#2ac5ae; --join-fg:#0d1526;
+  --art-hl:.18; --art-shade:.35;
 } }
 :root[data-theme="dark"]{
   --g1:#1c2b48; --g2:#0d1424; --g3:#090e1a; --panel:#0d1526; --card:rgba(255,255,255,.04); --card-border:rgba(255,255,255,.09);
@@ -21,6 +23,7 @@
   --text:#eef2f8; --sub:#b9c4d6; --note:#9fb0c6; --body:#d8e0ec; --link:#7ee0d0; --accent:#00c9b0; --accent-soft:#2ac5ae; --accent-dim:rgba(0,201,176,.14);
   --red:#ff7a5c; --relay:#f0934a; --warm:#f2c374; --steam:rgba(238,242,248,.35);
   --join-bg:#2ac5ae; --join-fg:#0d1526;
+  --art-hl:.18; --art-shade:.35;
 }
 *{ box-sizing:border-box }
 html{ -webkit-text-size-adjust:100% }

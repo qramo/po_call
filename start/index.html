@@ -28,9 +28,10 @@
   .hero .lead{ font-size:17px; color:var(--body); max-width:34em; margin-top:10px }
   .hero .lead b{ color:var(--text) }
   .hero .cta{ display:flex; flex-wrap:wrap; gap:10px; margin-top:18px }
-  .art{ width:min(260px,70vw); height:auto; display:block; color:var(--text) }
+  .art{ width:min(300px,78vw); height:auto; display:block; color:var(--text) }
   .art .body{ fill:var(--panel); stroke:currentColor; stroke-width:2.2; stroke-linejoin:round; stroke-linecap:round }
   .art .tea{ fill:var(--warm); opacity:.85 }
+  .art .hl{ opacity:var(--art-hl,.7) } .art .shade{ opacity:var(--art-shade,1) }
   .art .steam{ fill:none; stroke:var(--steam); stroke-width:2.4; stroke-linecap:round }
   .art .steam.a{ animation:rise 3.2s ease-in-out infinite } .art .steam.b{ animation:rise 3.2s ease-in-out .9s infinite } .art .steam.c{ animation:rise 3.2s ease-in-out 1.7s infinite }
   @keyframes rise{ 0%{ transform:translateY(0); opacity:.35 } 50%{ transform:translateY(-4px); opacity:.9 } 100%{ transform:translateY(-8px); opacity:0 } }
@@ -84,21 +85,41 @@
         <a class="btn ghost" href="#pots-h">いま参加できる部屋を見る</a>
       </div>
     </div>
-    <svg class="art" viewBox="0 0 260 200" role="img" aria-label="湯気の立つティーポットと、ティーカップ">
+    <svg class="art" viewBox="0 0 300 220" role="img" aria-label="湯気の立つティーポットと、ティーカップ">
+      <defs>
+        <linearGradient id="potShade" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".9"/><stop offset=".55" stop-color="#ffffff" stop-opacity="0"/><stop offset="1" stop-color="#5a4a30" stop-opacity=".16"/></linearGradient>
+        <radialGradient id="teaShade" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#f3cf86"/><stop offset="1" stop-color="#d69a3c"/></radialGradient>
+      </defs>
+      <!-- 影 -->
+      <ellipse cx="128" cy="197" rx="86" ry="7" fill="#5a4a30" opacity=".10"/>
+      <ellipse cx="243" cy="199" rx="36" ry="5" fill="#5a4a30" opacity=".10"/>
       <!-- 湯気（ポット） -->
-      <path class="steam a" d="M118 52c-6-8 6-14 0-22"/><path class="steam b" d="M134 48c-6-8 6-14 0-22"/><path class="steam c" d="M150 54c-6-8 6-14 0-22"/>
-      <!-- ポット：胴・注ぎ口・取っ手・蓋 -->
-      <path class="body" d="M86 96c0-18 14-30 48-30s48 12 48 30v22c0 22-18 36-48 36s-48-14-48-36z"/>
-      <path class="body" d="M182 104l30-14c6-3 10 4 6 9l-24 30c-3 4-8 2-12-2z"/>
-      <path class="body" d="M88 100c-18-2-30 10-28 24s16 20 26 14"/>
-      <path class="body" d="M112 70c0-8 10-14 22-14s22 6 22 14"/>
-      <circle class="body" cx="134" cy="52" r="4"/>
-      <!-- カップと受け皿（ポットの右下） -->
-      <path class="steam a" d="M224 116c-4-6 4-10 0-16"/>
-      <path class="body" d="M200 128h44v14c0 12-10 20-22 20s-22-8-22-20z"/>
-      <path class="tea" d="M202 130h40v10c0 4-2 8-6 10h-28c-4-2-6-6-6-10z"/>
-      <path class="body" d="M244 134c8 0 12 4 12 9s-6 9-14 8"/>
-      <path class="body" d="M192 166h60"/>
+      <path class="steam a" d="M108 62c-7-9 7-16 0-25"/><path class="steam b" d="M126 56c-7-9 7-16 0-25"/><path class="steam c" d="M144 63c-7-9 7-16 0-25"/>
+      <!-- 取っ手と注ぎ口（胴の後ろに描き、根元は胴で隠す） -->
+      <path class="body" d="M66 108c-36-2-52 26-40 50 7 14 26 20 40 12"/>
+      <!-- 胴 -->
+      <path class="body" d="M70 116c0-24 26-44 60-44s60 20 60 44c0 30 6 48-12 64-10 9-30 14-48 14s-38-5-48-14c-18-16-12-34-12-64z"/>
+      <path class="shade" d="M70 116c0-24 26-44 60-44s60 20 60 44c0 30 6 48-12 64-10 9-30 14-48 14s-38-5-48-14c-18-16-12-34-12-64z" fill="url(#potShade)"/>
+      <!-- 注ぎ口：塗り（胴の上に重ねて継ぎ目を消す）と、外側の線だけの輪郭 -->
+      <path d="M166 120C196 114 214 96 222 74C224 66 236 68 234 76C230 100 214 124 190 146Z" fill="var(--panel)"/>
+      <path class="body" d="M166 120C196 114 214 96 222 74C224 66 236 68 234 76C230 100 214 124 190 146" fill="none"/>
+      <!-- 胴の飾り（点のライン） -->
+      <g fill="currentColor" opacity=".35"><circle cx="96" cy="150" r="2.2"/><circle cx="112" cy="156" r="2.2"/><circle cx="130" cy="158" r="2.2"/><circle cx="148" cy="156" r="2.2"/><circle cx="164" cy="150" r="2.2"/></g>
+      <!-- 蓋 -->
+      <path class="body" d="M92 78c0-12 16-22 38-22s38 10 38 22"/>
+      <ellipse class="body" cx="130" cy="80" rx="46" ry="5"/>
+      <circle class="body" cx="130" cy="54" r="5"/>
+      <!-- 光 -->
+      <ellipse class="hl" cx="102" cy="104" rx="10" ry="16" fill="#ffffff" transform="rotate(-20 102 104)"/>
+      <!-- カップ：湯気・受け皿・器・紅茶・取っ手 -->
+      <path class="steam b" d="M236 122c-5-7 5-12 0-19"/><path class="steam c" d="M250 118c-5-7 5-12 0-19"/>
+      <path class="body" d="M214 140h58v16c0 16-13 28-29 28s-29-12-29-28z"/>
+      <path class="shade" d="M214 140h58v16c0 16-13 28-29 28s-29-12-29-28z" fill="url(#potShade)"/>
+      <ellipse cx="243" cy="140" rx="29" ry="6" fill="url(#teaShade)" stroke="currentColor" stroke-width="2"/>
+      <ellipse class="hl" cx="236" cy="138" rx="8" ry="2" fill="#ffffff"/>
+      <path class="body" d="M272 148c10-1 16 5 15 12s-8 11-16 9"/>
+      <ellipse class="body" cx="243" cy="186" rx="42" ry="7"/>
+      <ellipse class="hl" cx="236" cy="184" rx="16" ry="2" fill="#ffffff"/>
     </svg>
   </header>
 
