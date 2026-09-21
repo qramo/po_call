@@ -36,9 +36,8 @@ a:hover{ color:var(--accent-soft) }
 h1,h2,h3{ color:var(--text); line-height:1.35; text-wrap:balance; margin:0 }
 h2{ font-size:22px; margin-top:44px } h3{ font-size:17px; margin-top:20px }
 p{ margin:10px 0; max-width:40em }
-/* 一字落ち（最終行が 1〜2 文字だけ）を減らす。対応ブラウザ（Chrome 117+・Safari 26+）だけ効き、他は無視される。
-   文言で避けても幅が変われば別の場所で起きるので、CSS で構造的に抑える（2026-09-21） */
-p, dd, li, .pot .cta, .pot .state{ text-wrap:pretty }
+/* text-wrap:pretty は使わない：iPhone の Safari では段落ごとに行の長さを揃えようとして、箇条書きが 7 割幅で
+   折り返され「右側が変」に見えた（2026-09-21・利用者の実機）。一字落ちは文言で避ける */
 ul,ol{ margin:8px 0; padding-left:1.4em; max-width:42em } li{ margin:4px 0 }
 strong{ color:var(--text) } small{ color:var(--note) }
 code{ font-family:ui-monospace,Menlo,monospace; font-size:.92em; background:var(--chip); padding:1px 6px; border-radius:6px; color:var(--text) }
