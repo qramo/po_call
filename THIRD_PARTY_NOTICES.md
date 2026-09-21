@@ -48,7 +48,17 @@ ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ---
 
+### 挿絵「ティーポットとカップ」（`start/index.html` の冒頭）— Pixabay Content License
+
+- 元素材：Pixabay #32041「Tea Service, Teapot, Coffee Pot」— 作者 Clker-Free-Vector-Images（2012-04-13 公開）
+  https://pixabay.com/images/id-32041/ （svgsilh.com の再配布 SVG から取り込み）
+- ライセンス：Pixabay Content License（帰属表示不要・改変可・商用可。**無加工での単体再配布は不可**）。
+  2019-01-09 より前の公開なので、公開当時の CC0 1.0 でもある。
+- 本プロジェクトでの扱い：塗りを CSS の色に差し替え、湯気の線を描き足した**改変版**を、案内ページの一部として
+  埋め込んでいる。この挿絵だけを切り出しての再配布は、Pixabay の条件に従うこと（本プロジェクトの MIT の対象外）。
+
 ## 本ライセンスの対象外
 
 - `images/popopo-follow.png` … POPOPO の素材（第三者に帰属）。本プロジェクトの
   MIT ライセンスの対象ではありません。
+- `start/index.html` 内の挿絵 SVG … 上記 Pixabay #32041 の改変版。同じく MIT の対象外。
