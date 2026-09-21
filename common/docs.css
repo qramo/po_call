@@ -74,7 +74,7 @@ code{ font-family:ui-monospace,Menlo,monospace; font-size:.92em; background:var(
 .pot:hover{ transform:translateY(-2px); box-shadow:0 8px 22px rgba(0,0,0,.12); color:var(--body) }
 .pot .ic{ font-size:30px; line-height:1; width:40px; text-align:center; grid-row:span 2 }
 .pot .name{ font-weight:700; color:var(--text) }
-.pot .state{ font-size:14px; color:var(--note) }
+.pot .state{ font-size:14px; color:var(--sub) }   /* --note だと薄い（外部レビュー 09-21）。比 4.7→6 台に */
 .pot .state b{ color:var(--accent-soft); font-weight:700 }
 .pot.live{ border-color:var(--accent); box-shadow:0 0 0 4px var(--accent-dim), 0 4px 16px rgba(0,0,0,.08) }
 .pot.live .ic{ animation:steam 2.2s ease-in-out infinite }
