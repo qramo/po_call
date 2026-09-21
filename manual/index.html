@@ -31,6 +31,12 @@
   .warn{ border-left:3px solid var(--red); padding:6px 14px; background:var(--card); border-radius:0 12px 12px 0; font-size:15px }
   table{ border-collapse:collapse; font-size:15px; margin:8px 0 } th,td{ border:1px solid var(--border-soft); padding:6px 10px; text-align:left; vertical-align:top } th{ background:var(--chip); color:var(--text); font-weight:700; white-space:nowrap }
   .tw{ overflow-x:auto }
+  /* 画面の絵（tools/shots.py が撮る。iPhone 幅・昼・架空の名前）。本文の脇に小さく、タップで原寸 */
+  .shots{ display:flex; flex-wrap:wrap; gap:14px; margin:12px 0 4px; align-items:flex-start }
+  figure.shot{ margin:0; flex:0 1 250px; max-width:100% }
+  figure.shot.wide{ flex-basis:340px }
+  figure.shot img{ width:100%; height:auto; display:block; border-radius:14px; border:1px solid var(--border); box-shadow:0 2px 10px rgba(0,0,0,.06); background:var(--panel) }
+  figure.shot figcaption{ font-size:12.5px; color:var(--note); margin-top:6px; line-height:1.5 }
 </style>
 </head>
 <body>
@@ -73,6 +79,7 @@
 
   <h2 id="first">1. 最初の画面</h2>
   <p>開くと、上に<strong>名前と絵文字</strong>、その下に<strong>部屋を作る</strong>欄、下のほうに<strong>☎️ 通話中の部屋</strong>の一覧があります。</p>
+  <div class="shots"><figure class="shot"><img src="../images/manual/01-first.png" alt="最初の画面。名前と絵文字、その下に「部屋を作る」" width="780" height="898" loading="lazy"><figcaption>最初の画面。名前と絵文字、その下に「部屋を作る」</figcaption></figure><figure class="shot"><img src="../images/manual/02-lobby.png" alt="☎️ 通話中の部屋。いま人がいる部屋が並ぶ" width="780" height="718" loading="lazy"><figcaption>☎️ 通話中の部屋。いま人がいる部屋が並ぶ</figcaption></figure></div>
   <dl>
     <dt>名前と絵文字</dt>
     <dd>本名でなくて大丈夫です（20 文字まで）。ブラウザが覚えていて、次に開いたときも同じです。絵文字は使うほど育ちます（🌱 → 🌿 → 🌷 か 🌻 → ❓）。</dd>
@@ -88,11 +95,13 @@
   <h3>新しい部屋を作る</h3>
   <p>「部屋を作る」に部屋の名前を入れて<span class="kbd">参加する</span>。名前は 30 文字まで。空のまま押すと「（あなたの名前）の部屋」になります。同じ名前の部屋がすでにあっても、別の部屋になります（<strong>合流は名前ではなくリンクで</strong>します。次の節）。</p>
   <h3>部屋の種類</h3>
+  <div class="shots"><figure class="shot"><img src="../images/manual/03-kind.png" alt="「部屋を作る」を開いたところ。部屋名の下で 🏠 雑談部屋／📣 配信部屋を選ぶ" width="748" height="944" loading="lazy"><figcaption>「部屋を作る」を開いたところ。部屋名の下で 🏠 雑談部屋／📣 配信部屋を選ぶ</figcaption></figure></div>
   <p>名前の下で選べます。ふだんは <span class="kbd">🏠 雑談部屋にする</span>（全員で話せる）。自分の声だけを流したいなら <span class="kbd">📣 配信部屋にする</span>。くわしくは<a href="#broadcast">主のお茶会</a>の節へ。</p>
   <p class="note">一つの部屋に入れるのは 8 人まで（配信部屋は 15 人）。全員が全員につながる仕組みなので、多いと音が途切れやすくなります。快適なのは 4〜6 人くらいです。</p>
 
   <h2 id="invite">3. 友だちを呼ぶ</h2>
   <p>部屋に入ったら、画面の下に<strong>共有リンク</strong>が出ます。</p>
+  <div class="shots"><figure class="shot"><img src="../images/manual/09-share.png" alt="「📱 QR コード」を押したところ。リンクそのものをタップすると URL だけがコピーされる" width="692" height="845" loading="lazy"><figcaption>「📱 QR コード」を押したところ。リンクそのものをタップすると URL だけがコピーされる</figcaption></figure></div>
   <ul>
     <li><span class="kbd">🔗 招待リンクをコピー</span>：「部屋名 - あなたの名前」と URL がコピーされます。SNS やメッセージに貼ってください。</li>
     <li>表示されているリンクそのものをタップすると、<strong>URL だけ</strong>がコピーされます（アドレスバーに貼るとき用）。</li>
@@ -101,6 +110,7 @@
   <p>リンクを開いた人は、その部屋が開いていれば<span class="kbd">参加する</span>ですぐ入れます。部屋がもう終わっていたら「誰もいないみたいです」と出て、新しく部屋を作る道が案内されます。</p>
 
   <h2 id="call">4. 通話中の画面</h2>
+  <div class="shots"><figure class="shot wide"><img src="../images/manual/04-call.png" alt="通話中の画面（👥 メンバー）。上から状態、小窓とつなぎ直す、人数、話題タグ、タブ、相づち、経路の印、ミュートと退出、共有リンク" width="748" height="1559" loading="lazy"><figcaption>通話中の画面（👥 メンバー）。上から状態、小窓とつなぎ直す、人数、話題タグ、タブ、相づち、経路の印、ミュートと退出、共有リンク</figcaption></figure></div>
   <p>上から順に：部屋の名前と状態、<span class="kbd">📱 小窓</span> <span class="kbd">🔄 つなぎ直す</span>、いま一緒にいる人数、話題タグ、<strong>👥 メンバー／💬 ひとこと／⚙️ 設定</strong>のタブ、相づちの絵文字、経路の印、<span class="kbd">ミュート</span>と<span class="kbd">退出</span>、共有リンク。</p>
   <dl>
     <dt>ミュート</dt>
@@ -111,6 +121,7 @@
 
   <h2 id="members">5. メンバーの見方</h2>
   <p>一行に、絵文字・状態・名前・右端の操作、の順です。</p>
+  <div class="shots"><figure class="shot"><img src="../images/manual/07-members.png" alt="さくらはミュート中。↔ は直接つながっている印。右端の ❤️ が無視の切り替え" width="692" height="472" loading="lazy"><figcaption>さくらはミュート中。↔ は直接つながっている印。右端の ❤️ が無視の切り替え</figcaption></figure></div>
   <div class="tw"><table>
     <tr><th>印</th><th>意味</th></tr>
     <tr><td>絵文字が跳ねる</td><td>その人がいま話しています</td></tr>
@@ -122,6 +133,7 @@
   </table></div>
 
   <h2 id="chat">6. ひとこと・相づち・話題タグ</h2>
+  <div class="shots"><figure class="shot"><img src="../images/manual/05-chat.png" alt="💬 ひとことタブ。上に話題タグ「今日のお昼ご飯」、下に送られてきたひとこと" width="748" height="1550" loading="lazy"><figcaption>💬 ひとことタブ。上に話題タグ「今日のお昼ご飯」、下に送られてきたひとこと</figcaption></figure></div>
   <dl>
     <dt>💬 ひとこと</dt>
     <dd>短い文字（60 文字まで）を全員に送ります。タブを切り替えて書き、<span class="kbd">送る</span>か Enter。日本語の変換中の Enter では送られません。読んでいないひとことがあると、タブに小さな点が付きます。</dd>
@@ -133,6 +145,7 @@
 
   <h2 id="settings">7. 音量・BGM・通知の音・昼と夜</h2>
   <p>通話中の <strong>⚙️ 設定</strong>タブにあります。</p>
+  <div class="shots"><figure class="shot"><img src="../images/manual/06-settings.png" alt="⚙️ 設定タブ。音量、BGM、通知の音" width="748" height="1574" loading="lazy"><figcaption>⚙️ 設定タブ。音量、BGM、通知の音</figcaption></figure></div>
   <dl>
     <dt>🔊 音量</dt>
     <dd><strong>この通話の音だけ</strong>を下げます。動画や音楽と一緒に聞くとき用で、ほかのアプリの音はそのままです。</dd>
@@ -151,7 +164,7 @@
     <dt>🔄 つなぎ直す</dt>
     <dd>相手の声が来ない、切れたまま戻らない、というときに押します。いったん抜けて同じ部屋に入り直します（ミュートの状態は引き継ぎます）。ふつうは押さなくても、声が来なければ数秒で自動的に相手に送り直しを頼み（3 回まで）、それでも駄目なら自動でつなぎ直します。</dd>
     <dt>退出</dt>
-    <dd>押すと「退出する／やめる」の確認が出ます。退出すると部屋から消え、人がいなくなった部屋は無くなります。過去の会話は残りません。</dd>
+    <dd><div class="shots"><figure class="shot"><img src="../images/manual/10-leave.png" alt="退出を押すと出る確認" width="692" height="142" loading="lazy"><figcaption>退出を押すと出る確認</figcaption></figure></div>押すと「退出する／やめる」の確認が出ます。退出すると部屋から消え、人がいなくなった部屋は無くなります。過去の会話は残りません。</dd>
   </dl>
 
   <h2 id="broadcast">9. 主のお茶会（配信部屋）<span class="sec-chip">配信したい人向け</span></h2>
@@ -175,6 +188,7 @@
 
   <h2 id="ignore">11. 無視（この人の声を受け取らない）</h2>
   <p>メンバーの右端の ❤️ を押すと、その人の声を<strong>自分だけ</strong>受け取らなくなります。印が割れたハートに変わります。</p>
+  <div class="shots"><figure class="shot"><img src="../images/manual/08-ignore.png" alt="さくらを無視したところ。行が薄くなり、右端が割れたハートに" width="692" height="472" loading="lazy"><figcaption>さくらを無視したところ。行が薄くなり、右端が割れたハートに</figcaption></figure></div>
   <ul>
     <li>相手には伝わりません。相手の画面は何も変わらず、人数も減りません。</li>
     <li>その人のひとことや相づちも、自分の画面には出なくなります。</li>
@@ -199,7 +213,7 @@
     <dt>マイクの許可が出ない・使えない</dt>
     <dd>LINE・X・Instagram・Facebook などの中で開いたブラウザ（アプリ内ブラウザ）はマイクが使えないことがあります。画面上の案内から Safari や Chrome で開き直してください。一度「許可しない」を押した場合は、ブラウザの設定でそのサイトのマイクを許可に戻します。</dd>
     <dt>音が聞こえない（iPhone で多い）</dt>
-    <dd>「🔊 音声を有効化」のボタンが出ていたら、画面のどこかをタップしてください。<br>iPhone では、ページを開き直した直後はこちらから音を鳴らせないことがあります。<br>それでも聞こえなければ、⚙️ 設定の音量、端末のマナーモード、ボリュームを確かめてください。</dd>
+    <dd><div class="shots"><figure class="shot"><img src="../images/manual/11-unlock.png" alt="このボタンが出ていたら、画面のどこかをタップ" width="692" height="132" loading="lazy"><figcaption>このボタンが出ていたら、画面のどこかをタップ</figcaption></figure></div>「🔊 音声を有効化」のボタンが出ていたら、画面のどこかをタップしてください。<br>iPhone では、ページを開き直した直後はこちらから音を鳴らせないことがあります。<br>それでも聞こえなければ、⚙️ 設定の音量、端末のマナーモード、ボリュームを確かめてください。</dd>
     <dt>相手の声だけが聞こえない</dt>
     <dd>30 秒ほど待ってください。自動で相手に送り直しを頼み、それでも駄目なら自動でつなぎ直します。待っても来なければ<span class="kbd">🔄 つなぎ直す</span>を押してください。相手にも開き直してもらうと確実です。</dd>
     <dt>ほかのアプリに切り替えたら音が止まった（iPhone）</dt>
