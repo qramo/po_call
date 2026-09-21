@@ -20,6 +20,8 @@
   h2{ scroll-margin-top:16px }
   table{ border-collapse:collapse; font-size:15px; margin:8px 0 } th,td{ border:1px solid var(--border-soft); padding:6px 10px; text-align:left; vertical-align:top } th{ background:var(--chip); color:var(--text); font-weight:700; white-space:nowrap }
   .tw{ overflow-x:auto }
+  /* /start/ /manual/ と同じく、本文は要素の幅いっぱいに折り返す（docs.css の 40em 制限だと表だけ幅が広く、飛び出して見える） */
+  .wrap p, .wrap dl, .wrap ul, .wrap ol{ max-width:none }
 </style>
 </head>
 <body>
