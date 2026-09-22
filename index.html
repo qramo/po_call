@@ -1615,7 +1615,14 @@ const importVerify = pub => crypto.subtle.importKey('raw', unb64u(pub), ECDSA, f
 // つなぎ直し後に提示することで、枠主が新しい peerId を名簿に追加して再署名する。
 const GRANT_TOKEN_TTL_MS = 3 * 60 * 1000   // 3分間有効（つなぎ直しの猶予）
 const GRANT_KEY_PREFIX = 'pot-call-grant:'
+const OWNER_GRANTS_KEY_PREFIX = 'pot-call-owner-grants:'
 const genGrantToken = () => { const b = new Uint8Array(16); crypto.getRandomValues(b); return b64u(b) }
+const saveOwnerGrants = () => {
+  if (!call.ownerKey || !call.joinedId) return
+  const peers = [...call.grants].filter(id => id !== myPeerId)
+  const tokens = [...call.grantTokens.entries()].filter(([, exp]) => exp > Date.now())
+  ssSet(OWNER_GRANTS_KEY_PREFIX + call.joinedId, JSON.stringify({ at: Date.now(), peers, tokens }))
+}
 
 // ───────── 部屋の実体＝ランダムなハッシュ（v0.13.0・HANDOFF「部屋ID・話題タグまわりの設計方針」） ─────────
 // 部屋の Trystero ID は **名前ではなくハッシュ**（12バイト乱数 → base64url 16文字）。配信部屋は
@@ -3601,6 +3608,7 @@ const toggleGrant = id => {
   }
   renderMembers()          // 押した手応えを先に返す（配り直しは非同期）
   broadcastRoster()
+  saveOwnerGrants()
 }
 
 // 配信部屋の説明。**自分がいま話せるのか**が一番の関心なので、そこを主語にして書く。
@@ -4030,6 +4038,7 @@ const wireRoom = () => {
       call.grants.add(peerId)
       renderMembers()
       broadcastRoster()
+      saveOwnerGrants()
       sendTo(call.grantAction, { k: 'granted', tok: d.tok }, peerId)
       return
     }
@@ -4284,6 +4293,27 @@ const runJoin = async () => {
       call.ownerKey = await importSign(owner.jwk)
       call.ownerPub = owner.pub
       call.grants = new Set([myPeerId])   // オーナーはまず自分を名簿に載せる（自分への許可も同じ道を通る）
+      // 配信者のつなぎ直し復元（v0.14.26）：前回の登壇リスナーが部屋に残っていれば名簿を引き継ぐ
+      const savedOwner = ssGet(OWNER_GRANTS_KEY_PREFIX + roomId)
+      if (savedOwner) {
+        try {
+          const obj = JSON.parse(savedOwner)
+          if (Date.now() - (obj.at || 0) < GRANT_TOKEN_TTL_MS) {
+            if (Array.isArray(obj.peers)) {
+              obj.peers.forEach(id => {
+                if (typeof id === 'string' && id && call.grants.size < SPEAKER_MAX) call.grants.add(id)
+              })
+            }
+            if (Array.isArray(obj.tokens)) {
+              obj.tokens.forEach(([k, exp]) => {
+                if (typeof k === 'string' && typeof exp === 'number' && exp > Date.now()) {
+                  call.grantTokens.set(k, exp)
+                }
+              })
+            }
+          }
+        } catch {}
+      }
     } catch {
       call.ownerKey = null; call.ownerPub = ''
       if (call.stream) { call.stream.getTracks().forEach(t => t.stop()); call.stream = null }   // 誰にも届かないマイクは掴まない
@@ -4415,6 +4445,7 @@ const doReconnect = async ({ auto = false } = {}) => {
   retrying = true
   $('retry').disabled = true
   setState(auto ? 'つながりが切れたので、つなぎ直しています…' : 'つなぎ直しています…', 'busy')
+  saveOwnerGrants()
   try { sessionStorage.setItem(REJOIN_KEY, JSON.stringify({ room: call.joinedId, name: call.meta.name, muted: call.muted, at: Date.now() })) } catch {}
   // 先に退出を伝えてからリロードする。相手がこちらの離脱を早く知るほど、戻ったときに
   // すんなり繋ぎ直してもらえる。ただし完了を待ち続けない（届かなくてもリロードは進める）。
@@ -4486,8 +4517,11 @@ const leaveCall = () => {
   // と書き分ける。④の leave() は非同期に走るので、その前にここで送っておく（届かなくても実害は
   // 「相手の画面に切断として出る」だけ＝安全側）。
   sendTo(call.byeAction, 1)
-  // 手動退出なら登壇トークンも捨てる（「つなぎ直す」のリロード時は retrying=true なので保持）
-  if (call.joinedId && !retrying) ssDel(GRANT_KEY_PREFIX + call.joinedId)
+  // 手動退出なら登壇トークン・枠主名簿も捨てる（「つなぎ直す」のリロード時は retrying=true なので保持）
+  if (call.joinedId && !retrying) {
+    ssDel(GRANT_KEY_PREFIX + call.joinedId)
+    ssDel(OWNER_GRANTS_KEY_PREFIX + call.joinedId)
+  }
   clearTimeout(call.noticeTimer); showPeerNotice('')            // 前の通知を残さない
   if (call.stream) call.stream.getTracks().forEach(t => t.stop())
   ;[...call.audios.keys()].forEach(dropAudios)                 // **reset で Map ごと捨てる前に** DOM を消す

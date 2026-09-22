@@ -1440,7 +1440,8 @@ def T27(r, room):
     # ★テストの都合：**localStorage は同じブラウザの全タブで共有される**ので、そのままだと
     #   2枚目のタブも配信者の鍵を見つけて「自分もオーナー」になってしまう（実機では別端末なので
     #   起きない）。聞き役を作るために鍵置き場だけ空にする。A は参加時に鍵を読み込み済みなので
-    #   影響を受けない。
+    #   影響を受けない（A がつなぎ直すテストの前には A の鍵を書き戻す）。
+    a.eval("window.__a_bcast_key = localStorage.getItem('pot-call-bcast')")
     b.eval("localStorage.removeItem('pot-call-bcast')")
     click_join(b)
     met = a.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
@@ -1506,17 +1507,33 @@ def T27b(r, a, b):
             '事前トークンあり=%s / 再参加した=%s / マイクを使うが出た=%s / 再登壇で声が届いた=%s'
             % (pre_tok, rejoined, resumed_speak, spoke_again))
 
+    # 配信者がつなぎ直した場合（v0.14.26）：リスナー b のマイク権限が維持され、配信者 a が復帰後も声が届く
+    a.eval("if (window.__a_bcast_key) localStorage.setItem('pot-call-bcast', window.__a_bcast_key)")
+    a.eval("document.getElementById('retry').click()")
+    # 配信者のリロード完了と自動再参加を待つ
+    a_rejoined = a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
+    # リスナー b のマイクは止まらず、ミュートボタン（MUTE_SHOWN）が出たままであること
+    b_mic_kept = b.eval(MUTE_SHOWN) and not b.eval(SPEAK_SHOWN)
+    # 配信者 a にリスナー b の声が再び届くこと
+    spoke_to_rejoined_a = a.wait_for('%s === 1' % AUDIOS, timeout=DISCOVER)
+    ok_owner_resume = a_rejoined and b_mic_kept and spoke_to_rejoined_a
+    r.check('T27e', '配信者のつなぎ直し：リスナーのマイク権限が維持され通話が続く', ok_owner_resume, 'pass',
+            '配信者が再参加した=%s / リスナーのマイク維持=%s / 復帰した配信者に声が届いた=%s'
+            % (a_rejoined, b_mic_kept, spoke_to_rejoined_a))
+
     # 取り消し：配信者側で音が止まり、**登壇していた人のマイクも実際に止まる**
-    a.eval("(() => { const g = document.querySelector('#members .member:not(:first-child) .m-mic.on');"
-           " if (g) g.click() })()")
+    btn_ready = a.wait_for("!!document.querySelector('#members .member:not(:first-child) .m-mic.on')", timeout=SHORT)
+    revoked = a.eval("(() => { const g = document.querySelector('#members .member:not(:first-child) .m-mic.on');"
+                     " if (g) { g.click(); return true; } return false; })()")
     silent = a.wait_for('%s === 0' % AUDIOS, timeout=SHORT)
     released = b.wait_for('%s === 0' % LIVE_TRACKS, timeout=SHORT)
     # 取り消された人は**聞き役に戻る**ので、「マイクを使う」も「ミュート」もどちらも出ない
     # （出したままだと、押しても誰にも届かないボタンになる）
     back = (not b.eval(SPEAK_SHOWN)) and (not b.eval(MUTE_SHOWN))
-    ok2 = silent and released and back
+    ok2 = btn_ready and revoked and silent and released and back
     r.check('T27c', '登壇の取り消しで音が止まりマイクも返る', ok2, 'pass',
-            '音が止まった=%s / マイクを返した=%s / 聞き役に戻った=%s' % (silent, released, back))
+            'ボタンあり=%s / クリックした=%s / 音が止まった=%s / マイクを返した=%s / 聞き役に戻った=%s'
+            % (btn_ready, revoked, silent, released, back))
     click_leave(a)
     click_leave(b)
 
