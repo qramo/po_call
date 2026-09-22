@@ -1490,6 +1490,22 @@ def T27b(r, a, b):
             '許可した=%s / ボタンが出た=%s / 声が届いた=%s / ミュートに入れ替わった=%s'
             % (granted, shown, spoke, mute_now))
 
+    # 登壇権限の引き継ぎ（v0.14.26）：登壇中に「つなぎ直す」でリロードしても、登壇権限が自動復元される
+    # リロード前のトークン確認
+    pre_tok = b.eval("!!sessionStorage.getItem('pot-call-grant:' + location.hash.slice(1).split('&')[0].replace('#room=','').replace('room=',''))")
+    b.eval("document.getElementById('retry').click()")
+    # リロード完了と自動再参加を待つ
+    rejoined = b.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
+    # 復元によりマイクを使うボタン（SPEAK_SHOWN）が自動で表示されること
+    resumed_speak = b.wait_for(SPEAK_SHOWN, timeout=DISCOVER)
+    # マイクを使うをクリックして再度声が届くこと
+    b.eval("document.getElementById('speak').click()", await_promise=False)
+    spoke_again = a.wait_for('%s === 1' % AUDIOS, timeout=DISCOVER)
+    ok_resume = pre_tok and rejoined and resumed_speak and spoke_again
+    r.check('T27d', '登壇引き継ぎ：つなぎ直しても登壇権限が自動復元される', ok_resume, 'pass',
+            '事前トークンあり=%s / 再参加した=%s / マイクを使うが出た=%s / 再登壇で声が届いた=%s'
+            % (pre_tok, rejoined, resumed_speak, spoke_again))
+
     # 取り消し：配信者側で音が止まり、**登壇していた人のマイクも実際に止まる**
     a.eval("(() => { const g = document.querySelector('#members .member:not(:first-child) .m-mic.on');"
            " if (g) g.click() })()")
