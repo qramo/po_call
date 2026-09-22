@@ -1521,6 +1521,26 @@ def T27b(r, a, b):
             '配信者が再参加した=%s / リスナーのマイク維持=%s / 復帰した配信者に声が届いた=%s'
             % (a_rejoined, b_mic_kept, spoke_to_rejoined_a))
 
+    # 登壇耐性強化（v0.14.27）：リスナーが再接続（retry）した後に、配信者もつなぎ直した場合でも登壇権限が復元される
+    # リスナー b が「つなぎ直す」でリロード（同一ブラウザなので b のリロード直前に a の鍵を退避して消す）
+    a_key = a.eval("localStorage.getItem('pot-call-bcast')")
+    b.eval("localStorage.removeItem('pot-call-bcast')")
+    b.eval("document.getElementById('retry').click()")
+    b_joined = b.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
+    # その直後に配信者 a もつなぎ直す（配信者の peerId が変わり ownerChanged が発生）
+    if a_key:
+        a.eval("localStorage.setItem('pot-call-bcast', %s)" % js_str(a_key))
+    a.eval("document.getElementById('retry').click()")
+    a_rejoined_again = a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
+    # 新しい配信者に対してもリスナー b がトークンを提示し、登壇権限が維持されること
+    b_kept_with_new_owner = b.wait_for(SPEAK_SHOWN, timeout=DISCOVER)
+    b.eval("document.getElementById('speak').click()", await_promise=False)
+    b_spoke_again = a.wait_for('%s === 1' % AUDIOS, timeout=DISCOVER)
+    ok_robust = b_joined and a_rejoined_again and b_kept_with_new_owner and b_spoke_again
+    r.check('T27f', '登壇耐性：リスナー再接続後に配信者が再接続しても登壇権限が確実に引き継がれる', ok_robust, 'pass',
+            'リスナー再参加=%s / 配信者再参加=%s / 新配信者への登壇維持=%s / 声が届いた=%s'
+            % (b_joined, a_rejoined_again, b_kept_with_new_owner, b_spoke_again))
+
     # 取り消し：配信者側で音が止まり、**登壇していた人のマイクも実際に止まる**
     btn_ready = a.wait_for("!!document.querySelector('#members .member:not(:first-child) .m-mic.on')", timeout=SHORT)
     revoked = a.eval("(() => { const g = document.querySelector('#members .member:not(:first-child) .m-mic.on');"
