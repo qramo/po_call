@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.25
+  ぽっと通話〈実験版〉 v0.14.26
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1280,13 +1280,17 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.25'
+const APP_VERSION = 'v0.14.26'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
 // getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
 const lsGet = (k, d = null) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
 const lsSet = (k, v) => { try { localStorage.setItem(k, v) } catch {} }
+// sessionStorage（登壇引き継ぎトークン等）も同様に例外を握る
+const ssGet = (k, d = null) => { try { return sessionStorage.getItem(k) ?? d } catch { return d } }
+const ssSet = (k, v) => { try { sessionStorage.setItem(k, v) } catch {} }
+const ssDel = k => { try { sessionStorage.removeItem(k) } catch {} }
 // データチャネルへの送信は**必ずここを通す**。action が未生成（参加前・退出後）でも同期例外にならず、
 // 送信の reject も握る（届かない相手がいても他の処理を止めない）。target を渡せば1人宛て
 const sendTo = (act, data, target) => { try { act?.send(data, target ? { target } : undefined).catch(() => {}) } catch {} }
@@ -1353,6 +1357,10 @@ const CALL_INIT = () => ({
   rosterSeen: 0,        // 採用済みの名簿の時刻。**これ以下は捨てる**＝古い名簿の再送（リプレイ）よけ
   bcAction: null,       // 名簿を配るデータチャネル
   bcTimer: null,        // オーナーが名簿を定期的に配り直すタイマー（取りこぼしの自己修復）
+  grantAction: null,    // 登壇引き継ぎトークンのデータチャネル（v0.14.26）
+  grantTokens: new Map(),     // 枠主：token → expireAt（有効期限付き台帳）
+  grantPeerTokens: new Map(), // 枠主：peerId → token
+  grantResumed: false,  // リスナー：再接続時にトークンを提示済みか（重複送信防止）
   ignored: new Set(),   // 無視している相手の peerId。**この部屋にいる間だけ**（相手が入り直すと別IDになる）
   byeSeen: new Set(),   // 「退出します」を送ってきた相手。来ないまま消えたら「接続が切れた」と書き分ける
   mailAction: null,     // おたより（募集・投稿・公開）のデータチャネル
@@ -1603,6 +1611,11 @@ const ownerKeyFor = async name => {
 const ownerKeyByFp = fp => { const v = fp ? loadBcKeys()[fp] : null; return v ? { fp, ...v } : null }
 const importSign = jwk => crypto.subtle.importKey('jwk', jwk, ECDSA, false, ['sign'])
 const importVerify = pub => crypto.subtle.importKey('raw', unb64u(pub), ECDSA, false, ['verify'])
+// 登壇引き継ぎトークン（v0.14.26）：枠主が許可時に発行し、リスナーが sessionStorage で保持。
+// つなぎ直し後に提示することで、枠主が新しい peerId を名簿に追加して再署名する。
+const GRANT_TOKEN_TTL_MS = 3 * 60 * 1000   // 3分間有効（つなぎ直しの猶予）
+const GRANT_KEY_PREFIX = 'pot-call-grant:'
+const genGrantToken = () => { const b = new Uint8Array(16); crypto.getRandomValues(b); return b64u(b) }
 
 // ───────── 部屋の実体＝ランダムなハッシュ（v0.13.0・HANDOFF「部屋ID・話題タグまわりの設計方針」） ─────────
 // 部屋の Trystero ID は **名前ではなくハッシュ**（12バイト乱数 → base64url 16文字）。配信部屋は
@@ -3560,15 +3573,31 @@ const acceptRoster = async d => {
   // 非同期）。先に着いた分は ownerPeer が未確定なので捨てられる＝**後から入った人に募集が出ない**
   // （2026-08-17 に利用者が発見）。順番に依存しないよう、こちら側から引きにいく形にした。
   if (ownerChanged && own && !call.ownerKey) sendMail({ k: 'ask' }, own)
+  // ★再接続してきたリスナーなら、保持している登壇トークンを枠主に提示して許可の復元を求める（v0.14.26）
+  if (own && !call.ownerKey && !call.grantResumed) {
+    const tok = ssGet(GRANT_KEY_PREFIX + id)
+    if (tok) {
+      call.grantResumed = true
+      sendTo(call.grantAction, { k: 'resume', tok }, own)
+    }
+  }
 }
 
 // 登壇の切り替え（オーナーの画面にだけ出るボタン）。原本を書き換えて配り直すだけ。
 const toggleGrant = id => {
   if (!call.ownerKey) return
-  if (call.grants.has(id)) call.grants.delete(id)
-  else {
+  if (call.grants.has(id)) {
+    call.grants.delete(id)
+    const tok = call.grantPeerTokens.get(id)
+    if (tok) { call.grantTokens.delete(tok); call.grantPeerTokens.delete(id) }
+    sendTo(call.grantAction, { k: 'revoke' }, id)
+  } else {
     if (call.grants.size >= SPEAKER_MAX) { showPeerNotice('🎙 同時に話せるのは ' + SPEAKER_MAX + ' 人までです'); return }
     call.grants.add(id)
+    const tok = genGrantToken()
+    call.grantTokens.set(tok, Date.now() + GRANT_TOKEN_TTL_MS)
+    call.grantPeerTokens.set(id, tok)
+    sendTo(call.grantAction, { k: 'grant', tok }, id)
   }
   renderMembers()          // 押した手応えを先に返す（配り直しは非同期）
   broadcastRoster()
@@ -3966,6 +3995,52 @@ const wireRoom = () => {
   call.bcAction = call.room.makeAction('bc')
   call.bcAction.onMessage = d => { acceptRoster(d) }
 
+  // 登壇引き継ぎトークン（v0.14.26）。つなぎ直し・リロード後も登壇権限を自動復元する。
+  call.grantAction = call.room.makeAction('grant')
+  call.grantAction.onMessage = (d, { peerId }) => {
+    if (!call.bcast || !d || typeof d !== 'object') return
+    // リスナー側：枠主からトークンを受け取った
+    if (d.k === 'grant' && typeof d.tok === 'string') {
+      if (!call.ownerPeer || peerId !== call.ownerPeer) return
+      ssSet(GRANT_KEY_PREFIX + call.joinedId, d.tok)
+      return
+    }
+    // リスナー側：枠主から許可を外された
+    if (d.k === 'revoke') {
+      if (!call.ownerPeer || peerId !== call.ownerPeer) return
+      ssDel(GRANT_KEY_PREFIX + call.joinedId)
+      return
+    }
+    // 枠主側：再接続したリスナーからトークンを提示された
+    if (d.k === 'resume' && typeof d.tok === 'string') {
+      if (!call.ownerKey) return
+      const exp = call.grantTokens.get(d.tok)
+      const now = Date.now()
+      if (!exp || exp < now) {
+        call.grantTokens.delete(d.tok)
+        return
+      }
+      // トークンが有効：期限を延長し、新しい peerId を原本に追加して名簿を配り直す
+      call.grantTokens.set(d.tok, now + GRANT_TOKEN_TTL_MS)
+      call.grantPeerTokens.set(peerId, d.tok)
+      if (call.grants.size >= SPEAKER_MAX && !call.grants.has(peerId)) {
+        showPeerNotice('🎙 登壇枠がいっぱいで復元できませんでした')
+        return
+      }
+      call.grants.add(peerId)
+      renderMembers()
+      broadcastRoster()
+      sendTo(call.grantAction, { k: 'granted', tok: d.tok }, peerId)
+      return
+    }
+    // リスナー側：復元完了通知
+    if (d.k === 'granted' && typeof d.tok === 'string') {
+      if (!call.ownerPeer || peerId !== call.ownerPeer) return
+      ssSet(GRANT_KEY_PREFIX + call.joinedId, d.tok)
+      showPeerNotice('🎙 登壇権限を引き継ぎました。「マイクを使う」を押すと声が届きます')
+    }
+  }
+
   // おたより。**受け取る条件が向きで違う**のが要点（上の「おたより」の項を参照）：
   //   ・投稿（post）を受け取れるのは**枠主だけ**
   //   ・募集/公開（open/close/show/hide）を受け取るのは**枠主が出したものだけ**
@@ -4036,7 +4111,9 @@ const wireRoom = () => {
     // 登壇の許可も同じ理由で持ち越さない（入り直した人は別の peerId＝改めて許可し直す）。
     // オーナーは原本から消すが、**名簿を配り直さない**：残った人の許可は変わらないので、
     // 抜けた人ぶんの署名をやり直す必要が無い（次の grant/revoke か定期配布で揃う）。
+    // 一時トークン（call.grantTokens）は有効期限まで保持し、つなぎ直し後の再提示に応じる（v0.14.26）。
     call.grants.delete(id); call.speakers.delete(id)
+    call.grantPeerTokens.delete(id)
     dropAudios(id); removeAnalyser(id)
     setCount(); render(); renderMembers(); renderAudioWarn([]); soundLeave()
   }
@@ -4409,6 +4486,8 @@ const leaveCall = () => {
   // と書き分ける。④の leave() は非同期に走るので、その前にここで送っておく（届かなくても実害は
   // 「相手の画面に切断として出る」だけ＝安全側）。
   sendTo(call.byeAction, 1)
+  // 手動退出なら登壇トークンも捨てる（「つなぎ直す」のリロード時は retrying=true なので保持）
+  if (call.joinedId && !retrying) ssDel(GRANT_KEY_PREFIX + call.joinedId)
   clearTimeout(call.noticeTimer); showPeerNotice('')            // 前の通知を残さない
   if (call.stream) call.stream.getTracks().forEach(t => t.stop())
   ;[...call.audios.keys()].forEach(dropAudios)                 // **reset で Map ごと捨てる前に** DOM を消す
