@@ -2496,57 +2496,67 @@ const bgmAmbient = seed => {
   chord()
   bgm.timers.push(setInterval(chord, 9000))
 }
-// 🔥 焚き火：炎の低域うねり（200Hz LFO変調）＋火の粉パチパチ（秒間約3回）＋薪の爆ぜ
+// 🔥 焚き火：温かいメラメラ炎（風切りなし）＋炭のチリチリ＋火の粉パチパチ
 const bgmBonfire = seed => {
   const ctx = ctx0()
   const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate)
   const d = noise.getChannelData(0)
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1
 
-  // 炎のうねり（Flame Roar）
+  // 1. 炎のメラメラ燃焼（低域ボディ＋3.6Hz振幅変調）
   const rSrc = bgmTrack(ctx.createBufferSource())
   rSrc.buffer = noise; rSrc.loop = true
   const rf1 = bgmTrack(ctx.createBiquadFilter()), rf2 = bgmTrack(ctx.createBiquadFilter())
-  rf1.type = 'lowpass'; rf1.frequency.value = 200; rf1.Q.value = 1.0
-  rf2.type = 'lowpass'; rf2.frequency.value = 200; rf2.Q.value = 0.7
-  const lfo = bgmTrack(ctx.createOscillator()), lfoG = bgmTrack(ctx.createGain())
-  lfo.frequency.value = 0.28; lfoG.gain.value = 32
-  lfo.connect(lfoG); lfoG.connect(rf1.frequency); lfoG.connect(rf2.frequency); lfo.start()
+  rf1.type = 'lowpass'; rf1.frequency.value = 240; rf1.Q.value = 0.9
+  rf2.type = 'lowpass'; rf2.frequency.value = 240; rf2.Q.value = 0.6
+  const amOsc = bgmTrack(ctx.createOscillator()), amG = bgmTrack(ctx.createGain())
+  amOsc.frequency.value = 3.6; amG.gain.value = 0.126
+  const baseG = bgmTrack(ctx.createGain()); baseG.gain.value = 1.0
+  amOsc.connect(amG); amG.connect(baseG.gain); amOsc.start()
   const rGain = bgmTrack(ctx.createGain())
-  rGain.gain.value = 0.280
-  rSrc.connect(rf1); rf1.connect(rf2); rf2.connect(rGain); rGain.connect(bgm.gain)
+  rGain.gain.value = 0.198
+  rSrc.connect(rf1); rf1.connect(rf2); rf2.connect(baseG); baseG.connect(rGain); rGain.connect(bgm.gain)
   rSrc.start()
 
-  // パチパチ（火の粉）＆ 薪の爆ぜ
-  let nextSnap = ctx.currentTime + 2.0
-  bgmSchedule(0.06, (step, t) => {
-    if (Math.random() < 0.18) {
+  // 2. 炭のチリチリ（沈黙を温めるクッション）
+  const sSrc = bgmTrack(ctx.createBufferSource())
+  sSrc.buffer = noise; sSrc.loop = true
+  const sBpf = bgmTrack(ctx.createBiquadFilter())
+  sBpf.type = 'bandpass'; sBpf.frequency.value = 1800; sBpf.Q.value = 1.8
+  const sGain = bgmTrack(ctx.createGain())
+  sGain.gain.value = 0.026
+  sSrc.connect(sBpf); sBpf.connect(sGain); sGain.connect(bgm.gain)
+  sSrc.start()
+
+  // 3. 火の粉パチパチ ＆ 薪の爆ぜ
+  let nextSnap = ctx.currentTime + 3.0
+  bgmSchedule(0.05, (step, t) => {
+    if (Math.random() < 0.25) {
       const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain()
-      src.buffer = noise; f.type = 'bandpass'; f.frequency.value = 1400 + Math.random() * 2200; f.Q.value = 4
-      const dur = 0.004 + Math.random() * 0.008
-      g.gain.setValueAtTime(0.200, t)
+      src.buffer = noise; f.type = 'bandpass'; f.frequency.value = 1200 + Math.random() * 2000; f.Q.value = 4
+      const dur = 0.007 + 0.0084 + Math.random() * 0.006
+      g.gain.setValueAtTime(0.350, t)
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
       src.connect(f); f.connect(g)
       if (ctx.createStereoPanner) {
-        const p = ctx.createStereoPanner()
-        p.pan.value = (Math.random() * 2 - 1) * 0.46
+        const p = ctx.createStereoPanner(); p.pan.value = (Math.random() * 2 - 1) * 0.5
         g.connect(p); p.connect(bgm.gain)
       } else { g.connect(bgm.gain) }
       src.start(t); src.stop(t + dur + 0.01); bgmTrack(src)
     }
     if (t > nextSnap) {
-      nextSnap = t + 9 + Math.random() * 12
-      const sSrc = ctx.createBufferSource(), sF = ctx.createBiquadFilter(), sG = ctx.createGain()
-      sSrc.buffer = noise; sF.type = 'bandpass'; sF.frequency.value = 1000; sF.Q.value = 5
-      sG.gain.setValueAtTime(0.284, t); sG.gain.exponentialRampToValueAtTime(0.0001, t + 0.035)
-      sSrc.connect(sF); sF.connect(sG)
+      nextSnap = t + 10.5 + Math.random() * 10.5
+      const pSrc = ctx.createBufferSource(), pF = ctx.createBiquadFilter(), pG = ctx.createGain()
+      pSrc.buffer = noise; pF.type = 'bandpass'; pF.frequency.value = 1000; pF.Q.value = 4.5
+      pG.gain.setValueAtTime(0.315, t); pG.gain.exponentialRampToValueAtTime(0.0001, t + 0.035)
+      pSrc.connect(pF); pF.connect(pG)
       const osc = ctx.createOscillator(), og = ctx.createGain()
-      osc.frequency.setValueAtTime(200, t); osc.frequency.exponentialRampToValueAtTime(60, t + 0.04)
-      og.gain.setValueAtTime(0.213, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.04)
+      osc.frequency.setValueAtTime(180, t); osc.frequency.exponentialRampToValueAtTime(55, t + 0.045)
+      og.gain.setValueAtTime(0.210, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.05)
       osc.connect(og)
-      sG.connect(bgm.gain); og.connect(bgm.gain)
-      sSrc.start(t); sSrc.stop(t + 0.04); osc.start(t); osc.stop(t + 0.045)
-      bgmTrack(sSrc); bgmTrack(osc)
+      pG.connect(bgm.gain); og.connect(bgm.gain)
+      pSrc.start(t); pSrc.stop(t + 0.04); osc.start(t); osc.stop(t + 0.055)
+      bgmTrack(pSrc); bgmTrack(osc)
     }
   })
 }
