@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.27
+  ぽっと通話〈実験版〉 v0.14.28
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1049,6 +1049,7 @@
         <label class="snd-opt"><input type="radio" name="bgm" id="bgmOff" checked> 🔇 BGMなし</label>
         <label class="snd-opt"><input type="radio" name="bgm" id="bgmTune"> 🎵 軽快な音楽</label>
         <label class="snd-opt"><input type="radio" name="bgm" id="bgmAmb"> 🌫 アンビエント空間</label>
+        <label class="snd-opt"><input type="radio" name="bgm" id="bgmFire"> 🔥 焚き火</label>
       </div>
       <label class="vol-opt" id="bgmVolRow" hidden><span class="vol-ic">🎚</span><span class="vol-lbl">BGM</span>
         <input id="bgmVol" type="range" min="0" max="100" step="5" value="30" aria-label="BGMの音量">
@@ -1280,7 +1281,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.27'
+const APP_VERSION = 'v0.14.28'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2370,10 +2371,10 @@ const applyVolume = () => {
 // **自分にだけ鳴る**（ワイヤには何も乗らない＝送信も同期もしない）。曲は**部屋名から導出する**ので、
 // 通信を増やさずに同じ部屋の全員が同じ音になる（リアクションで絵文字ではなく添字を送るのと同じ原理）。
 // 音源ファイルは持たず Web Audio で合成する＝**著作権の論点が最初から無い**（同梱音源の代わり）。
-// 選択肢は性格が一番遠い2つだけ：🎵 軽快な音楽（拍と旋律がある）／🌫 アンビエント空間（どちらも無い）。
-const BGM_KEY = 'pot-call-bgm'          // 'off' | 'tune' | 'amb'
+// 選択肢は3つ：🎵 軽快な音楽（拍と旋律）／🌫 アンビエント空間（ドローン）／🔥 焚き火（環境音・火の粉）。
+const BGM_KEY = 'pot-call-bgm'          // 'off' | 'tune' | 'amb' | 'fire'
 const BGM_VOL_KEY = 'pot-call-bgm-vol'
-let bgmKind = ['off', 'tune', 'amb'].includes(lsGet(BGM_KEY)) ? lsGet(BGM_KEY) : 'off'
+let bgmKind = ['off', 'tune', 'amb', 'fire'].includes(lsGet(BGM_KEY)) ? lsGet(BGM_KEY) : 'off'
 let bgmVol = (() => { const v = parseFloat(lsGet(BGM_VOL_KEY)); return v >= 0 && v <= 1 ? v : 0.3 })()
 let bgm = null   // 鳴っている間だけ {nodes, timers, gain}。**止めるときはここを畳むだけ**（join/leave と同じ対称性）
 
@@ -2495,6 +2496,60 @@ const bgmAmbient = seed => {
   chord()
   bgm.timers.push(setInterval(chord, 9000))
 }
+// 🔥 焚き火：炎の低域うねり（200Hz LFO変調）＋火の粉パチパチ（秒間約3回）＋薪の爆ぜ
+const bgmBonfire = seed => {
+  const ctx = ctx0()
+  const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate)
+  const d = noise.getChannelData(0)
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1
+
+  // 炎のうねり（Flame Roar）
+  const rSrc = bgmTrack(ctx.createBufferSource())
+  rSrc.buffer = noise; rSrc.loop = true
+  const rf1 = bgmTrack(ctx.createBiquadFilter()), rf2 = bgmTrack(ctx.createBiquadFilter())
+  rf1.type = 'lowpass'; rf1.frequency.value = 200; rf1.Q.value = 1.0
+  rf2.type = 'lowpass'; rf2.frequency.value = 200; rf2.Q.value = 0.7
+  const lfo = bgmTrack(ctx.createOscillator()), lfoG = bgmTrack(ctx.createGain())
+  lfo.frequency.value = 0.28; lfoG.gain.value = 32
+  lfo.connect(lfoG); lfoG.connect(rf1.frequency); lfoG.connect(rf2.frequency); lfo.start()
+  const rGain = bgmTrack(ctx.createGain())
+  rGain.gain.value = 0.280
+  rSrc.connect(rf1); rf1.connect(rf2); rf2.connect(rGain); rGain.connect(bgm.gain)
+  rSrc.start()
+
+  // パチパチ（火の粉）＆ 薪の爆ぜ
+  let nextSnap = ctx.currentTime + 2.0
+  bgmSchedule(0.06, (step, t) => {
+    if (Math.random() < 0.18) {
+      const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain()
+      src.buffer = noise; f.type = 'bandpass'; f.frequency.value = 1400 + Math.random() * 2200; f.Q.value = 4
+      const dur = 0.004 + Math.random() * 0.008
+      g.gain.setValueAtTime(0.200, t)
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+      src.connect(f); f.connect(g)
+      if (ctx.createStereoPanner) {
+        const p = ctx.createStereoPanner()
+        p.pan.value = (Math.random() * 2 - 1) * 0.46
+        g.connect(p); p.connect(bgm.gain)
+      } else { g.connect(bgm.gain) }
+      src.start(t); src.stop(t + dur + 0.01); bgmTrack(src)
+    }
+    if (t > nextSnap) {
+      nextSnap = t + 9 + Math.random() * 12
+      const sSrc = ctx.createBufferSource(), sF = ctx.createBiquadFilter(), sG = ctx.createGain()
+      sSrc.buffer = noise; sF.type = 'bandpass'; sF.frequency.value = 1000; sF.Q.value = 5
+      sG.gain.setValueAtTime(0.284, t); sG.gain.exponentialRampToValueAtTime(0.0001, t + 0.035)
+      sSrc.connect(sF); sF.connect(sG)
+      const osc = ctx.createOscillator(), og = ctx.createGain()
+      osc.frequency.setValueAtTime(200, t); osc.frequency.exponentialRampToValueAtTime(60, t + 0.04)
+      og.gain.setValueAtTime(0.213, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.04)
+      osc.connect(og)
+      sG.connect(bgm.gain); og.connect(bgm.gain)
+      sSrc.start(t); sSrc.stop(t + 0.04); osc.start(t); osc.stop(t + 0.045)
+      bgmTrack(sSrc); bgmTrack(osc)
+    }
+  })
+}
 // 通話中だけ鳴らす。**AudioContext は join のジェスチャで既に起きている**ものを使う（2つ目を作らない）
 const startBgm = () => {
   stopBgm()
@@ -2505,12 +2560,18 @@ const startBgm = () => {
   gain.gain.value = bgmLevel()
   gain.connect(ensureOut())
   bgm = { nodes: [gain], timers: [], gain }
-  try { (bgmKind === 'tune' ? bgmTune : bgmAmbient)(bgmSeed(call.joinedId)) } catch { stopBgm() }
+  try {
+    const seed = bgmSeed(call.joinedId)
+    if (bgmKind === 'tune') bgmTune(seed)
+    else if (bgmKind === 'amb') bgmAmbient(seed)
+    else if (bgmKind === 'fire') bgmBonfire(seed)
+  } catch { stopBgm() }
 }
 const renderBgm = () => {
   $('bgmOff').checked = bgmKind === 'off'
   $('bgmTune').checked = bgmKind === 'tune'
   $('bgmAmb').checked = bgmKind === 'amb'
+  $('bgmFire').checked = bgmKind === 'fire'
   const on = bgmKind !== 'off'
   $('bgmVolRow').hidden = !on
   $('bgmNote').hidden = !on
@@ -2526,6 +2587,7 @@ const renderBgm = () => {
   $('bgmOff').onchange = pick('off')
   $('bgmTune').onchange = pick('tune')
   $('bgmAmb').onchange = pick('amb')
+  $('bgmFire').onchange = pick('fire')
   $('bgmVol').oninput = () => {
     bgmVol = Math.min(1, Math.max(0, Number($('bgmVol').value) / 100))
     lsSet(BGM_VOL_KEY, String(bgmVol))

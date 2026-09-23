@@ -17,8 +17,8 @@
 <link rel="icon" href="/favicon.ico" sizes="48x48 96x96">
 <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
 <!-- 案内ページは本番（potalk.app）だけの存在。β（旧URL）にも main の取り込みで複製されるが、そこに人を留めない：
-     本番へ転送する。検索向けには canonical が本番を指す。ローカル（localhost）は確認用なので転送しない -->
-<script>if (!/^(potalk\.app|localhost|127\.0\.0\.1)$/.test(location.hostname)) location.replace('https://potalk.app' + location.pathname.replace(/^\/po_call/, '') + location.hash)</script>
+     本番へ転送する。検索向けには canonical が本番を指す。ローカル（localhost・file:）は確認用なので転送しない -->
+<script>if (location.protocol !== 'file:' && !/^(potalk\.app|localhost|127\.0\.0\.1)$/.test(location.hostname)) location.replace('https://potalk.app' + location.pathname.replace(/^\/po_call/, '') + location.hash)</script>
 <!-- Cloudflare Web Analytics（Cookie不使用・匿名のアクセス測定） -->
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "e60980c17cde470c8eaf73907e312feb"}'></script>
 <!-- End Cloudflare Web Analytics -->
@@ -32,11 +32,20 @@
   .hero .lead b{ color:var(--text) }
   .hero .cta{ display:flex; flex-wrap:wrap; gap:10px; margin-top:18px }
   .art{ width:min(240px,58vw); height:auto; display:block; color:var(--text); opacity:.92 }
-  /* 湯気：版画の線に合わせた「途切れた太い線」。ゆらゆら上がる。動きを減らす設定では止める */
-  .art .sk{ stroke-width:16; stroke-dasharray:34 22; opacity:.8 }
-  .art .sk.a{ animation:rise 3.2s ease-in-out infinite } .art .sk.b{ animation:rise 3.2s ease-in-out .9s infinite } .art .sk.c{ animation:rise 3.2s ease-in-out 1.7s infinite }
-  @keyframes rise{ 0%{ transform:translateY(0); opacity:.35 } 50%{ transform:translateY(-4px); opacity:.9 } 100%{ transform:translateY(-8px); opacity:0 } }
-  @media (prefers-reduced-motion:reduce){ .art .sk{ animation:none !important } }
+  /* 湯気：手彫り版画の木版ストップモーション。閉じた多角形パスの丸みと点刻（雑味）がカクカクと繋がり・離れ・散る */
+  .art .sk-frame{ opacity:0 }
+  .art .sk-frame.f1{ animation:step-f1 1.6s steps(1) infinite }
+  .art .sk-frame.f2{ animation:step-f2 1.6s steps(1) infinite }
+  .art .sk-frame.f3{ animation:step-f3 1.6s steps(1) infinite }
+  .art .sk-frame.f4{ animation:step-f4 1.6s steps(1) infinite }
+  @keyframes step-f1{ 0%{ opacity:1 } 25%{ opacity:0 } 100%{ opacity:0 } }
+  @keyframes step-f2{ 0%{ opacity:0 } 25%{ opacity:1 } 50%{ opacity:0 } 100%{ opacity:0 } }
+  @keyframes step-f3{ 0%{ opacity:0 } 50%{ opacity:1 } 75%{ opacity:0 } 100%{ opacity:0 } }
+  @keyframes step-f4{ 0%{ opacity:0 } 75%{ opacity:1 } 100%{ opacity:0 } }
+  @media (prefers-reduced-motion:reduce){
+    .art .sk-frame{ animation:none !important }
+    .art .sk-frame.f1{ opacity:1 !important }
+  }
   .feat{ list-style:none; padding:0; margin:12px 0 0; display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); max-width:none }
   .feat li{ background:var(--card); border:1px solid var(--card-border); border-radius:14px; padding:12px 14px; margin:0; display:grid; grid-template-columns:auto 1fr; gap:10px; align-items:start }
   .feat .ic{ font-size:22px; line-height:1.4 } .feat b{ display:block; color:var(--text) } .feat span{ font-size:14px; color:var(--note) }
@@ -89,12 +98,181 @@
     <!-- 挿絵：Pixabay #32041「Tea Service, Teapot, Coffee Pot」（Clker-Free-Vector-Images・2012・Pixabay Content License／当時 CC0）を
          svgsilh.com 経由の SVG から取り込み、塗りを currentColor（紙の色に合う墨）にし、湯気を版画風の途切れた線で足した。
          詳細は THIRD_PARTY_NOTICES.md。単体での再配布はしない（ページの一部として使う） -->
-    <svg class="art art-ink" viewBox="0 -120 914 1400" role="img" aria-label="湯気の立つティーポットとカップ、ナプキンの版画風の挿絵"><g class="sk-g" fill="none" stroke="currentColor" stroke-linecap="round">
-  <path class="sk a" d="M150 196c-30-40 30-70 0-112c-16-24-4-48 10-66"/>
-  <path class="sk b" d="M200 172c-28-38 28-66 0-104c-14-22-4-44 10-62"/>
-  <path class="sk c" d="M430 36c-28-38 28-66 0-104c-14-22-4-44 10-62"/>
-  <path class="sk a" d="M478 44c-22-32 22-56 0-90"/>
-</g><g transform="translate(0.000000,1280.000000) scale(0.100000,-0.100000)"
+    <svg class="art art-ink" viewBox="0 -120 914 1400" role="img" aria-label="湯気の立つティーポットとカップ、ナプキンの版画風の挿絵"><g class="sk-g">
+
+    <g class="sk-frame f1" fill="currentColor" stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+      <!-- ポット注ぎ口 -->
+      <path d="M 144 195 C 138 170 132 145 138 120 C 143 95 131 70 136 45 C 139 25 125 5 122 -8 C 127 12 136 30 133 55 C 130 80 145 105 140 135 C 136 160 148 180 148 195 Z" />
+      <circle cx="118" cy="-18" r="2.2" stroke-width="0" />
+      <circle cx="127" cy="-28" r="1.6" stroke-width="0" />
+
+      <path d="M 166 185 C 159 160 167 130 158 100 C 151 75 164 50 153 20 C 158 35 168 60 163 85 C 158 110 171 135 165 165 C 163 175 169 185 169 185 Z" />
+      <circle cx="150" cy="8" r="2" stroke-width="0" />
+      <circle cx="158" cy="-4" r="1.5" stroke-width="0" />
+
+      <!-- ポット蓋 -->
+      <path d="M 515 30 C 502 0 516 -35 504 -70 C 496 -95 514 -120 500 -145 C 506 -125 518 -100 512 -75 C 506 -50 522 -20 514 10 C 518 20 519 30 519 30 Z" />
+      <circle cx="496" cy="-158" r="2.2" stroke-width="0" />
+      <circle cx="505" cy="-168" r="1.6" stroke-width="0" />
+
+      <path d="M 565 40 C 578 15 562 -15 576 -50 C 584 -75 566 -105 578 -135 C 572 -115 560 -90 568 -65 C 574 -40 558 -10 568 15 C 564 25 568 40 568 40 Z" />
+      <circle cx="582" cy="-148" r="2.2" stroke-width="0" />
+      <circle cx="574" cy="-158" r="1.6" stroke-width="0" />
+
+      <!-- カップお茶 -->
+      <path d="M 275 535 C 264 500 276 465 264 430 C 256 405 272 375 260 345 C 265 360 276 385 270 410 C 264 435 280 470 272 505 C 278 520 279 535 279 535 Z" />
+      <circle cx="256" cy="332" r="2" stroke-width="0" />
+      <circle cx="264" cy="320" r="1.5" stroke-width="0" />
+
+      <path d="M 338 530 C 322 490 344 450 326 410 C 316 385 330 355 336 325 C 342 350 334 375 338 400 C 342 425 328 460 344 495 C 342 515 344 530 344 530 Z" />
+      <circle cx="334" cy="310" r="2.2" stroke-width="0" />
+      <circle cx="340" cy="295" r="1.6" stroke-width="0" />
+
+      <path d="M 400 535 C 414 500 398 465 412 430 C 420 405 406 375 418 345 C 412 360 402 385 408 410 C 414 435 398 470 406 505 C 402 520 404 535 404 535 Z" />
+      <circle cx="422" cy="332" r="2" stroke-width="0" />
+      <circle cx="414" cy="320" r="1.5" stroke-width="0" />
+    </g>
+
+    <g class="sk-frame f2" fill="currentColor" stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+      <!-- ポット注ぎ口 -->
+      <path d="M 144 195 C 136 170 132 150 137 130 C 142 150 146 175 148 195 Z" />
+      <path d="M 139 110 C 145 85 131 60 138 35 C 140 15 126 -5 120 -20 C 125 0 137 20 133 45 C 130 70 147 95 142 110 Z" />
+      <circle cx="137" cy="122" r="2" stroke-width="0" />
+      <circle cx="116" cy="-30" r="2.2" stroke-width="0" />
+      <circle cx="125" cy="-40" r="1.6" stroke-width="0" />
+
+      <path d="M 166 185 C 158 165 162 145 160 130 C 166 145 168 165 169 185 Z" />
+      <path d="M 158 115 C 152 90 166 65 154 30 C 160 45 170 70 164 95 C 162 105 164 115 164 115 Z" />
+      <circle cx="159" cy="123" r="1.8" stroke-width="0" />
+      <circle cx="152" cy="18" r="2" stroke-width="0" />
+      <circle cx="160" cy="6" r="1.5" stroke-width="0" />
+
+      <!-- ポット蓋 -->
+      <path d="M 515 30 C 508 10 514 -10 511 -25 C 516 -10 518 10 519 30 Z" />
+      <path d="M 506 -45 C 498 -70 516 -95 502 -125 C 508 -105 520 -80 514 -55 Z" />
+      <circle cx="510" cy="-35" r="2" stroke-width="0" />
+      <circle cx="498" cy="-138" r="2.2" stroke-width="0" />
+      <circle cx="508" cy="-150" r="1.6" stroke-width="0" />
+
+      <path d="M 565 40 C 572 20 566 0 568 -15 C 564 0 566 20 568 40 Z" />
+      <path d="M 572 -35 C 580 -60 564 -90 576 -120 C 570 -100 558 -75 566 -50 Z" />
+      <circle cx="570" cy="-25" r="2" stroke-width="0" />
+      <circle cx="580" cy="-132" r="2.2" stroke-width="0" />
+      <circle cx="572" cy="-144" r="1.6" stroke-width="0" />
+
+      <!-- カップお茶 -->
+      <path d="M 275 535 C 266 505 272 485 268 465 C 274 485 278 510 279 535 Z" />
+      <path d="M 266 445 C 258 420 274 390 262 360 C 267 375 278 400 272 425 Z" />
+      <circle cx="267" cy="455" r="2" stroke-width="0" />
+      <circle cx="258" cy="348" r="2" stroke-width="0" />
+      <circle cx="266" cy="336" r="1.5" stroke-width="0" />
+
+      <path d="M 338 530 C 326 500 338 470 330 445 C 338 470 342 505 344 530 Z" />
+      <path d="M 330 425 C 320 395 338 365 332 335 C 340 360 330 390 338 415 Z" />
+      <circle cx="331" cy="436" r="2.4" stroke-width="0" />
+      <circle cx="330" cy="320" r="2.2" stroke-width="0" />
+      <circle cx="336" cy="305" r="1.6" stroke-width="0" />
+
+      <path d="M 400 535 C 410 505 404 485 408 465 C 402 485 398 510 404 535 Z" />
+      <path d="M 410 445 C 418 420 404 390 416 360 C 410 375 400 400 406 425 Z" />
+      <circle cx="409" cy="455" r="2" stroke-width="0" />
+      <circle cx="420" cy="348" r="2" stroke-width="0" />
+      <circle cx="412" cy="336" r="1.5" stroke-width="0" />
+    </g>
+
+    <g class="sk-frame f3" fill="currentColor" stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+      <!-- ポット注ぎ口 -->
+      <path d="M 144 195 C 140 180 144 165 146 195 Z" />
+      <path d="M 136 150 C 142 125 130 100 137 75 C 141 95 133 120 141 140 Z" />
+      <path d="M 136 55 C 138 35 126 15 122 0 C 126 15 136 30 134 50 Z" />
+      <circle cx="140" cy="160" r="2" stroke-width="0" />
+      <circle cx="136" cy="65" r="2" stroke-width="0" />
+      <circle cx="118" cy="-10" r="2.2" stroke-width="0" />
+      <circle cx="126" cy="-22" r="1.6" stroke-width="0" />
+
+      <path d="M 166 185 C 163 170 166 160 168 185 Z" />
+      <path d="M 162 145 C 156 120 170 95 160 70 C 165 85 174 105 168 135 Z" />
+      <path d="M 158 50 C 162 30 156 15 152 5 Z" />
+      <circle cx="164" cy="155" r="1.8" stroke-width="0" />
+      <circle cx="160" cy="60" r="1.8" stroke-width="0" />
+      <circle cx="150" cy="-6" r="2" stroke-width="0" />
+
+      <!-- ポット蓋 -->
+      <path d="M 515 30 C 512 15 515 5 518 30 Z" />
+      <path d="M 508 -10 C 500 -35 518 -65 506 -95 C 512 -75 522 -50 516 -25 Z" />
+      <circle cx="513" cy="0" r="2" stroke-width="0" />
+      <circle cx="504" cy="-108" r="2.2" stroke-width="0" />
+      <circle cx="512" cy="-120" r="1.6" stroke-width="0" />
+      <circle cx="500" cy="-132" r="1.5" stroke-width="0" />
+
+      <path d="M 565 40 C 563 25 566 15 568 40 Z" />
+      <path d="M 570 -5 C 578 -30 562 -60 574 -90 C 568 -70 556 -45 564 -20 Z" />
+      <circle cx="567" cy="5" r="2" stroke-width="0" />
+      <circle cx="578" cy="-102" r="2.2" stroke-width="0" />
+      <circle cx="570" cy="-114" r="1.6" stroke-width="0" />
+
+      <!-- カップお茶 -->
+      <path d="M 275 535 C 272 515 276 500 278 535 Z" />
+      <path d="M 268 480 C 260 455 276 425 264 395 C 269 410 280 435 274 460 Z" />
+      <circle cx="273" cy="492" r="2" stroke-width="0" />
+      <circle cx="262" cy="382" r="2" stroke-width="0" />
+      <circle cx="270" cy="370" r="1.6" stroke-width="0" />
+
+      <path d="M 338 530 C 334 510 340 495 344 530 Z" />
+      <path d="M 332 475 C 322 445 340 415 334 385 C 342 410 332 440 340 465 Z" />
+      <path d="M 330 360 C 322 340 334 320 330 305 Z" />
+      <circle cx="338" cy="485" r="2" stroke-width="0" />
+      <circle cx="332" cy="372" r="2.2" stroke-width="0" />
+      <circle cx="328" cy="292" r="2" stroke-width="0" />
+      <circle cx="334" cy="280" r="1.5" stroke-width="0" />
+
+      <path d="M 400 535 C 404 515 402 500 404 535 Z" />
+      <path d="M 408 480 C 416 455 402 425 414 395 C 408 410 398 435 404 460 Z" />
+      <circle cx="405" cy="492" r="2" stroke-width="0" />
+      <circle cx="416" cy="382" r="2" stroke-width="0" />
+      <circle cx="408" cy="370" r="1.6" stroke-width="0" />
+    </g>
+
+    <g class="sk-frame f4" fill="currentColor" stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+      <!-- ポット注ぎ口 -->
+      <path d="M 144 195 C 137 170 132 145 139 120 C 144 140 146 170 148 195 Z" />
+      <path d="M 134 85 C 138 65 128 45 124 30 C 128 45 136 60 134 80 Z" />
+      <circle cx="138" cy="105" r="2" stroke-width="0" />
+      <circle cx="122" cy="18" r="2" stroke-width="0" />
+      <circle cx="128" cy="6" r="1.6" stroke-width="0" />
+
+      <path d="M 166 185 C 158 160 166 135 162 110 C 168 135 168 160 169 185 Z" />
+      <path d="M 158 80 C 162 60 156 45 154 35 Z" />
+      <circle cx="162" cy="98" r="1.8" stroke-width="0" />
+      <circle cx="152" cy="24" r="2" stroke-width="0" />
+
+      <!-- ポット蓋 -->
+      <path d="M 515 30 C 504 5 516 -20 508 -50 C 514 -30 520 -5 519 30 Z" />
+      <circle cx="506" cy="-62" r="2.2" stroke-width="0" />
+      <circle cx="514" cy="-75" r="1.6" stroke-width="0" />
+      <circle cx="502" cy="-90" r="1.5" stroke-width="0" />
+
+      <path d="M 565 40 C 576 15 564 -10 572 -40 C 566 -20 560 5 568 40 Z" />
+      <circle cx="574" cy="-52" r="2.2" stroke-width="0" />
+      <circle cx="566" cy="-65" r="1.6" stroke-width="0" />
+
+      <!-- カップお茶 -->
+      <path d="M 275 535 C 265 500 274 470 268 440 C 274 465 278 495 279 535 Z" />
+      <circle cx="266" cy="428" r="2" stroke-width="0" />
+      <circle cx="274" cy="415" r="1.6" stroke-width="0" />
+
+      <path d="M 338 530 C 324 490 342 450 330 415 C 338 445 334 485 344 530 Z" />
+      <circle cx="328" cy="402" r="2.4" stroke-width="0" />
+      <circle cx="336" cy="388" r="1.8" stroke-width="0" />
+      <circle cx="326" cy="340" r="1.8" stroke-width="0" />
+      <circle cx="332" cy="328" r="1.5" stroke-width="0" />
+
+      <path d="M 400 535 C 412 500 402 470 408 440 C 402 465 398 495 404 535 Z" />
+      <circle cx="410" cy="428" r="2" stroke-width="0" />
+      <circle cx="402" cy="415" r="1.6" stroke-width="0" />
+    </g>
+
+  </g><g transform="translate(0.000000,1280.000000) scale(0.100000,-0.100000)"
 fill="currentColor" stroke="none">
 <path d="M5442 12771 c-12 -17 -38 -42 -58 -57 -33 -25 -37 -26 -46 -11 -18
 33 -70 50 -169 55 l-97 5 -43 -40 c-24 -22 -58 -49 -75 -61 -18 -12 -34 -32
