@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.28
+  ぽっと通話〈実験版〉 v0.14.29
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -713,6 +713,13 @@
   .room-count{ margin-left:auto; flex:none; white-space:nowrap; color:var(--link); font-weight:700; font-size:13px }
   /* 満室は**目安**なので、押せなくはしない（色だけ落として「たぶん入れない」と伝える） */
   .room-count.full{ color:var(--warn) }
+  .room-share{ flex:none; display:inline-flex; align-items:center; justify-content:center;
+    width:24px; height:24px; border-radius:6px; color:var(--sub); cursor:pointer;
+    transition:color .15s, background .15s, transform .15s; margin-left:2px }
+  .room-share svg{ width:14px; height:14px }
+  .room-share:hover{ color:var(--link); background:var(--chip) }
+  .room-share:active{ transform:scale(0.92) }
+  .room-share.copied{ color:var(--accent); background:var(--accent-dim) }
   .room-dur{ margin-top:4px; font-size:12px; color:var(--sub); display:flex; align-items:center; gap:8px }
   .room-eq{ margin-left:auto; font-family:'Courier New',ui-monospace,monospace; font-size:15px;
     line-height:1; letter-spacing:1px; color:var(--link); text-shadow:0 0 6px var(--accent-glow) }
@@ -1281,7 +1288,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.28'
+const APP_VERSION = 'v0.14.29'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1646,6 +1653,7 @@ let pendingPk = ''
 // これから入る部屋の**ハッシュ**（URL の room=／ロビーのタップ／入口の確認で決まる）。空なら参加時に新しく作る。
 // 退出しても消さない＝同じ名前で入り直せば同じ部屋（T6「入り直せる」）。名前を打ち替えたら新しくする。
 let pendingHash = ''
+let boundRoomName = ''   // pendingHash が紐づいている部屋名。名前を打ち替えたら別の部屋にする
 // 入口の確認（リンクで来た人）。中身は下の「入口の確認」の節。state: '' | 'checking' | 'live' | 'asleep'
 // ★entryIsBlocking は**ここで**宣言する。つなぎ直し（rejoin）はモジュール評価の途中で joinCall() を
 //   呼ぶので、下の節で const 宣言すると TDZ の ReferenceError になり、参加が黙って失敗する（T11 が捕まえた）
@@ -1701,10 +1709,16 @@ roomInput.addEventListener('input', () => {
   // ★**名前が本当に変わったときだけ**捨てる（2026-09-17）。iPhone では IME の確定や自動修正で、
   //   見た目が変わらなくても input が飛ぶことがあり、その瞬間に指紋が消えて「同名の普通の部屋」に
   //   化けていた。元の名前に戻せば指紋も戻す。
+  const curName = roomInput.value.trim()
   if (pendingPk && !ownerKeyByFp(pendingPk)) pendingPk = ''
   { const h = roomFromHash(), hp = roomPk(h)
-    if (hp && !ownerKeyByFp(hp) && roomInput.value.trim() === hashName()) pendingPk = hp }
-  if ((entry.id || entry.name) && roomInput.value.trim() !== hashName()) { entryCancel(); pendingHash = newHash() }   // 名前を変えた＝別の部屋を作る
+    if (hp && !ownerKeyByFp(hp) && curName === hashName()) pendingPk = hp }
+  // ★名前を変えた＝「直前の部屋やリンクの部屋とは別の部屋を作る」意思なので、新しいハッシュを発行する
+  if (boundRoomName && curName !== boundRoomName) {
+    if (entry.id || entry.name) entryCancel()
+    pendingHash = newHash()
+    boundRoomName = ''   // 編集中に何度も newHash() が走らないようリセット
+  }
   syncRoomCount()
   if (kindBc.checked) applyBcast()   // 名前が変われば鍵も部屋も変わる（中で syncShare する）
   else { syncShare(); syncKindRow() }
@@ -1718,8 +1732,8 @@ const roomFromHash = () => { const q = parseHash(); return q.room || q.legacy } 
   // 入力欄に入れるのは**名前だけ**。指紋は pendingPk、ハッシュは pendingHash で持つ（欄に出すと、
   // うっかり消されて「同じ名前の別の部屋」に入ってしまうし、文字数カウンタの意味も壊れる）。
   const q = parseHash()
-  if (q.room) { pendingHash = roomBase(q.room); pendingPk = roomPk(q.room); roomInput.value = q.name }
-  else { roomInput.value = roomBase(q.legacy); pendingPk = roomPk(q.legacy) }   // 旧形式＝入口URL（ハッシュは入口の確認で決まる）
+  if (q.room) { pendingHash = roomBase(q.room); pendingPk = roomPk(q.room); roomInput.value = q.name; boundRoomName = q.name }
+  else { roomInput.value = roomBase(q.legacy); pendingPk = roomPk(q.legacy); boundRoomName = roomBase(q.legacy) }   // 旧形式＝入口URL（ハッシュは入口の確認で決まる）
 }
 syncRoomCount()
 
@@ -1808,6 +1822,7 @@ const applyAutoRoom = () => {
   if (roomInput.value === '' || roomInput.value === lastAutoRoom) {
     lastAutoRoom = defaultRoom()
     roomInput.value = lastAutoRoom
+    boundRoomName = lastAutoRoom
     syncRoomCount(); syncShare()
   }
 }
@@ -2009,6 +2024,26 @@ const HEART_HALF_L = 'M10.70 19.92 C5.95 15.96 3 12.89 3 9.40 C3 6.50 5.20 4.40 
 const HEART_HALF_R = 'M14.36 4.77 C14.89 4.53 15.48 4.40 16.10 4.40 C18.80 4.40 21 6.50 21 9.40 C21 12.84 18.13 15.87 13.51 19.75 L13.60 18.80 L12.20 16.40 L14.60 12.80 L11.60 11.20 L13.40 7Z'
 const HEART_BROKEN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" overflow="visible" aria-hidden="true"><g transform="rotate(-9 12 21)"><path d="' + HEART_HALF_L + '"/></g><g transform="rotate(9 12 21)"><path d="' + HEART_HALF_R + '"/></g></svg>'
 const ARROWS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7 4 11l4 4"/><path d="M16 7l4 4-4 4"/><path d="M4 11h16"/></svg>'
+// シェアアイコン（ロビーの部屋URLコピー用：iPhone/iOSで親しまれている「箱から上矢印」）
+const SHARE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>'
+const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>'
+const copyRoomUrl = async (el, id, name) => {
+  const url = roomUrl(id, name)
+  try {
+    await navigator.clipboard.writeText(url)
+    el.innerHTML = CHECK_SVG
+    el.classList.add('copied')
+    el.setAttribute('title', 'コピーしました ✓')
+    clearTimeout(el._revert)
+    el._revert = setTimeout(() => {
+      el.innerHTML = SHARE_SVG
+      el.classList.remove('copied')
+      el.setAttribute('title', '部屋のリンクをコピー')
+    }, 1600)
+  } catch {
+    prompt('部屋のリンクです（長押しでコピー）:', url)
+  }
+}
 
 // 参加者リスト（自分＋接続中の相手）を描く。名前・絵文字は textContent で入れる（受信データは信用しない）。
 // relay: true=中継 / false=直結 / undefined=経路不明（プロフィール未着や旧クライアント）→アイコンを出さない。
@@ -3965,6 +4000,7 @@ const joinTarget = () => {
   }
   if (entryIsBlocking()) return null   // 入口の確認中／お休み中（案内の「部屋の名前をつけて参加」からだけ入れる）
   roomInput.value = name; syncRoomCount()   // 補った／切り詰めた名前を入力欄にも反映する
+  boundRoomName = name
   // 配信部屋なら部屋IDは `ハッシュ~pk~指紋`。**指紋から自分の秘密鍵が引ければ自分がオーナー**
   // ＝マイクを取る側。引けなければ聞き役なので、この先 getUserMedia を一度も呼ばない。
   const roomId = roomIdOf(pendingHash ||= newHash(), pendingPk)   // 部屋の実体はハッシュ。名前は meta
@@ -4624,6 +4660,7 @@ const leaveCall = () => {
 
   // ② 値を初期状態へ。lastRoom（ゾンビroom検出）と leaving は据え置かれる
   resetCall()
+  boundRoomName = roomInput.value.trim()   // 退出時の部屋名を保持（同じ名前なら再入室、変えたら新部屋）
 
   // ③ 画面を「未参加」に戻す
   setCount(); renderGrow(); renderMembers(); renderLobby(); renderMute(); renderSpeak(); renderBcNote(); renderMailNow()
@@ -4661,6 +4698,7 @@ if (rejoin) {
   // **指紋ごと戻す**。名前だけ戻すと、つなぎ直した瞬間に配信部屋から普通の部屋へ移ってしまう
   // （＝オーナーは自分だけの部屋に取り残され、リスナーには誰も来なくなる）。
   roomInput.value = capRoom(rejoin.name || roomBase(rejoin.room)); pendingHash = roomBase(rejoin.room); pendingPk = roomPk(rejoin.room)
+  boundRoomName = roomInput.value.trim()
   if (pendingPk && ownerKeyByFp(pendingPk)) kindBc.checked = true
   syncRoomCount(); syncShare(); syncKindRow()
   joinCall().then(() => { if (rejoin.muted && !call.muted && call.joinedId) toggleMute() })
@@ -4821,6 +4859,7 @@ const entryAdopt = () => {
   const room = best[0]
   pendingHash = roomBase(room); pendingPk = roomPk(room)
   if (!roomInput.value.trim()) { let nm = ''; presences.forEach(v => { if (v.room === room && v.rn) nm = v.rn }); roomInput.value = nm || roomLabel(room); syncRoomCount() }
+  boundRoomName = roomInput.value.trim()
   syncShare()
 }
 const entryRender = () => {
@@ -4928,7 +4967,16 @@ const renderLobby = () => {
     const full = people.length >= roomCapOf(room)
     const ct = document.createElement('span'); ct.className = 'room-count' + (full ? ' full' : '')
     ct.textContent = people.length + '人' + (full ? '・満室' : '')
-    top.append(nm, ct)
+    const sh = document.createElement('span')
+    sh.className = 'room-share'
+    sh.setAttribute('role', 'button')
+    sh.setAttribute('tabindex', '0')
+    sh.setAttribute('title', '部屋のリンクをコピー')
+    sh.setAttribute('aria-label', '部屋のリンクをコピー')
+    sh.innerHTML = SHARE_SVG
+    sh.onclick = e => { e.stopPropagation(); copyRoomUrl(sh, room, lobbyName(room, people)) }
+    sh.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyRoomUrl(sh, room, lobbyName(room, people)) } }
+    top.append(nm, ct, sh)
     // タグが付いた部屋は、部屋名と付けた人を小さく添える
     let sub = null
     if (tagged) { sub = document.createElement('div'); sub.className = 'room-sub'
@@ -5005,6 +5053,7 @@ const selectRoom = (room, name) => {
   entryCancel()   // ロビーから来た＝開いている部屋だと分かっている
   // **ハッシュも指紋も一緒に持っていく**（名前だけ渡すと、同じ名前の別の部屋を作って誰にも会えない）
   roomInput.value = name; pendingHash = roomBase(room); pendingPk = roomPk(room)
+  boundRoomName = name
   const own = !!(pendingPk && ownerKeyByFp(pendingPk))
   kindBc.checked = own; kindChat.checked = !own
   syncRoomCount(); syncShare(); syncKindRow()
