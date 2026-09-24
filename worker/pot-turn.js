@@ -69,8 +69,7 @@ export default {
           body: JSON.stringify({ ttl: 14400 }) }   // ＝一本の接続の寿命。上の「判断の記録」参照
       )
       if (!r.ok) throw 0
-      const data = await r.json()
-      if (!data.iceServers) throw 0
+      if (!data.iceServers || !Array.isArray(data.iceServers) || data.iceServers.length === 0) throw 0
       return new Response(JSON.stringify({ iceServers: data.iceServers }),
         { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })
     } catch {

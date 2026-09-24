@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.30
+  ぽっと通話〈実験版〉 v0.14.31
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1288,7 +1288,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.30'
+const APP_VERSION = 'v0.14.31'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1952,8 +1952,10 @@ let icePromise = null, iceFetchedAt = 0
 const loadIce = (force = false) => {
   if (force || !icePromise || Date.now() - iceFetchedAt > ICE_TTL_MS) {
     iceFetchedAt = Date.now()
-    icePromise = fetch(TURN_WORKER_URL).then(r => r.json()).then(d => d.iceServers)
-      .catch(e => { icePromise = null; throw e })   // 失敗は握らず次回リトライできるようにする
+    icePromise = fetch(TURN_WORKER_URL).then(r => r.json()).then(d => {
+      if (!Array.isArray(d?.iceServers) || d.iceServers.length === 0) throw new Error('empty iceServers')
+      return d.iceServers
+    }).catch(e => { icePromise = null; throw e })   // 失敗は握らず次回リトライできるようにする
   }
   return icePromise
 }
@@ -1963,7 +1965,7 @@ const loadIce = (force = false) => {
 // 暗号化されたまま（Cloudflare も中身は聞けない）。第三者リレー経由なので運営は通信経路を持たない＝境界内。
 // ★ただし relay は TURN が取れている時だけ。取得失敗時に relay 強制すると候補ゼロで誰も繋がらないので、
 //   その場合は通常（STUN＋P2P）にフォールバックする。
-const trysteroConfig = ice => ice
+const trysteroConfig = ice => (Array.isArray(ice) && ice.length > 0)
   ? { ...TRYSTERO_BASE, rtcConfig: { iceServers: ice, iceTransportPolicy: 'relay' } }
   : TRYSTERO_BASE
 // ライブラリ読込は一度だけ。ロビー（ページ読込時）と参加（ボタン押下時）で共有する。
@@ -3011,7 +3013,7 @@ const refreshIce = async () => {
   let fresh
   try { fresh = await loadIce() } catch { return }
   // 非同期で待っている間に退出・入り直しをしていることがある。**掴んだときと同じ配列**にだけ書く
-  if (!fresh || call.iceServers !== live) return
+  if (!fresh || !Array.isArray(fresh) || !fresh.length || call.iceServers !== live) return
   live.splice(0, live.length, ...fresh)  // ★参照を保ったまま中身だけ差し替える（代入では効かない）
 }
 
@@ -4293,6 +4295,7 @@ if (location.hostname !== 'potalk.app') {
   ver.addEventListener('contextmenu', e => e.preventDefault())
 }
 const armJoined = (roomId, name, bcast) => {
+  if (typeof entryCancel === 'function') entryCancel()
   diagSince = Date.now()
   call.wantWake = true; wake()
   call.joinedId = roomId; call.joinedAt = performance.now(); call.warn = ''
@@ -4845,7 +4848,13 @@ let lastRoomSound = 0
 //   ENTRY_WAIT のあいだは「探しています」と出し、その後も見つかれば「開いています」に戻す。
 const ENTRY_WAIT = 12000
 const entryActive = () => !!(entry.id || entry.name)
-const entryCancel = () => { if (!entryActive()) return; entry.id = ''; entry.name = ''; entry.pk = ''; entry.state = ''; entryRender() }
+let entryTimer = null
+const entryCancel = () => {
+  if (entryTimer) { clearInterval(entryTimer); entryTimer = null }
+  if (!entryActive()) return
+  entry.id = ''; entry.name = ''; entry.pk = ''; entry.state = ''
+  entryRender()
+}
 // 在室がこの入口に合うか：新形式は部屋IDそのもの／旧形式は「告知している名前（無ければ旧クライアントの ID＝名前）＋指紋」
 const entryMatch = v => (entry.id ? v.room === entry.id : (roomPk(v.room) === entry.pk && (v.rn || roomBase(v.room)) === entry.name))
   && (!isBcRoom(v.room) || v.bo)   // 配信部屋は配信者がいるときだけ「開いている」
@@ -4902,7 +4911,8 @@ const entryStart = () => {
   if (q.room && !pk && !isHashRoom(q.room)) return
   if (q.room) entry.id = q.room; else { entry.name = roomBase(q.legacy); entry.pk = pk }
   entry.state = 'checking'; entryRender()
-  setInterval(entryUpdate, 1000)
+  if (entryTimer) clearInterval(entryTimer)
+  entryTimer = setInterval(entryUpdate, 1000)
 }
 $('entryLobby').onclick = () => { const l = document.querySelector('.lobby'); if (l) l.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 // 「部屋の名前をつけて参加」＝すぐには入らない。参加ボタンを戻し、部屋名の欄を選択状態にして
@@ -5124,7 +5134,7 @@ const openLobby = async (again, status, soft = false) => {
   try {
     // 入り直しの前に、前の接続と掃除タイマーを必ず片付ける（放置すると多重に走る）
     if (lobbySweep) { clearInterval(lobbySweep); lobbySweep = null }
-    if (lobbyRoom) { const old = lobbyRoom; lobbyRoom = null; lobbyPresence = null; try { await old.leave() } catch {} }
+    if (lobbyRoom) { const old = lobbyRoom; lobbyRoom = null; lobbyPresence = null; try { await Promise.race([old.leave(), new Promise(r => setTimeout(r, 2000))]) } catch {} }
     // ピアIDは入り直すと変わるので数え直すしかない。直前の人数だけ控えて grace に使う
     prevViewers = lobbyPeers.size + 1
     lobbyPeers.clear()

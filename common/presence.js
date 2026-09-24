@@ -26,7 +26,9 @@ if (pots.length) {
       r.el.classList.toggle('live', n > 0)
       if (n > 0) {
         const faces = [...r.seen.values()].slice(0, 5).map(v => v.emoji).join('')
-        st.innerHTML = '<b>ポットが温かい</b>　' + faces + '　' + n + ' 人'
+        st.replaceChildren()
+        const b = document.createElement('b'); b.textContent = 'ポットが温かい'
+        st.append(b, '　' + faces + '　' + n + ' 人')
         if (cta) cta.textContent = 'いま入ると、その人と話せます →'
       } else if (!r.checked) {
         st.textContent = '確認中…'
@@ -47,7 +49,13 @@ if (pots.length) {
         window.__presenceEvents = (window.__presenceEvents || 0) + 1
         const d = (e.tags.find(t => t[0] === 'd') || [])[1]
         const r = rooms.get(d); if (!r) return
-        let emoji = '🙂'; try { emoji = JSON.parse(e.content).e || '🙂' } catch {}
+        let emoji = '🙂'
+        try {
+          const raw = JSON.parse(e.content).e
+          if (typeof raw === 'string' && /^(\p{Extended_Pictographic}|\u200D|\uFE0F)+$/u.test(raw.trim()) && [...raw.trim()].length <= 8) {
+            emoji = raw.trim()
+          }
+        } catch {}
         r.seen.set(e.pubkey, { ts: Date.now(), emoji }); r.checked = true
         render()
       }
