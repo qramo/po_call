@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.31
+  ぽっと通話〈実験版〉 v0.14.32
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -929,7 +929,8 @@
     <summary><span class="cr-ic">🏠</span><span class="cr-label">部屋を作る</span><span class="cr-open-label">部屋名</span><span id="roomCount" class="char-count"></span><span class="cr-arrow">▸</span></summary>
     <div class="cr-body"><div>
   <div id="roomField">
-    <input id="room" placeholder="◯◯の部屋" autocomplete="off" aria-label="部屋名">
+    <!-- maxlength は貼り付け暴走の上限だけ（30 文字の本当の判定は文字数カウンタと参加時の capRoom。絵文字は 2 単位なので 60） -->
+    <input id="room" placeholder="◯◯の部屋" autocomplete="off" aria-label="部屋名" maxlength="60">
     <!-- 部屋の種類。**既定は雑談部屋**（今までの部屋と同じ）。配信部屋を選んだ瞬間に鍵を作って
          共有リンクを確定させる（＝先に配ってから入れる）。
          他人の配信部屋のリンクを開いている間は JS がこの2つごと隠す（部屋の正体はURLで決まっているため） -->
@@ -1018,7 +1019,7 @@
       <!-- ひとこと。履歴は持たない（後から来た人には出ない）＝その場だけのもの -->
       <div id="chatRow" class="chat-row" hidden>
         <!-- ★入力の候補に「カード番号」等が出ないようにする属性一式（Android で報告あり）。
-             name を messsage と明示するのは、名前が無いと自動入力側が位置や形から
+             name を message と明示するのは、名前が無いと自動入力側が位置や形から
              推測して支払い欄と誤判定することがあるため。inputmode/enterkeyhint は
              キーボードを文章向きにする。 -->
         <input id="chatText" name="message" type="text" placeholder="ひとこと…" maxlength="60"
@@ -1288,7 +1289,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.31'
+const APP_VERSION = 'v0.14.32'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1304,6 +1305,13 @@ const ssDel = k => { try { sessionStorage.removeItem(k) } catch {} }
 const sendTo = (act, data, target) => { try { act?.send(data, target ? { target } : undefined).catch(() => {}) } catch {} }
 // 受信側の連打抑止：同じ相手からは ms に1回だけ受け付ける（map: peerId → 最後に受け付けた時刻）
 const tooSoon = (map, key, ms) => { const now = Date.now(); if (now - (map.get(key) || 0) < ms) return true; map.set(key, now); return false }
+// 「中身は必ず取り込み、重い後処理だけ間引く」型。**状態**を運ぶメッセージ（profile・meta・在室）は tooSoon で
+// 捨てると最後の状態（ミュートした、など）が失われるので、捨てずに末尾で 1 回まとめて走らせる。
+// holder は {t: タイマー} を持つオブジェクト（call の中か module の let）。fn は何度呼ばれても壊れないものに限る
+const throttleBy = (map, key, ms, holder, fn) => {
+  if (!tooSoon(map, key, ms)) { fn(); return }
+  if (!holder.t) holder.t = setTimeout(() => { holder.t = null; fn() }, ms)
+}
 
 // ⓪ 通話の状態。**読込時に syncShare() が call.joinedId を読む**ので、他の何より先に
 // 宣言しておくこと（後ろに置くと TDZ で「Cannot access 'call' before initialization」に
@@ -1338,6 +1346,10 @@ const CALL_INIT = () => ({
   chatAction: null,     // ひとこと（テキスト）
   chatAt: 0,            // 自分が最後に送った時刻（連打の自衛）
   chatSeen: new Map(),  // peerId → 最後に受け入れた時刻（相手の連打への自衛）
+  profileSeen: new Map(), // peerId → 最後に描き直した時刻（改造クライアントの連打で全員の DOM 再構築が走るのを防ぐ・v0.14.32）
+  profileFlush: { t: null }, // 間引いた描き直しをまとめて走らせるタイマー（throttleBy の holder）
+  metaSeen: new Map(),  // peerId → 最後に後処理（描画・hash・heartbeat）を走らせた時刻（同上）
+  metaFlush: { t: null },
   lostPeer: false,      // 予告なく（'bye' 無しで）相手を失ったか。自動復帰の判定に使う
   lostAt: 0,            // 壊れた状態が続き始めた時刻（0＝壊れていない）
   audioWatch: null,     // 音声の到着を見張るタイマー（join で開始・leave で停止）
@@ -1369,6 +1381,7 @@ const CALL_INIT = () => ({
   grantTokens: new Map(),     // 枠主：token → expireAt（有効期限付き台帳）
   grantPeerTokens: new Map(), // 枠主：peerId → token
   grantResumeSeen: new Map(), // リスナー：枠主peerId → 最後にresumeを送った時刻（連打防止・v0.14.27）
+  grantResumeAccept: new Map(), // 枠主：peerId → 最後に resume に応じた時刻（署名＋全員配信を連打で走らされない・v0.14.32）
   ignored: new Set(),   // 無視している相手の peerId。**この部屋にいる間だけ**（相手が入り直すと別IDになる）
   byeSeen: new Set(),   // 「退出します」を送ってきた相手。来ないまま消えたら「接続が切れた」と書き分ける
   mailAction: null,     // おたより（募集・投稿・公開）のデータチャネル
@@ -3071,11 +3084,11 @@ const checkCapacity = () => {
 }
 // **すぐには数えない。**接続が張れた直後は相手のプロフィール（＝到着時刻）がまだ届いておらず、
 // 到着順が「全員が自分より先」に見えてしまう＝**定員内にいる人まで抜ける**。
-// 少し待ってから数え、プロフィールが届くたびに数え直す（先に来たイベントは捨てる）。
+// 少し待ってから数える。待っている間に届いたプロフィールは数える時点の call.profiles に入っているので、
+// **タイマーは延ばさない**（届くたびに延ばすと、連打する相手が 1 人いるだけで満室判定が永久に来ない）。
 const CAP_SETTLE_MS = 1500
 const scheduleCapacityCheck = () => {
-  if (!call.joinedId) return
-  clearTimeout(call.capTimer)
+  if (!call.joinedId || call.capTimer) return
   call.capTimer = setTimeout(() => { call.capTimer = null; checkCapacity() }, CAP_SETTLE_MS)
 }
 
@@ -3503,6 +3516,13 @@ const CHAT_MAX = 60           // 1回の長さ（入力欄の maxlength と揃�
 const CHAT_EVERY_MS = 1200    // 送る側の下限
 const CHAT_ACCEPT_MS = 900    // 受け取る側の下限。**送る側より短く**（nudge で踏んだ罠）
 const CHAT_MAX_BUBBLE = 6     // 同時に出す上限
+// 受信側の下限（相手の連打への自衛）。正規クライアントが続けて送る最短間隔より**必ず短く**する：
+//   grant resume＝リスナー側が 3 秒に 1 回（grantResumeSeen）。これは捨ててよい（次の名簿でまた提示される）。
+//   profile・meta・ロビーの在室は**状態**なので捨てない＝throttleBy で後処理（DOM 再構築・hash・heartbeat）だけ間引く
+const PROFILE_ACCEPT_MS = 400
+const META_ACCEPT_MS = 500
+const LOBBY_RENDER_MS = 1000
+const GRANT_RESUME_ACCEPT_MS = 2000
 // タイムラインに残す件数。**見えている範囲を決めるのは CSS の高さ**（溢れた行は上へ抜けて切れる）で、
 // この数字は DOM が無限に伸びないための上限。画面に入る行数より十分多く取っておく。
 const CHAT_LOG_MAX = 30
@@ -4039,15 +4059,18 @@ const wireRoom = () => {
         ? Date.now() - data.since * 1000
         : prev.joinedAt
     })
-    renderMembers()
-    scheduleCapacityCheck()   // 到着時刻が分かった＝満室の順位を数え直す
+    // 後処理（全行の DOM 再構築＋満室判定）は発信者ごとに間引く。中身は上で必ず取り込んでいる
+    throttleBy(call.profileSeen, peerId, PROFILE_ACCEPT_MS, call.profileFlush, () => {
+      renderMembers()
+      scheduleCapacityCheck()   // 到着時刻が分かった＝満室の順位を数え直す
+    })
   }
   const sendProfile = id => sendTo(call.profileAction, myProfilePayload(), id)
   // 部屋のメタデータ（名前・タグ）。入室時に互いに送り合う。名前は**先にいた人のもの**を採用
   // （自分が持って来た名前より相手の meta が優先＝作った人が付けた名前が固定される）。
   // タグは tagAt が新しいほうが勝つ（誰でも上書き・履歴なし・付けた人の名前を添える）。
   call.metaAction = call.room.makeAction('meta')
-  call.metaAction.onMessage = d => {
+  call.metaAction.onMessage = (d, { peerId }) => {
     if (!d || typeof d !== 'object') return
     const m = call.meta, name = capRoom(String(d.name ?? ''))
     let changed = false
@@ -4057,7 +4080,11 @@ const wireRoom = () => {
     }
     const at = Math.min(Number(d.tagAt) || 0, Date.now() + 60000)
     if (at > (m.tagAt || 0)) { m.tag = capText(d.tag, ROOM_MAX); m.tagBy = capText(d.tagBy, 20); m.tagAt = at; changed = true }
-    if (changed) { render(); syncShare(); if (call.joinedId) location.hash = 'room=' + call.joinedId + '&name=' + encodeURIComponent(m.name); sendHeartbeat() }
+    // 後処理（描画・hash 書き換え・ロビーへの heartbeat）は発信者ごとに間引く。タグの奪い合い連打への自衛
+    if (changed) throttleBy(call.metaSeen, peerId, META_ACCEPT_MS, call.metaFlush, () => {
+      if (!call.joinedId) return
+      render(); syncShare(); location.hash = 'room=' + call.joinedId + '&name=' + encodeURIComponent(call.meta.name); sendHeartbeat()
+    })
   }
   const sendMeta = id => sendTo(call.metaAction, call.meta, id)
 
@@ -4136,6 +4163,7 @@ const wireRoom = () => {
     // 枠主側：再接続したリスナーからトークンを提示された
     if (d.k === 'resume' && typeof d.tok === 'string') {
       if (!call.ownerKey) return
+      if (tooSoon(call.grantResumeAccept, peerId, GRANT_RESUME_ACCEPT_MS)) return   // 連打で署名＋全員配信を走らされない
       const exp = call.grantTokens.get(d.tok)
       const now = Date.now()
       if (!exp || exp < now) {
@@ -4646,6 +4674,7 @@ const leaveCall = () => {
   clearInterval(call.bcTimer)                                  // 配信部屋の名簿の配り直しも止める
   clearInterval(call.bcEndTimer)                               // 配信の終わりの見張りも止める（join/leave の対称）
   clearTimeout(call.capTimer)                                  // 満室判定の待ちも捨てる
+  clearTimeout(call.profileFlush.t); clearTimeout(call.metaFlush.t)   // 間引いた後処理のまとめ実行も捨てる（退出後に描かない）
   stopAudioWatch()   // 音声到着の監視を停止＋待ち時間と催促回数の記憶を捨てる
   diagSince = 0      // 診断窓の「参加から何秒」を戻す（窓そのものは出しっぱなしでよい）
   stopBgm()                          // BGM を止める（**stopVad より先に**＝AudioContext を閉じる前に畳む）
@@ -4719,6 +4748,9 @@ const HEARTBEAT_MS = 5000    // 在室ハートビート間隔
 // 部屋が取りこぼしで消えるほうが、落ちた人が少し残るより悪い。誤りは残る側に倒しておく。
 const STALE_MS = 30000
 let lobbyRoom = null, lobbyPresence = null, heartbeatTimer = null
+const lobbyRenderSeen = new Map()   // 発信者peerId → 最後に一覧を描き直した時刻（連打で全員の DOM 再構築が走るのを防ぐ）
+const lobbyRenderFlush = { t: null }   // 間引いた分をまとめて描き直すタイマー（取りこぼさない）
+const renderLobbyThrottled = peerId => throttleBy(lobbyRenderSeen, peerId, LOBBY_RENDER_MS, lobbyRenderFlush, renderLobby)
 const presences = new Map()  // 発信者peerId → {room, name, emoji, muted, stage, ts}
 
 const heartbeatPayload = () => call.joinedId
@@ -5137,7 +5169,7 @@ const openLobby = async (again, status, soft = false) => {
     if (lobbyRoom) { const old = lobbyRoom; lobbyRoom = null; lobbyPresence = null; try { await Promise.race([old.leave(), new Promise(r => setTimeout(r, 2000))]) } catch {} }
     // ピアIDは入り直すと変わるので数え直すしかない。直前の人数だけ控えて grace に使う
     prevViewers = lobbyPeers.size + 1
-    lobbyPeers.clear()
+    lobbyPeers.clear(); lobbyRenderSeen.clear()   // ピアIDが変わるので間引きの記録も捨てる
     if (!soft) { presences.clear(); status.textContent = '🛰 ロビーに接続中…' }   // soft=一覧を消さず静かに入り直す（自動再接続用）
     lobbySince = Date.now()
     lobbyRoom = joinRoom(trysteroConfig(ice), LOBBY_ROOM)
@@ -5155,11 +5187,12 @@ const openLobby = async (again, status, soft = false) => {
         elapsed: Math.max(0, Math.min(Number(d.elapsed) || 0, 2592000)),
         talk: Math.max(0, Math.min(Math.round(Number(d.talk) || 0), 3))   // 活発さ 0〜3
       })
-      renderLobby()
+      // 退出（room: null）はすぐ反映する。それ以外は発信者ごとに描き直しを間引く（中身は上で必ず取り込んでいる）
+      if (!d || d.room == null) renderLobby(); else renderLobbyThrottled(peerId)
     }
     // 新しい閲覧者が来たら、自分が通話中なら即座に在室を送って一覧を埋める
     lobbyRoom.onPeerJoin = peerId => { lobbyPeers.add(peerId); renderViewers(); if (call.joinedId) sendHeartbeat() }
-    lobbyRoom.onPeerLeave = peerId => { lobbyPeers.delete(peerId); renderViewers(); presences.delete(peerId); renderLobby() }
+    lobbyRoom.onPeerLeave = peerId => { lobbyPeers.delete(peerId); lobbyRenderSeen.delete(peerId); renderViewers(); presences.delete(peerId); renderLobby() }
     // 取りこぼし対策：一定時間更新の無い相手を掃除
     lobbySweep = setInterval(() => {
       const cut = Date.now() - STALE_MS; let changed = false
