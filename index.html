@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.29
+  ぽっと通話〈実験版〉 v0.14.30
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1288,7 +1288,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.29'
+const APP_VERSION = 'v0.14.30'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2549,7 +2549,7 @@ const bgmBonfire = seed => {
   const baseG = bgmTrack(ctx.createGain()); baseG.gain.value = 1.0
   amOsc.connect(amG); amG.connect(baseG.gain); amOsc.start()
   const rGain = bgmTrack(ctx.createGain())
-  rGain.gain.value = 0.198
+  rGain.gain.value = 0.396
   rSrc.connect(rf1); rf1.connect(rf2); rf2.connect(baseG); baseG.connect(rGain); rGain.connect(bgm.gain)
   rSrc.start()
 
@@ -2559,7 +2559,7 @@ const bgmBonfire = seed => {
   const sBpf = bgmTrack(ctx.createBiquadFilter())
   sBpf.type = 'bandpass'; sBpf.frequency.value = 1800; sBpf.Q.value = 1.8
   const sGain = bgmTrack(ctx.createGain())
-  sGain.gain.value = 0.026
+  sGain.gain.value = 0.052
   sSrc.connect(sBpf); sBpf.connect(sGain); sGain.connect(bgm.gain)
   sSrc.start()
 
@@ -2570,7 +2570,7 @@ const bgmBonfire = seed => {
       const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain()
       src.buffer = noise; f.type = 'bandpass'; f.frequency.value = 1200 + Math.random() * 2000; f.Q.value = 4
       const dur = 0.007 + 0.0084 + Math.random() * 0.006
-      g.gain.setValueAtTime(0.350, t)
+      g.gain.setValueAtTime(0.700, t)
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
       src.connect(f); f.connect(g)
       if (ctx.createStereoPanner) {
@@ -2583,11 +2583,11 @@ const bgmBonfire = seed => {
       nextSnap = t + 10.5 + Math.random() * 10.5
       const pSrc = ctx.createBufferSource(), pF = ctx.createBiquadFilter(), pG = ctx.createGain()
       pSrc.buffer = noise; pF.type = 'bandpass'; pF.frequency.value = 1000; pF.Q.value = 4.5
-      pG.gain.setValueAtTime(0.315, t); pG.gain.exponentialRampToValueAtTime(0.0001, t + 0.035)
+      pG.gain.setValueAtTime(0.630, t); pG.gain.exponentialRampToValueAtTime(0.0001, t + 0.035)
       pSrc.connect(pF); pF.connect(pG)
       const osc = ctx.createOscillator(), og = ctx.createGain()
       osc.frequency.setValueAtTime(180, t); osc.frequency.exponentialRampToValueAtTime(55, t + 0.045)
-      og.gain.setValueAtTime(0.210, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.05)
+      og.gain.setValueAtTime(0.420, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.05)
       osc.connect(og)
       pG.connect(bgm.gain); og.connect(bgm.gain)
       pSrc.start(t); pSrc.stop(t + 0.04); osc.start(t); osc.stop(t + 0.055)
