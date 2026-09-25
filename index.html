@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.34
+  ぽっと通話〈実験版〉 v0.14.35
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1072,10 +1072,11 @@
       <label class="snd-opt" id="sndTtsRow" hidden><input type="checkbox" id="sndTts"> 🗣 ひとことを読み上げる</label>
       <p class="vol-note" id="sndTtsNote" hidden>自分にだけ鳴ります。人が話している間は待って、間が空いてから読みます。
         スピーカーだと自分のマイクが拾って相手に流れるので、イヤホンをおすすめします。</p>
-      <!-- iPhone/iPad はマイクを使っている間、OS が音声合成を「システムの読み上げ」として抑えるので鳴らない
-           （2026-09-25・実機で確認。ページ側からは直せない）。配信部屋で聞くだけならマイクを取らないので鳴る -->
-      <p class="vol-note" id="sndTtsIos" hidden>⚠️ iPhone / iPad は、マイクを使っている間は読み上げが鳴りません（OS の制限）。
-        配信部屋で聞くだけのときは鳴ります。</p>
+      <!-- iPhone/iPad の合成音声は「システムの読み上げ」扱いで、**サイレントスイッチ（消音）がオンだと鳴らない**
+           （2026-09-25・実機で確認。通話の声や BGM は鳴るので気づきにくい）。マイクを取っていないときは playback
+           セッションを明示して避ける（ttsSession）。マイク使用中の挙動は未確認 -->
+      <p class="vol-note" id="sndTtsIos" hidden>⚠️ iPhone / iPad は、サイレントスイッチ（消音）がオンだと読み上げが鳴りません。
+        通話の声は鳴るので気づきにくいです。</p>
     </div>
     <!-- 音が届かない相手がいるときだけ出る。頼んでも直らなかった＝本人の操作が要る場合の最終手段 -->
     <div id="audioWarn" class="audio-warn" hidden></div>
@@ -1298,7 +1299,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.34'
+const APP_VERSION = 'v0.14.35'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2965,7 +2966,18 @@ const ttsSpeak = (uid, text) => {
   const done = e => { ttsLast = e && e.type === 'error' ? 'error:' + (e.error || '?') : 'end'; ttsMark(uid, false); clearTimeout(ttsTimer); ttsTimer = setTimeout(pumpTts, 50) }   // 次を取り出す
   u.onend = done; u.onerror = done
   ttsSpokeAt = performance.now(); ttsCurrent = u; ttsLast = 'speak'
+  // iOS はキューを paused のまま残すことがあり、その間の speak() は「動いているのに無音」になる。
+  // 読む前に必ず起こす（他のブラウザでは paused でなければ何もしない）
+  try { speechSynthesis.resume() } catch {}
+  ttsSession()
   try { speechSynthesis.speak(u) } catch (e) { ttsLast = 'throw:' + e.name }
+}
+// iOS の音声セッション。合成音声は「システムの読み上げ」扱いで、セッションが ambient だとサイレントスイッチで消え、
+// play-and-record（マイク使用中）だと抑えられる。**マイクを取っていないとき**だけ playback を明示して前者を避ける
+// （マイク使用中に playback を要求すると録音側が壊れる恐れがあるので触らない）。Safari 17+ だけが持つ API・他は何もしない
+const ttsSession = () => {
+  if (!IS_IOS || !sndTts || call.stream || !navigator.audioSession) return
+  try { if (navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback' } catch {}
 }
 const pumpTts = () => {
   clearTimeout(ttsTimer); ttsTimer = null
@@ -2984,10 +2996,10 @@ const speakChat = (uid, text) => {
   while (ttsQueue.length > TTS_QUEUE_MAX) ttsQueue.shift()
   if (!ttsTimer) pumpTts()
 }
-// 注記の出し分け。iOS の警告は**マイクを取っている通話中**だけ（armJoined と退出時にも呼ぶ）
+// 注記の出し分け。iOS の消音スイッチの注意はオンのとき常に（armJoined と退出時にも呼ぶのは将来の出し分けのため）
 const syncTtsNote = () => {
   $('sndTtsNote').hidden = !sndTts
-  $('sndTtsIos').hidden = !(sndTts && IS_IOS && !!call.stream)
+  $('sndTtsIos').hidden = !(sndTts && IS_IOS)
 }
 // 退出・背面化で畳む（join/leave の対称。背面では iOS が読まず、復帰した瞬間にまとめて喋るのを防ぐ）
 const stopSpeech = () => {
@@ -4410,6 +4422,7 @@ const diagAudio = () => {
       'ctx=' + ctx, '音量=' + Math.round(masterVol * 100) + '%', 'peers=' + call.peers.size, 'hear=' + [...call.peers].filter(canHear).length,
       'tts=' + (ttsOk ? (sndTts ? 'on' : 'off') + ' q' + ttsQueue.length + (speechSynthesis.speaking ? ' spk' : '') + (speechSynthesis.pending ? ' pend' : '') + (speechSynthesis.paused ? ' paused' : '')
         + ' v' + speechSynthesis.getVoices().filter(v => /^ja/i.test(v.lang)).length + '/' + (ttsVoice() ? 'local' : 'default') + (ttsLast ? ' ' + ttsLast : '') : 'なし'),
+      navigator.audioSession ? 'as=' + navigator.audioSession.type + '/' + navigator.audioSession.state : '',
       diagSince ? '参加' + Math.round((Date.now() - diagSince) / 1000) + 's' : '未参加'
     ]
     $('diag').textContent = '🔬 ' + parts.filter(Boolean).join(' / ')
