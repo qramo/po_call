@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.36
+  ぽっと通話〈実験版〉 v0.14.37
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1300,7 +1300,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.36'
+const APP_VERSION = 'v0.14.37'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2964,7 +2964,11 @@ const ttsSpeak = (uid, text) => {
   u.lang = 'ja-JP'; u.rate = 1.1; u.volume = masterVol
   const v = ttsVoice(); if (v) u.voice = v
   u.onstart = () => { ttsLast = 'start'; ttsMark(uid, true) }
-  const done = e => { ttsLast = e && e.type === 'error' ? 'error:' + (e.error || '?') : 'end'; ttsMark(uid, false); clearTimeout(ttsTimer); ttsTimer = setTimeout(pumpTts, 50) }   // 次を取り出す
+  const done = e => {
+    ttsLast = e && e.type === 'error' ? 'error:' + (e.error || '?') : 'end'
+    ttsMark(uid, false); clearTimeout(ttsTimer); ttsTimer = setTimeout(pumpTts, 50)   // 次を取り出す
+    if (IS_IOS) [400, 2000, 5000].forEach(ms => setTimeout(recoverAfterSpeech, ms))   // 通話音を起こし直す（下）
+  }
   u.onend = done; u.onerror = done
   ttsSpokeAt = performance.now(); ttsCurrent = u; ttsLast = 'speak'
   // iOS はキューを paused のまま残すことがあり、その間の speak() は「動いているのに無音」になる。
@@ -2996,6 +3000,18 @@ const speakChat = (uid, text) => {
 const syncTtsNote = () => {
   $('sndTtsNote').hidden = !sndTts
   $('sndTtsIos').hidden = !(sndTts && IS_IOS)
+}
+// ★読み上げの後の復帰（iOS）。合成音声は OS の音声セッションを一時的に横取りするので、終わった後に
+//   AudioContext が interrupted のまま・出口や相手の <audio> が止まったままになる（2026-09-26 実機：
+//   読まれた後、相手の声が戻らなかった）。3 秒おきの見張り（wakeAudio）は ctx しか見ないので、
+//   要素も含めてここで起こす。ジェスチャ外の play() が拒否されれば解錠ボタンが出る（play の中）
+const recoverAfterSpeech = () => {
+  if (!call.joinedId) return
+  wakeAudio()
+  const out = $('appAudio')
+  if (out.srcObject && out.paused) play(out)
+  allAudios().forEach(a => { if (a.srcObject && a.paused) play(a) })
+  if (!/ rec$/.test(ttsLast)) ttsLast += ' rec'
 }
 // 退出・背面化で畳む（join/leave の対称。背面では iOS が読まず、復帰した瞬間にまとめて喋るのを防ぐ）
 const stopSpeech = () => {
@@ -4415,7 +4431,7 @@ const diagAudio = () => {
       '要素' + els.length,
       e ? (e.paused ? '停止' : '再生中') + ' t=' + e.currentTime.toFixed(1) + ' rs=' + e.readyState + (e.muted ? ' muted' : '') + ' vol=' + e.volume : '',
       tr ? 'track:' + tr.readyState + (tr.muted ? '/muted' + (e.mutedSince ? Math.round((Date.now() - e.mutedSince) / 1000) + 's' : '') : '/live') + (tr.enabled ? '' : '/disabled') : 'track:なし', 'flow=' + [...call.peers].filter(audioFlowing).length,
-      'ctx=' + ctx, '音量=' + Math.round(masterVol * 100) + '%', 'peers=' + call.peers.size, 'hear=' + [...call.peers].filter(canHear).length,
+      'ctx=' + ctx, 'out=' + ($('appAudio').srcObject ? ($('appAudio').paused ? '停止' : '再生中') : 'なし'), '音量=' + Math.round(masterVol * 100) + '%', 'peers=' + call.peers.size, 'hear=' + [...call.peers].filter(canHear).length,
       'tts=' + (ttsOk ? (sndTts ? 'on' : 'off') + ' q' + ttsQueue.length + (speechSynthesis.speaking ? ' spk' : '') + (speechSynthesis.pending ? ' pend' : '') + (speechSynthesis.paused ? ' paused' : '')
         + ' v' + speechSynthesis.getVoices().filter(v => /^ja/i.test(v.lang)).length + '/' + (ttsVoice() ? 'local' : 'default') + (ttsLast ? ' ' + ttsLast : '') : 'なし'),
       navigator.audioSession ? 'as=' + navigator.audioSession.type + '/' + navigator.audioSession.state : '',
