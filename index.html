@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.37
+  ぽっと通話〈実験版〉 v0.14.38
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1078,6 +1078,10 @@
            （2026-09-25・実機で確認。通話の声や BGM は鳴るので気づきにくい）。playback セッションの明示でも避けられなかった -->
       <p class="vol-note" id="sndTtsIos" hidden>⚠️ iPhone / iPad は、サイレントスイッチ（消音）がオンだと読み上げが鳴りません。
         通話の声は鳴るので気づきにくいです。</p>
+      <!-- iPhone でマイクを使う部屋で読み上げると、その後**相手の声が聞こえなくなる**（2026-09-26 実機。ページから見ると
+           AudioContext も出口も再生中＝iOS の出力経路が切り替わったままになる。API が無く直せない）。マイクを取っている間は読まない -->
+      <p class="vol-note" id="sndTtsIosMic" hidden>⚠️ iPhone / iPad では、マイクを使う部屋での読み上げを止めています
+        （読み上げの後に相手の声が聞こえなくなるため）。配信部屋で聞くだけのときは読みます。</p>
     </div>
     <!-- 音が届かない相手がいるときだけ出る。頼んでも直らなかった＝本人の操作が要る場合の最終手段 -->
     <div id="audioWarn" class="audio-warn" hidden></div>
@@ -1300,7 +1304,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.37'
+const APP_VERSION = 'v0.14.38'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2989,7 +2993,7 @@ const pumpTts = () => {
   const it = ttsQueue.shift(); ttsSpeak(it.uid, it.text)
 }
 const speakChat = (uid, text) => {
-  if (!sndTts || document.hidden) return
+  if (!sndTts || document.hidden || ttsBlocked()) return
   const t = ttsText(uid, text)
   if (!t) return
   ttsQueue.push({ uid, text: t, at: performance.now() })
@@ -2997,9 +3001,11 @@ const speakChat = (uid, text) => {
   if (!ttsTimer) pumpTts()
 }
 // 注記の出し分け。iOS の消音スイッチの注意はオンのとき常に（armJoined と退出時にも呼ぶのは将来の出し分けのため）
+const ttsBlocked = () => IS_IOS && !!call.stream   // iOS でマイクを取っている間は読まない（上の HTML コメント）
 const syncTtsNote = () => {
   $('sndTtsNote').hidden = !sndTts
-  $('sndTtsIos').hidden = !(sndTts && IS_IOS)
+  $('sndTtsIos').hidden = !(sndTts && IS_IOS && !ttsBlocked())
+  $('sndTtsIosMic').hidden = !(sndTts && ttsBlocked())
 }
 // ★読み上げの後の復帰（iOS）。合成音声は OS の音声セッションを一時的に横取りするので、終わった後に
 //   AudioContext が interrupted のまま・出口や相手の <audio> が止まったままになる（2026-09-26 実機：
@@ -3033,7 +3039,7 @@ const unlockSpeech = () => {
   box.checked = sndTts; syncTtsNote()
   box.onchange = () => {
     sndTts = box.checked; lsSet(SND_TTS_KEY, sndTts ? '1' : '0'); syncTtsNote()
-    if (sndTts) { ttsUnlocked = true; ttsSpeak('self', 'ひとことを読み上げます') }   // オンにした操作で解錠＋見本を1回読む
+    if (sndTts && !ttsBlocked()) { ttsUnlocked = true; ttsSpeak('self', 'ひとことを読み上げます') }   // オンにした操作で解錠＋見本を1回読む
     else stopSpeech()
   }
 }
