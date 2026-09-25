@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.33
+  ぽっと通話〈実験版〉 v0.14.34
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1072,6 +1072,10 @@
       <label class="snd-opt" id="sndTtsRow" hidden><input type="checkbox" id="sndTts"> 🗣 ひとことを読み上げる</label>
       <p class="vol-note" id="sndTtsNote" hidden>自分にだけ鳴ります。人が話している間は待って、間が空いてから読みます。
         スピーカーだと自分のマイクが拾って相手に流れるので、イヤホンをおすすめします。</p>
+      <!-- iPhone/iPad はマイクを使っている間、OS が音声合成を「システムの読み上げ」として抑えるので鳴らない
+           （2026-09-25・実機で確認。ページ側からは直せない）。配信部屋で聞くだけならマイクを取らないので鳴る -->
+      <p class="vol-note" id="sndTtsIos" hidden>⚠️ iPhone / iPad は、マイクを使っている間は読み上げが鳴りません（OS の制限）。
+        配信部屋で聞くだけのときは鳴ります。</p>
     </div>
     <!-- 音が届かない相手がいるときだけ出る。頼んでも直らなかった＝本人の操作が要る場合の最終手段 -->
     <div id="audioWarn" class="audio-warn" hidden></div>
@@ -1294,7 +1298,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.33'
+const APP_VERSION = 'v0.14.34'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2932,6 +2936,8 @@ const ttsOk = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in windo
 let sndTts = ttsOk && lsGet(SND_TTS_KEY) === '1'   // 未保存＝オフ
 let lastVoiceAt = 0            // vadTick が更新（聞こえる相手か自分が話していれば）
 let ttsQueue = [], ttsTimer = null, ttsSpokeAt = 0, ttsUnlocked = false
+let ttsReadingUid = null, ttsLast = ''   // いま読んでいる人（行を光らせる）／最後のイベント（診断窓用）
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 let ttsCurrent = null   // Chrome は参照を持たないと発話中の utterance を GC して onend が来ない（既知の癖）
 const ttsVoice = () => {
   try { return speechSynthesis.getVoices().find(v => v.localService && /^ja/i.test(v.lang)) || null } catch { return null }
@@ -2943,13 +2949,23 @@ const ttsText = (uid, text) => {
   const name = ((call.profiles.get(uid) || {}).name || 'ゲスト').replace(TTS_STRIP, '').trim()
   return (name ? name + '、' : '') + t
 }
-const ttsSpeak = text => {
+// 読んでいる間は**その人の声として**見せる＝行を .speaking にし、絵文字も弾ませる（vadTick が ttsReadingUid を見る）。
+// 解析器の無い相手（配信部屋のリスナー等）は vadTick が回らないので、ここで直接付け外しする。
+const ttsMark = (uid, on) => {
+  ttsReadingUid = on ? uid : (ttsReadingUid === uid ? null : ttsReadingUid)
+  const row = uid && emojiEls.get(uid)?.parentElement
+  if (row && !on && !analysers.has(uid)) row.classList.remove('speaking')
+  if (row && on) row.classList.add('speaking')
+}
+const ttsSpeak = (uid, text) => {
   const u = new SpeechSynthesisUtterance(text)
   u.lang = 'ja-JP'; u.rate = 1.1; u.volume = masterVol
   const v = ttsVoice(); if (v) u.voice = v
-  u.onend = u.onerror = () => { clearTimeout(ttsTimer); ttsTimer = setTimeout(pumpTts, 50) }   // 次を取り出す
-  ttsSpokeAt = performance.now(); ttsCurrent = u
-  try { speechSynthesis.speak(u) } catch {}
+  u.onstart = () => { ttsLast = 'start'; ttsMark(uid, true) }
+  const done = e => { ttsLast = e && e.type === 'error' ? 'error:' + (e.error || '?') : 'end'; ttsMark(uid, false); clearTimeout(ttsTimer); ttsTimer = setTimeout(pumpTts, 50) }   // 次を取り出す
+  u.onend = done; u.onerror = done
+  ttsSpokeAt = performance.now(); ttsCurrent = u; ttsLast = 'speak'
+  try { speechSynthesis.speak(u) } catch (e) { ttsLast = 'throw:' + e.name }
 }
 const pumpTts = () => {
   clearTimeout(ttsTimer); ttsTimer = null
@@ -2958,19 +2974,25 @@ const pumpTts = () => {
   if (speechSynthesis.speaking && now - ttsSpokeAt > TTS_STUCK_MS) { try { speechSynthesis.cancel() } catch {} }
   const talking = now - lastVoiceAt < TTS_GAP_MS && now - ttsQueue[0].at < TTS_MAX_WAIT_MS
   if (speechSynthesis.speaking || talking) { ttsTimer = setTimeout(pumpTts, TTS_RETRY_MS); return }
-  ttsSpeak(ttsQueue.shift().text)
+  const it = ttsQueue.shift(); ttsSpeak(it.uid, it.text)
 }
 const speakChat = (uid, text) => {
   if (!sndTts || document.hidden) return
   const t = ttsText(uid, text)
   if (!t) return
-  ttsQueue.push({ text: t, at: performance.now() })
+  ttsQueue.push({ uid, text: t, at: performance.now() })
   while (ttsQueue.length > TTS_QUEUE_MAX) ttsQueue.shift()
   if (!ttsTimer) pumpTts()
+}
+// 注記の出し分け。iOS の警告は**マイクを取っている通話中**だけ（armJoined と退出時にも呼ぶ）
+const syncTtsNote = () => {
+  $('sndTtsNote').hidden = !sndTts
+  $('sndTtsIos').hidden = !(sndTts && IS_IOS && !!call.stream)
 }
 // 退出・背面化で畳む（join/leave の対称。背面では iOS が読まず、復帰した瞬間にまとめて喋るのを防ぐ）
 const stopSpeech = () => {
   ttsQueue = []; clearTimeout(ttsTimer); ttsTimer = null
+  if (ttsReadingUid) ttsMark(ttsReadingUid, false)
   if (ttsOk) { try { speechSynthesis.cancel() } catch {} }
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden) stopSpeech() })
@@ -2982,12 +3004,12 @@ const unlockSpeech = () => {
   try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u) } catch {}
 }
 {
-  const box = $('sndTts'), row = $('sndTtsRow'), note = $('sndTtsNote')
+  const box = $('sndTts'), row = $('sndTtsRow')
   row.hidden = !ttsOk   // 対応していないブラウザには出さない
-  box.checked = sndTts; note.hidden = !sndTts
+  box.checked = sndTts; syncTtsNote()
   box.onchange = () => {
-    sndTts = box.checked; lsSet(SND_TTS_KEY, sndTts ? '1' : '0'); note.hidden = !sndTts
-    if (sndTts) { ttsUnlocked = true; ttsSpeak('ひとことを読み上げます') }   // オンにした操作で解錠＋見本を1回読む
+    sndTts = box.checked; lsSet(SND_TTS_KEY, sndTts ? '1' : '0'); syncTtsNote()
+    if (sndTts) { ttsUnlocked = true; ttsSpeak('self', 'ひとことを読み上げます') }   // オンにした操作で解錠＋見本を1回読む
     else stopSpeech()
   }
 }
@@ -3041,8 +3063,11 @@ const vadTick = () => {
     if (active && (uid === 'self' || canHear(uid))) lastVoiceAt = performance.now()   // 読み上げが待つ相手＝聞こえる人だけ
     const el = emojiEls.get(uid)
     if (!el) return
-    el.style.transform = active ? 'scale(' + (1 + Math.min((rms - 0.045) * 4, 0.55)).toFixed(3) + ')' : 'scale(1)'
-    el.parentElement.classList.toggle('speaking', active)
+    // 読み上げ中はその人の声として見せる：行を光らせ、絵文字を音量ではなく拍でゆっくり弾ませる
+    const reading = ttsReadingUid === uid
+    const grow = reading ? 0.08 + 0.10 * (0.5 + 0.5 * Math.sin(performance.now() / 140)) : Math.min((rms - 0.045) * 4, 0.55)
+    el.style.transform = active || reading ? 'scale(' + (1 + grow).toFixed(3) + ')' : 'scale(1)'
+    el.parentElement.classList.toggle('speaking', active || reading)
   })
   roomRms = peak > roomRms ? peak : roomRms * 0.82 + peak * 0.18   // アタック速く／ディケイ遅く
   vadRAF = analysers.size ? requestAnimationFrame(vadTick) : null
@@ -4383,6 +4408,8 @@ const diagAudio = () => {
       e ? (e.paused ? '停止' : '再生中') + ' t=' + e.currentTime.toFixed(1) + ' rs=' + e.readyState + (e.muted ? ' muted' : '') + ' vol=' + e.volume : '',
       tr ? 'track:' + tr.readyState + (tr.muted ? '/muted' + (e.mutedSince ? Math.round((Date.now() - e.mutedSince) / 1000) + 's' : '') : '/live') + (tr.enabled ? '' : '/disabled') : 'track:なし', 'flow=' + [...call.peers].filter(audioFlowing).length,
       'ctx=' + ctx, '音量=' + Math.round(masterVol * 100) + '%', 'peers=' + call.peers.size, 'hear=' + [...call.peers].filter(canHear).length,
+      'tts=' + (ttsOk ? (sndTts ? 'on' : 'off') + ' q' + ttsQueue.length + (speechSynthesis.speaking ? ' spk' : '') + (speechSynthesis.pending ? ' pend' : '') + (speechSynthesis.paused ? ' paused' : '')
+        + ' v' + speechSynthesis.getVoices().filter(v => /^ja/i.test(v.lang)).length + '/' + (ttsVoice() ? 'local' : 'default') + (ttsLast ? ' ' + ttsLast : '') : 'なし'),
       diagSince ? '参加' + Math.round((Date.now() - diagSince) / 1000) + 's' : '未参加'
     ]
     $('diag').textContent = '🔬 ' + parts.filter(Boolean).join(' / ')
@@ -4471,6 +4498,7 @@ const armJoined = (roomId, name, bcast) => {
   $('unlock').style.display = 'none'
   $('sndPeerRow').style.display = 'flex'   // 入室・退出音のトグルは通話中だけ表示（ミュート/退出と同じ）
   $('sndReactRow').style.display = 'flex'
+  syncTtsNote()   // iOS の「マイク使用中は鳴らない」注記は通話中だけ
   $('retry').hidden = false
   roomInput.disabled = true; lockProfile(true); syncKindRow(); syncCreateBox()
   // 通話中は名前も部屋名も変えられないので、入力欄ごと畳む（名前は参加者リスト、部屋名は状態表示に出ている）
@@ -4652,6 +4680,7 @@ const resetJoinedUI = () => {
   $('speak').style.display = 'none'; $('speak').disabled = false
   $('sndPeerRow').style.display = 'none'
   $('sndReactRow').style.display = 'none'
+  syncTtsNote()   // 退出したので iOS の注記を畳む（call.stream は reset 済み）
   $('retry').hidden = true
   $('pip').hidden = true
   $('tagRow').hidden = true; $('tagForm').hidden = true   // 話題タグの行（join/leave の対称）

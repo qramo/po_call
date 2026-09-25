@@ -89,7 +89,8 @@ INSTRUMENT = r"""
   T.spoken = []; T.ttsCancels = 0;
   if (window.speechSynthesis) {
     const ss = window.speechSynthesis;
-    ss.speak = u => { T.spoken.push(u.text); };
+    // start→end も流す（読み上げ中に行を光らせる経路が例外を出さないことを兼ねて確かめる）
+    ss.speak = u => { T.spoken.push(u.text); setTimeout(() => u.onstart && u.onstart({type:'start'}), 0); setTimeout(() => u.onend && u.onend({type:'end'}), 300); };
     ss.cancel = () => { T.ttsCancels++; };
   }
   // 通知音は WebAudio の発振器で作る。鳴ったかどうかはこれで数えられる（音は聞けないので）。
