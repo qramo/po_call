@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.39
+  ぽっと通話〈実験版〉 v0.14.40
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1307,7 +1307,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.39'
+const APP_VERSION = 'v0.14.40'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2974,10 +2974,7 @@ const ttsSpeak = (uid, text) => {
   const done = e => {
     ttsLast = e && e.type === 'error' ? 'error:' + (e.error || '?') : 'end'
     ttsMark(uid, false); clearTimeout(ttsTimer); ttsTimer = setTimeout(pumpTts, 50)   // 次を取り出す
-    if (IS_IOS) {   // 通話音を起こし直す（下）。マイクを持っていれば先に取り直して経路を戻す
-      setTimeout(() => remicAfterSpeech().then(recoverAfterSpeech), 300)
-      ;[2000, 5000].forEach(ms => setTimeout(recoverAfterSpeech, ms))
-    }
+    if (IS_IOS) armAfterSpeech(text)   // 読み終わりを**見積もりで**待ってから、マイクの取り直しと通話音の復帰（下）
   }
   u.onend = done; u.onerror = done
   ttsSpokeAt = performance.now(); ttsCurrent = u; ttsLast = 'speak'
@@ -3024,6 +3021,26 @@ const recoverAfterSpeech = () => {
   allAudios().forEach(a => { if (a.srcObject && a.paused) play(a) })
   if (!/ rec$/.test(ttsLast)) ttsLast += ' rec'
 }
+// ★iOS は読み始めた直後に end／error を投げることがある（2026-09-26 実機：0.3 秒後の取り直しで名前の冒頭で切れた。
+//   v0.14.37 の「フェードアウトしたのに読まれない」も復帰処理が読み上げを潰していたと考えられる）。
+//   だからイベントは**合図としてしか使わず**、文字数から見積もった読み終わりを過ぎ、かつ合成エンジンが止まって
+//   いるのを見てから動く。見積もりは多めに取る（遅れても相手の声が戻るのが少し遅くなるだけ。早いと読み上げを殺す）
+const TTS_MS_PER_CHAR = 250, TTS_TAIL_MS = 800, TTS_EST_MAX_MS = 20000
+let afterTimer = null
+const armAfterSpeech = text => {
+  clearTimeout(afterTimer)
+  const due = ttsSpokeAt + Math.min(text.length * TTS_MS_PER_CHAR + TTS_TAIL_MS, TTS_EST_MAX_MS)
+  const hard = ttsSpokeAt + TTS_EST_MAX_MS + 5000   // speaking が立ちっぱなし（固まり）でもここで動く
+  const tick = () => {
+    afterTimer = null
+    const now = performance.now()
+    if (now < due || (speechSynthesis.speaking && now < hard)) { afterTimer = setTimeout(tick, 200); return }
+    if (!/ after$/.test(ttsLast)) ttsLast += ' after'
+    remicAfterSpeech().then(recoverAfterSpeech)
+    ;[2000, 5000].forEach(ms => setTimeout(recoverAfterSpeech, ms))
+  }
+  afterTimer = setTimeout(tick, 200)
+}
 // ★iOS で読み上げた後、通話の出力経路が受話口側に戻ったままになる（v0.14.37 実機：ページからは ctx も出口も再生中に見えるのに無音）。
 //   getUserMedia はスピーカー経路を強制するという報告があるので、**マイクを取り直して送信中のトラックを差し替える**
 //   （replaceTrack＝再ネゴ無し・相手には切れ目が出ない）。Trystero は PC を見せないので、ラッパーが控えている livePcs から辿る。
@@ -3054,6 +3071,7 @@ const remicAfterSpeech = async () => {
 // 退出・背面化で畳む（join/leave の対称。背面では iOS が読まず、復帰した瞬間にまとめて喋るのを防ぐ）
 const stopSpeech = () => {
   ttsQueue = []; clearTimeout(ttsTimer); ttsTimer = null
+  clearTimeout(afterTimer); afterTimer = null
   if (ttsReadingUid) ttsMark(ttsReadingUid, false)
   if (ttsOk) { try { speechSynthesis.cancel() } catch {} }
 }
