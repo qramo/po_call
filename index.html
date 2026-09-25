@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.35
+  ぽっと通話〈実験版〉 v0.14.36
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1070,11 +1070,12 @@
       <!-- ひとことの読み上げ（端末の中の音声合成）。**既定はオフ**（BGM と同じ理由）。
            対応していないブラウザでは行ごと隠す（下の sndTts の初期化を参照） -->
       <label class="snd-opt" id="sndTtsRow" hidden><input type="checkbox" id="sndTts"> 🗣 ひとことを読み上げる</label>
+      <!-- 読み上げは OS がスピーカーから鳴らすので、WebRTC のエコー除去が「自分の再生音」として参照できない＝
+           スピーカーだとマイクが拾った分が**除去されずに**相手へ届く（2026-09-26・MacBook＋やまびこ部屋で確認）。BGM より強く注意する -->
       <p class="vol-note" id="sndTtsNote" hidden>自分にだけ鳴ります。人が話している間は待って、間が空いてから読みます。
-        スピーカーだと自分のマイクが拾って相手に流れるので、イヤホンをおすすめします。</p>
+        <b>スピーカーだと読み上げの声がそのまま相手に届きます</b>（通話のエコー除去が効きません）。イヤホンをおすすめします。</p>
       <!-- iPhone/iPad の合成音声は「システムの読み上げ」扱いで、**サイレントスイッチ（消音）がオンだと鳴らない**
-           （2026-09-25・実機で確認。通話の声や BGM は鳴るので気づきにくい）。マイクを取っていないときは playback
-           セッションを明示して避ける（ttsSession）。マイク使用中の挙動は未確認 -->
+           （2026-09-25・実機で確認。通話の声や BGM は鳴るので気づきにくい）。playback セッションの明示でも避けられなかった -->
       <p class="vol-note" id="sndTtsIos" hidden>⚠️ iPhone / iPad は、サイレントスイッチ（消音）がオンだと読み上げが鳴りません。
         通話の声は鳴るので気づきにくいです。</p>
     </div>
@@ -1299,7 +1300,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.35'
+const APP_VERSION = 'v0.14.36'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2969,15 +2970,10 @@ const ttsSpeak = (uid, text) => {
   // iOS はキューを paused のまま残すことがあり、その間の speak() は「動いているのに無音」になる。
   // 読む前に必ず起こす（他のブラウザでは paused でなければ何もしない）
   try { speechSynthesis.resume() } catch {}
-  ttsSession()
+  // ★navigator.audioSession.type は触らない（v0.14.35 でリスナーのとき 'playback' を明示してみたが、iOS の
+  //   消音スイッチには勝てず、しかも同じページのまま雑談部屋へ入るとマイクの取得と衝突して
+  //   「マイクを使えませんでした」になった＝2026-09-26 実機。v0.14.36 で撤去）
   try { speechSynthesis.speak(u) } catch (e) { ttsLast = 'throw:' + e.name }
-}
-// iOS の音声セッション。合成音声は「システムの読み上げ」扱いで、セッションが ambient だとサイレントスイッチで消え、
-// play-and-record（マイク使用中）だと抑えられる。**マイクを取っていないとき**だけ playback を明示して前者を避ける
-// （マイク使用中に playback を要求すると録音側が壊れる恐れがあるので触らない）。Safari 17+ だけが持つ API・他は何もしない
-const ttsSession = () => {
-  if (!IS_IOS || !sndTts || call.stream || !navigator.audioSession) return
-  try { if (navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback' } catch {}
 }
 const pumpTts = () => {
   clearTimeout(ttsTimer); ttsTimer = null
