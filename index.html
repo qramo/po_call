@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.32
+  ぽっと通話〈実験版〉 v0.14.33
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -260,7 +260,7 @@
   /* 通知音のトグル（入室・退出音＝通話カード／新部屋音＝ロビー）。help-hide と同系の控えめな見た目 */
   .snd-opt{ display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; color:var(--sub); cursor:pointer; user-select:none }
   .snd-opt input{ width:auto; margin:0; padding:0; accent-color:var(--accent); flex:none }
-  #sndPeerRow, #sndReactRow{ margin-top:4px }   /* 人数表示のすぐ下に寄せる */
+  #sndPeerRow, #sndReactRow, #sndTtsRow{ margin-top:4px }   /* 人数表示のすぐ下に寄せる */
   /* 音量スライダー。行の形はトグル（.snd-opt）と同じだが、input の扱いが逆
      （.snd-opt input は width:auto 固定、こちらは横いっぱいに伸ばしたい）ので別クラスにする。
      range は共通の input{} が持つ枠・背景・余白を全部剥がさないと太い箱に見える */
@@ -1067,6 +1067,11 @@
         スピーカーだと自分のマイクが拾って相手に流れるので、イヤホンをおすすめします。</p>
       <label class="snd-opt" id="sndPeerRow" style="display:none"><input type="checkbox" id="sndPeer"> 🔔 入室・退出を音で知らせる</label>
       <label class="snd-opt" id="sndReactRow" style="display:none"><input type="checkbox" id="sndReact"> 🎵 リアクションを音で鳴らす</label>
+      <!-- ひとことの読み上げ（端末の中の音声合成）。**既定はオフ**（BGM と同じ理由）。
+           対応していないブラウザでは行ごと隠す（下の sndTts の初期化を参照） -->
+      <label class="snd-opt" id="sndTtsRow" hidden><input type="checkbox" id="sndTts"> 🗣 ひとことを読み上げる</label>
+      <p class="vol-note" id="sndTtsNote" hidden>自分にだけ鳴ります。人が話している間は待って、間が空いてから読みます。
+        スピーカーだと自分のマイクが拾って相手に流れるので、イヤホンをおすすめします。</p>
     </div>
     <!-- 音が届かない相手がいるときだけ出る。頼んでも直らなかった＝本人の操作が要る場合の最終手段 -->
     <div id="audioWarn" class="audio-warn" hidden></div>
@@ -1289,7 +1294,7 @@ window.__potPc = () => ({ open: pcOpen, made: pcMade, swept: pcSwept })
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.32'
+const APP_VERSION = 'v0.14.33'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2900,6 +2905,92 @@ const soundRoom  = () => { if (sndRoom) playTones([[988, 0, 0.09], [1319, 0.08, 
     if (sndRoom) { ensureAudioCtx(); soundRoom() }   // オンにした操作で解錠＋見本を1回鳴らす
   }
 }
+
+// ─ ひとことの読み上げ（v0.14.33）─ 端末の中の音声合成（Web Speech API）。通信もライブラリも増えない。
+// **既定はオフ**（BGM と同じ：通話アプリで勝手に音が鳴るのは事故。VoiceOver の人は二重読みになる）。
+// 音の出口は Web Audio ではなく OS 直なので、音量は utterance.volume に masterVol を渡して揃える
+// （iOS は無視する版がある）。読む文面は表示と同じ capText 済みのものに、さらに
+//   ①URL は「URL省略」に置き換える（長い記号列を読まない。ドメインだけの書き方は拾わない＝誤検出のほうが害）
+//   ②絵文字を落とす（「にっこり顔」と読まれる）③名前を頭に付ける（画面を見ずに聞くと誰の発言か分からない）
+// **人が話している間は待つ**：vadTick が「最後に声が検出された時刻」を lastVoiceAt に置くので、
+// TTS_GAP_MS 静かになるまで取り出さない。ただし TTS_MAX_WAIT_MS を過ぎたら会話中でも読む
+// （文面は画面に残っているので、遅すぎる読み上げより「読まれない」ほうが混乱する）。
+// 読み上げ中に誰かが話し始めても止めない（pause() は Android Chrome で効かず iOS でも不安定。
+// ひとことは 60 字＝3〜5 秒なので、始める前に待てば足りる）。
+// **毎回 cancel() してから speak() はしない**：相手ごと CHAT_ACCEPT_MS で受けるので、2〜3 人が続けて打つと
+// 先の発話が語の途中で切れて最後の 1 件しか残らない。自前のキューに積み、溢れたら古い方を捨てる。
+// ボイスは localService（端末内）の日本語だけ選ぶ。デスクトップ Chrome の「Google 日本語」は文面を
+// Google のサーバへ送る＝ブラウザの外へ出る新しい経路になるので使わない。無ければ lang だけ指定する。
+const SND_TTS_KEY = 'pot-call-snd-tts'
+const TTS_GAP_MS = 700         // これだけ静かなら「区切り」（息継ぎは 200〜500ms）
+const TTS_MAX_WAIT_MS = 8000   // これ以上は待たずに読む
+const TTS_STUCK_MS = 20000     // speaking が立ったまま戻らない（Chrome の既知の癖）とみなす長さ
+const TTS_QUEUE_MAX = 3        // 溜めすぎない（溢れたら古い順に捨てる）
+const TTS_RETRY_MS = 250
+const TTS_STRIP = /[\p{Extended_Pictographic}\uFE0F\u200D]/gu   // 絵文字（結合子・異体字セレクタごと）
+const ttsOk = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window
+let sndTts = ttsOk && lsGet(SND_TTS_KEY) === '1'   // 未保存＝オフ
+let lastVoiceAt = 0            // vadTick が更新（聞こえる相手か自分が話していれば）
+let ttsQueue = [], ttsTimer = null, ttsSpokeAt = 0, ttsUnlocked = false
+let ttsCurrent = null   // Chrome は参照を持たないと発話中の utterance を GC して onend が来ない（既知の癖）
+const ttsVoice = () => {
+  try { return speechSynthesis.getVoices().find(v => v.localService && /^ja/i.test(v.lang)) || null } catch { return null }
+}
+// 表示の文字（capText 済み）から読む文面を作る。空なら読まない
+const ttsText = (uid, text) => {
+  const t = text.replace(/https?:\/\/\S+|www\.\S+/gi, 'URL省略').replace(TTS_STRIP, '').replace(/\s+/g, ' ').trim()
+  if (!t) return ''
+  const name = ((call.profiles.get(uid) || {}).name || 'ゲスト').replace(TTS_STRIP, '').trim()
+  return (name ? name + '、' : '') + t
+}
+const ttsSpeak = text => {
+  const u = new SpeechSynthesisUtterance(text)
+  u.lang = 'ja-JP'; u.rate = 1.1; u.volume = masterVol
+  const v = ttsVoice(); if (v) u.voice = v
+  u.onend = u.onerror = () => { clearTimeout(ttsTimer); ttsTimer = setTimeout(pumpTts, 50) }   // 次を取り出す
+  ttsSpokeAt = performance.now(); ttsCurrent = u
+  try { speechSynthesis.speak(u) } catch {}
+}
+const pumpTts = () => {
+  clearTimeout(ttsTimer); ttsTimer = null
+  if (!sndTts || !ttsQueue.length) return
+  const now = performance.now()
+  if (speechSynthesis.speaking && now - ttsSpokeAt > TTS_STUCK_MS) { try { speechSynthesis.cancel() } catch {} }
+  const talking = now - lastVoiceAt < TTS_GAP_MS && now - ttsQueue[0].at < TTS_MAX_WAIT_MS
+  if (speechSynthesis.speaking || talking) { ttsTimer = setTimeout(pumpTts, TTS_RETRY_MS); return }
+  ttsSpeak(ttsQueue.shift().text)
+}
+const speakChat = (uid, text) => {
+  if (!sndTts || document.hidden) return
+  const t = ttsText(uid, text)
+  if (!t) return
+  ttsQueue.push({ text: t, at: performance.now() })
+  while (ttsQueue.length > TTS_QUEUE_MAX) ttsQueue.shift()
+  if (!ttsTimer) pumpTts()
+}
+// 退出・背面化で畳む（join/leave の対称。背面では iOS が読まず、復帰した瞬間にまとめて喋るのを防ぐ）
+const stopSpeech = () => {
+  ttsQueue = []; clearTimeout(ttsTimer); ttsTimer = null
+  if (ttsOk) { try { speechSynthesis.cancel() } catch {} }
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopSpeech() })
+// iOS はユーザー操作の中で一度 speak() を通さないと、後からデータチャネル経由で届いた分を読まない。
+// 参加ボタン・解錠タップ・トグル ON（見本を読む）のどれかで必ず通す。オフのときは何もしない。
+const unlockSpeech = () => {
+  if (!sndTts || ttsUnlocked) return
+  ttsUnlocked = true
+  try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u) } catch {}
+}
+{
+  const box = $('sndTts'), row = $('sndTtsRow'), note = $('sndTtsNote')
+  row.hidden = !ttsOk   // 対応していないブラウザには出さない
+  box.checked = sndTts; note.hidden = !sndTts
+  box.onchange = () => {
+    sndTts = box.checked; lsSet(SND_TTS_KEY, sndTts ? '1' : '0'); note.hidden = !sndTts
+    if (sndTts) { ttsUnlocked = true; ttsSpeak('ひとことを読み上げます') }   // オンにした操作で解錠＋見本を1回読む
+    else stopSpeech()
+  }
+}
 const addAnalyser = (uid, stream) => {
   try {
     removeAnalyser(uid)   // 同じ相手のストリーム再取得（再ネゴ）で二重登録・リークしないように
@@ -2947,6 +3038,7 @@ const vadTick = () => {
     peak = Math.max(peak, rms)
     const active = rms > 0.045    // ノイズ床より上を「話している」とみなすしきい値
     if (uid === 'self') accumulateTalk(active)   // 自分の分はロビー向けの活発さにも積む
+    if (active && (uid === 'self' || canHear(uid))) lastVoiceAt = performance.now()   // 読み上げが待つ相手＝聞こえる人だけ
     const el = emojiEls.get(uid)
     if (!el) return
     el.style.transform = active ? 'scale(' + (1 + Math.min((rms - 0.045) * 4, 0.55)).toFixed(3) + ')' : 'scale(1)'
@@ -3236,7 +3328,7 @@ const audioFlowing = id => {
 //   ボタンは v0.11.8 で下のほうへ移したので、画面上部からは見えないことがある（2026-09-20・利用者が
 //   「つなぎ直しで相手の声が戻らない」＝実はボタンが下にあった）。**出ている間は画面のどこをタップしても
 //   解錠**し、状態カードの上のほうにも案内を出す
-const unlockNow = () => { if (audioCtx) audioCtx.resume().then(applyVolume).catch(() => {}); $('appAudio').play().catch(() => {}); allAudios().forEach(a => a.play().catch(() => {})); $('unlock').style.display = 'none'; showPeerNotice('') }
+const unlockNow = () => { if (audioCtx) audioCtx.resume().then(applyVolume).catch(() => {}); $('appAudio').play().catch(() => {}); allAudios().forEach(a => a.play().catch(() => {})); unlockSpeech(); $('unlock').style.display = 'none'; showPeerNotice('') }
 let unlockArmed = false
 const showUnlock = () => {
   $('unlock').style.display = 'block'
@@ -3999,6 +4091,7 @@ const micErrText = e => ({
 let joining = false
 const joinCall = async () => {
   if (joining) return
+  unlockSpeech()   // 参加ボタンの操作で読み上げも解錠（iOS）。つなぎ直しから来ても害はない
   joining = true
   $('join').disabled = true
   try { await runJoin() } finally { joining = false; $('join').disabled = false }
@@ -4136,6 +4229,7 @@ const wireRoom = () => {
     if (!text) return
     if (tooSoon(call.chatSeen, peerId, CHAT_ACCEPT_MS)) return
     showBubble(peerId, text)
+    speakChat(peerId, text)                            // 読み上げ（設定オンのときだけ。無視した相手は上で弾いてある）
     if (call.tab !== 'chat') $('tabChat').classList.add('unread')   // 見ていない間に届いた＝未読の点
   }
 
@@ -4678,6 +4772,7 @@ const leaveCall = () => {
   stopAudioWatch()   // 音声到着の監視を停止＋待ち時間と催促回数の記憶を捨てる
   diagSince = 0      // 診断窓の「参加から何秒」を戻す（窓そのものは出しっぱなしでよい）
   stopBgm()                          // BGM を止める（**stopVad より先に**＝AudioContext を閉じる前に畳む）
+  stopSpeech()                       // 読み上げの待ち行列と発話を捨てる（join/leave の対称）
   stopPipFeed()                      // 小窓を閉じて映像トラックも止める（join/leave の対称）
   stopWakeWatch()                    // 復帰の見張りも止める（join/leave の対称）
   stopVad(); resetTalk(); stopEq()   // 解析ループ停止＋AudioContext破棄（join が確保したものを全て解放）
