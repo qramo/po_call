@@ -89,7 +89,7 @@ INSTRUMENT = r"""
   T.ttsTexts = [];
   window.__potTts = { synth: async text => {
     T.ttsTexts.push(text);
-    const n = 13230, a = new Float32Array(n);
+    const n = 33075, a = new Float32Array(n);   // 1.5 秒（相手の行が光るのを見る余裕）
     for (let i = 0; i < n; i++) a[i] = Math.sin(i / 22050 * 440 * 2 * Math.PI) * 0.3;
     return { samples: a, sampleRate: 22050 };
   } };
@@ -1106,6 +1106,10 @@ def T55(r, a, b):
     sample = a.wait_for("window.__T.ttsTexts.length > %d" % n0, timeout=SHORT)   # オンにした操作で見本を1回読む
     saved = a.eval("localStorage.getItem('pot-call-snd-tts2') === '1'")
     note = a.eval("!document.getElementById('sndTtsNote').hidden")
+    # 段階②：聞き役に案内が届き（{ok} を返し）2 本目のトラックが載って仮想行 🗣 が出る。配信者の行も残っている
+    vrow_b = b.wait_for("!!document.querySelector('#members .member.virtual')", timeout=SHORT)
+    two = b.wait_for("%s >= 2" % AUDIOS, timeout=SHORT + 10)
+    vrow_a = a.eval("!!document.querySelector('#members .member.virtual')")
     n1 = a.eval("window.__T.ttsTexts.length")
     time.sleep(1.5)
     show_tab(b, 'chat')
@@ -1113,6 +1117,7 @@ def T55(r, a, b):
     arrived = a.wait_for("window.__T.ttsTexts.length > %d" % n1, timeout=SHORT + 10)
     text = a.eval("window.__T.ttsTexts[window.__T.ttsTexts.length - 1]")
     shape = bool(text) and text.endswith('、こんにちは URL省略 です') and '🎉' not in text and 'example' not in text
+    lit = b.wait_for("document.querySelector('#members .member:first-child').classList.contains('speaking')", timeout=SHORT)   # {now}＝自分の行が光る
     listener_quiet = b.eval("window.__T.ttsTexts.length") == 0   # 聞き役は合成しない
     # オフにすると読まない
     a.eval("document.getElementById('sndTts').click()")
@@ -1123,11 +1128,13 @@ def T55(r, a, b):
     time.sleep(1.0)
     off_quiet = shown and a.eval("window.__T.ttsTexts.length") == n2
     off_saved = a.eval("localStorage.getItem('pot-call-snd-tts2') === '0'")
+    vrow_gone = b.wait_for("!document.querySelector('#members .member.virtual')", timeout=SHORT)   # オフの案内で仮想行が消える
     show_tab(a, 'members'); show_tab(b, 'members')
-    ok = row_owner and row_listener and sample and saved and note and arrived and shape and listener_quiet and off_quiet and off_saved
-    r.check('T55', '読み上げ v2：配信者だけに設定・オンで読む・URL省略・絵文字なし・名前付き・聞き役は合成しない・オフで読まない', ok, 'pass',
-            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存=%s / 注記=%s / 届いた=%s / 文面=%r / 聞き役は合成しない=%s / オフで読まない=%s / オフ保存=%s'
-            % (row_owner, row_listener, sample, saved, note, arrived, text, listener_quiet, off_quiet, off_saved))
+    ok = (row_owner and row_listener and sample and saved and note and vrow_b and two and vrow_a and arrived and shape and lit
+          and listener_quiet and off_quiet and off_saved and vrow_gone)
+    r.check('T55', '読み上げ v2：配信者だけに設定・オンで読む・2本目のトラックと仮想行・URL省略・名前付き・聞き役は合成しない・オフで消える', ok, 'pass',
+            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存=%s / 注記=%s / 聞き役に仮想行=%s / 音声2本=%s / 配信者に仮想行=%s / 届いた=%s / 文面=%r / 投稿者の行が光る=%s / 聞き役は合成しない=%s / オフで読まない=%s / オフ保存=%s / オフで仮想行が消える=%s'
+            % (row_owner, row_listener, sample, saved, note, vrow_b, two, vrow_a, arrived, text, lit, listener_quiet, off_quiet, off_saved, vrow_gone))
 
 
 def T57(r, a, b):
