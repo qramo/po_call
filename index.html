@@ -615,8 +615,11 @@
   .tag-text b{ color:var(--text); font-size:14px }
   .tag-text .tag-by{ color:var(--note); font-size:12px; margin-left:4px }
   .tag-row .retry-btn{ margin:0 }
-  /* ロビー：タグが付いた部屋は**タグを大きく・部屋名を小さく**（利用者の指定・2026-09-18） */
-  .room-sub{ font-size:12px; color:var(--sub); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px }
+  /* ロビー：タグが付いた部屋はタグを大きく・元の部屋名を添える。
+     部屋名は小さく落としつつも埋もれないよう太字・本文色で立てる（2026-09-26・利用者） */
+  .room-sub{ font-size:13px; color:var(--sub); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:3px }
+  .room-sub-name{ font-weight:700; color:var(--body) }
+  .room-sub-by{ font-size:11.5px; color:var(--note); font-weight:400 }
   .chat-row{ margin-top:6px; position:relative }
   .chat-row input{ width:100%; padding:9px 76px 9px 11px; border-radius:10px; font-size:16px;
     background:var(--panel); color:var(--text); border:1px solid var(--border-soft) }
@@ -5393,10 +5396,19 @@ const renderLobby = () => {
     sh.onclick = e => { e.stopPropagation(); copyRoomUrl(sh, room, lobbyName(room, people)) }
     sh.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyRoomUrl(sh, room, lobbyName(room, people)) } }
     top.append(nm, ct, sh)
-    // タグが付いた部屋は、部屋名と付けた人を小さく添える
+    // タグが付いた部屋は、元の部屋名と付けた人を添える（部屋名が埋もれないよう span で分けて強調）
     let sub = null
-    if (tagged) { sub = document.createElement('div'); sub.className = 'room-sub'
-      sub.textContent = (isBcRoom(room) ? '📣 ' : '🏠 ') + lobbyName(room, people) + (tagged.tagBy ? '　' + tagged.tagBy + 'が付けた' : '') }
+    if (tagged) {
+      sub = document.createElement('div'); sub.className = 'room-sub'
+      const rName = document.createElement('span'); rName.className = 'room-sub-name'
+      rName.textContent = (isBcRoom(room) ? '📣 ' : '🏠 ') + lobbyName(room, people)
+      sub.append(rName)
+      if (tagged.tagBy) {
+        const rBy = document.createElement('span'); rBy.className = 'room-sub-by'
+        rBy.textContent = '　' + tagged.tagBy + 'が付けた'
+        sub.append(rBy)
+      }
+    }
     const dur = document.createElement('div'); dur.className = 'room-dur'
     const durText = document.createElement('span')
     durText.textContent = '⏱ ' + fmtDuration(roomSeconds(room, people))
