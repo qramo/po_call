@@ -411,6 +411,8 @@
   .tab[aria-selected="true"]::after{ content:''; position:absolute; left:8px; right:8px; bottom:-1px;
     height:2px; background:var(--accent); border-radius:2px }
   .tab-right{ margin-left:auto }
+  /* 設定タブが開いている時は、独立したボタンではなく「いま開いているパネル」であることが一目で伝わるようにする */
+  .tab-right[aria-selected="true"]{ background:var(--chip-hover); border-radius:8px 8px 0 0 }
   /* 狭い画面：まず詰める → それでも足りないので**設定はアイコンだけ**にする
      （歯車は単体で意味が通る記号。読み上げ用に aria-label を付けてある）。
      おたよりが増えるのは配信部屋のときだけなので、4つ並ぶのはその場合に限られる。 */
@@ -1433,6 +1435,7 @@ const CALL_INIT = () => ({
   mailSeen: new Map(),  // peerId → 最後に受け入れた時刻（相手の連打への自衛）
   mailAskAt: new Map(), // peerId → 最後に「いまの募集を教えて」に応じた時刻（同上）
   tab: 'members',       // 通話中に開いているタブ。通話ごとに既定へ戻す（だからここに置く）
+  prevTab: 'members',   // 設定を開く直前のタブ（設定タブをもう一度押して戻るため）
   capTimer: null,       // 満室判定を少し待つタイマー（相手のプロフィールが届いてから数えるため）
   noticeTimer: null     // 上の通知を自動で畳むタイマー
 })
@@ -2246,10 +2249,26 @@ const renderTabs = () => {
     $(tabId).setAttribute('aria-selected', String(on))
     $(tabId).tabIndex = on ? 0 : -1        // 矢印キーで移る（Tab キーはタブ列を1つとして扱う）
     $(panId).hidden = !on
+    if (key === 'settings') {
+      $(tabId).setAttribute('aria-label', on ? '設定（もう一度押すと閉じる）' : '設定')
+      $(tabId).title = on ? '設定を閉じる' : '設定'
+    }
   })
 }
 const selectTab = key => {
   if (!tabLive().some(t => t[0] === key)) return
+  if (call.tab === key) {
+    // 既に開いているタブをもう一度押したとき：設定タブなら直前のタブ（またはメンバー）に戻る（トグルで閉じる）
+    if (key === 'settings') {
+      const prev = call.prevTab && call.prevTab !== 'settings' && tabLive().some(t => t[0] === call.prevTab)
+        ? call.prevTab : 'members'
+      call.tab = prev
+      renderTabs()
+      return
+    }
+  } else if (call.tab !== 'settings') {
+    call.prevTab = call.tab   // 直前にいたタブ（設定以外）を控えておく
+  }
   call.tab = key
   if (key === 'chat') $('tabChat').classList.remove('unread')   // 見たら既読
   renderTabs()
