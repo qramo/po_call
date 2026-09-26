@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.42
+  ぽっと通話〈実験版〉 v0.14.43
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1086,6 +1086,7 @@
       <p class="vol-note" id="sndTtsNote" hidden>いまは自分にだけ鳴ります（次の段階で部屋の全員に届きます）。初回は約 100 MB を読み込みます（Wi-Fi 推奨）。
         ミュート中でも読みます。人が話している間は待って、間が空いてから読みます。</p>
       <p class="vol-note" id="sndTtsProg" hidden></p>
+      <p class="vol-note" id="sndTtsCrash" hidden></p>
     </div>
     <!-- 音が届かない相手がいるときだけ出る。頼んでも直らなかった＝本人の操作が要る場合の最終手段 -->
     <div id="audioWarn" class="audio-warn" hidden></div>
@@ -1310,7 +1311,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.42'
+const APP_VERSION = 'v0.14.43'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2938,7 +2939,18 @@ const soundRoom  = () => { if (sndRoom) playTones([[988, 0, 0.09], [1319, 0.08, 
 //   URL→「URL省略」／絵文字を落とす／名前を頭に付ける／キュー 3 件／700ms 静かになるまで待ち最大 8 秒／読み上げ中は行を光らせる。
 //   毎回止めてから読む、はしない（連投で先の読み上げが切れる）。読み上げ中に誰かが話し始めても止めない。
 // テストの差し替え口：window.__potTts（{ synth(text) → {samples, sampleRate} }）があれば実エンジン（100MB）を落とさない。
-const SND_TTS_KEY = 'pot-call-snd-tts'
+// ★キーは v2 で替えた（旧 'pot-call-snd-tts'）。旧版でオンにしていた人が、知らないうちに 100MB を読み込むことがないように
+//   （2026-09-26 実機：配信部屋にしたら最初からオンで、進捗も見本も出なかった）。100MB は必ず明示的な操作で始める
+const SND_TTS_KEY = 'pot-call-snd-tts2'
+// 落ちた印：エンジンが準備できたら sessionStorage に立て、正規の離脱（pagehide・自前の再読み込み）で消す。
+// 次の起動で残っていれば「読み上げを読み込んだ状態でページが死んだ」＝メモリ不足の疑い（iOS はタブを黙って捨てて開き直す）。
+// リスナーの接続不良と見分けがつかない、という実機の声（2026-09-26）への答え。回数は localStorage に積む
+const TTS_LIVE_KEY = 'pot-tts-live', TTS_CRASH_KEY = 'pot-call-tts-crashes'
+const ttsCrashedBefore = ssGet(TTS_LIVE_KEY) === '1'
+ssDel(TTS_LIVE_KEY)
+if (ttsCrashedBefore) lsSet(TTS_CRASH_KEY, String((parseInt(lsGet(TTS_CRASH_KEY, '0')) || 0) + 1))
+const ttsCrashes = () => parseInt(lsGet(TTS_CRASH_KEY, '0')) || 0
+addEventListener('pagehide', () => ssDel(TTS_LIVE_KEY))
 const TTS_GAP_MS = 700         // これだけ静かなら「区切り」（息継ぎは 200〜500ms）
 const TTS_MAX_WAIT_MS = 8000   // これ以上は待たずに読む
 const TTS_QUEUE_MAX = 3        // 溜めすぎない（溢れたら古い順に捨てる）
@@ -2980,8 +2992,18 @@ const patchOrt = ort => {
   }
   ort.InferenceSession.prototype.__potPatched = true
 }
-const renderTtsProg = () => { const p = $('sndTtsProg'); p.hidden = !ttsProg; p.textContent = ttsProg }
-const ttsStage = (msg) => { ttsProg = msg; renderTtsProg() }
+const renderTtsProg = () => {
+  const p = $('sndTtsProg'); p.hidden = !ttsProg; p.textContent = ttsProg
+  const c = $('sndTtsCrash'); c.hidden = !(ttsCrashedBefore && ttsAllowed())
+  if (!c.hidden) c.textContent = '⚠️ 前回は読み上げを読み込んだ状態でページが開き直されました（メモリ不足の可能性・累計 ' + ttsCrashes() + ' 回）'
+}
+const ttsStage = (msg) => {
+  ttsProg = msg; renderTtsProg()
+  if (!call.joinedId) return
+  const n = $('peerNotice')
+  if (msg) showPeerNotice('🗣 ' + msg)
+  else if (!n.hidden && n.textContent.startsWith('🗣')) showPeerNotice('')   // 自分の通知だけ消す
+}
 // ①ライブラリ ②推論エンジン ③声のモデル。段階ごとに失敗の文言を分ける（どこで詰まったかが設定行で分かる）
 const loadTts = () => {
   if (ttsEngine) return Promise.resolve(ttsEngine)
@@ -3006,6 +3028,7 @@ const loadTts = () => {
         return { samples: r.samples, sampleRate: r.sampleRate || 22050 }
       } }
       ttsStage('')
+      ssSet(TTS_LIVE_KEY, '1')   // 落ちた印（上）。pagehide と自前の再読み込みで消す
       return ttsEngine
     } catch (e) {
       ttsStage('⚠️ ' + (e && e.message ? e.message : '読み上げの準備に失敗しました'))
@@ -3081,15 +3104,16 @@ const syncTtsRow = () => {
   $('sndTtsNote').hidden = !(ttsAllowed() && sndTts)
   renderTtsProg()
 }
-const ttsWarm = () => { if (sndTts && ttsAllowed()) loadTts().catch(() => {}) }
+// 読み込み → 見本を 1 回読む（準備ができたことが耳で分かる）。トグル ON と、保存オンでの入室（warm）の両方から
+const ttsStart = () => loadTts().then(() => { if (sndTts && ttsAllowed() && !ttsSpeaking) ttsSpeak('self', '読み上げの準備ができました') }).catch(() => {})
+const ttsWarm = () => { if (sndTts && ttsAllowed()) ttsStart() }
 {
   const box = $('sndTts')
   box.checked = sndTts
   box.onchange = () => {
     sndTts = box.checked; lsSet(SND_TTS_KEY, sndTts ? '1' : '0'); syncTtsRow()
     if (!sndTts) { stopSpeech(); return }
-    // オンにした操作で読み込み → 見本を 1 回読む（準備ができたことが耳で分かる）
-    loadTts().then(() => { if (sndTts && ttsAllowed() && !ttsSpeaking) ttsSpeak('self', '読み上げの準備ができました') }).catch(() => {})
+    ttsStart()
   }
 }
 const addAnalyser = (uid, stream) => {
@@ -4486,7 +4510,7 @@ const diagAudio = () => {
       e ? (e.paused ? '停止' : '再生中') + ' t=' + e.currentTime.toFixed(1) + ' rs=' + e.readyState + (e.muted ? ' muted' : '') + ' vol=' + e.volume : '',
       tr ? 'track:' + tr.readyState + (tr.muted ? '/muted' + (e.mutedSince ? Math.round((Date.now() - e.mutedSince) / 1000) + 's' : '') : '/live') + (tr.enabled ? '' : '/disabled') : 'track:なし', 'flow=' + [...call.peers].filter(audioFlowing).length,
       'ctx=' + ctx, 'out=' + ($('appAudio').srcObject ? ($('appAudio').paused ? '停止' : '再生中') : 'なし'), '音量=' + Math.round(masterVol * 100) + '%', 'peers=' + call.peers.size, 'hear=' + [...call.peers].filter(canHear).length,
-      'tts=' + (!ttsOk ? 'なし' : ttsEngine ? 'ready' : ttsLoading ? 'loading' : 'none') + (sndTts ? ' on' : ' off') + ' q' + ttsQueue.length + (ttsSpeaking ? ' spk' : '') + (ttsLast ? ' ' + ttsLast : '') + (ttsProg ? ' [' + ttsProg + ']' : ''),
+      'tts=' + (!ttsOk ? 'なし' : ttsEngine ? 'ready' : ttsLoading ? 'loading' : 'none') + (sndTts ? ' on' : ' off') + ' q' + ttsQueue.length + (ttsSpeaking ? ' spk' : '') + (ttsLast ? ' ' + ttsLast : '') + (ttsProg ? ' [' + ttsProg + ']' : '') + ' crash' + ttsCrashes(),
       navigator.audioSession ? 'as=' + navigator.audioSession.type + '/' + navigator.audioSession.state : '',
       diagSince ? '参加' + Math.round((Date.now() - diagSince) / 1000) + 's' : '未参加'
     ]
@@ -4795,6 +4819,7 @@ const doReconnect = async ({ auto = false } = {}) => {
   // すんなり繋ぎ直してもらえる。ただし完了を待ち続けない（届かなくてもリロードは進める）。
   leaveCall()
   try { await Promise.race([call.leaving, new Promise(r => setTimeout(r, 1200))]) } catch {}
+  ssDel(TTS_LIVE_KEY)   // 自前の再読み込みは「落ちた」に数えない
   location.reload()
 }
 $('retry').onclick = () => doReconnect()
