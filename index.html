@@ -2415,6 +2415,7 @@ let appOut = null
 //   小窓（PiP）でも同じ効果が出ていたが、**効いていたのは小窓ではなくメディア要素**だった。
 //   ＝黒い小窓を出さなくても、BGM・効果音・音量調整が背面で生きる。
 let outDest = null
+let outKeepAlive = null
 const ensureOut = () => {
   const ctx = ensureAudioCtx()
   if (appOut) return appOut
@@ -2422,6 +2423,18 @@ const ensureOut = () => {
   try {
     outDest = ctx.createMediaStreamDestination()
     appOut.connect(outDest)
+    // WebKit の MediaStreamDestinationNode バグ対策：
+    // 入力が途切れた瞬間に最後のリングバッファ（128サンプル）が無限ループ再生される現象
+    // （BGM停止時に「ぶぶぶぶ…」と鳴り止まなくなるマシンガンバズ）およびアンダーラン雑音を防ぐため、
+    // 常時無音（0.0）を送り続けるキープアライブを接続する
+    if (ctx.createConstantSource) {
+      try {
+        outKeepAlive = ctx.createConstantSource()
+        outKeepAlive.offset.value = 0
+        outKeepAlive.connect(appOut)
+        outKeepAlive.start()
+      } catch {}
+    }
     const el = $('appAudio')
     el.srcObject = outDest.stream; el.playsInline = true; el.muted = false
     el.play().catch(() => {
@@ -2524,12 +2537,27 @@ const bgmRng = seed => {
 }
 // BGM は**マスター音量にも従う**（アプリの音をまとめて下げたときに BGM だけ残らない）
 const bgmLevel = () => bgmVol * masterVol * 0.5
-const bgmTrack = n => { bgm.nodes.push(n); return n }
+const bgmTrack = n => { if (bgm) bgm.nodes.push(n); return n }
 const stopBgm = () => {
   if (!bgm) return
-  bgm.timers.forEach(clearInterval)   // clearInterval は setTimeout の id も消せる
-  bgm.nodes.forEach(n => { try { n.stop && n.stop() } catch {} ; try { n.disconnect() } catch {} })
+  const cur = bgm
   bgm = null
+  cur.timers.forEach(clearInterval)   // clearInterval は setTimeout の id も消せる
+  const ctx = ctx0()
+  const now = ctx ? ctx.currentTime : 0
+  // 急激な切断によるクリック雑音と、WebKit のバッファループバグを防ぐため 40ms でフェードアウトしてから畳む
+  if (cur.gain && ctx && ctx.state === 'running') {
+    try {
+      cur.gain.gain.cancelScheduledValues(now)
+      cur.gain.gain.setValueAtTime(cur.gain.gain.value, now)
+      cur.gain.gain.linearRampToValueAtTime(0, now + 0.04)
+    } catch {}
+    setTimeout(() => {
+      cur.nodes.forEach(n => { try { n.stop && n.stop() } catch {} ; try { n.disconnect() } catch {} })
+    }, 50)
+  } else {
+    cur.nodes.forEach(n => { try { n.stop && n.stop() } catch {} ; try { n.disconnect() } catch {} })
+  }
 }
 // 先読みスケジューラ：25ms ごとに起きて 100ms 先までを**絶対時刻で**予約する。
 // 発火した瞬間に鳴らす作りだと、タイマーの揺れがそのままリズムの揺れになる（タブを裏に回すと露骨）。
@@ -3256,6 +3284,7 @@ const removeAnalyser = uid => {
 //   stream の track を止めてから ctx を閉じれば、OS 側の音声ユニットに切れ端が残らない。
 const stopOut = () => {
   try { if (appOut && audioCtx) appOut.gain.setValueAtTime(0, audioCtx.currentTime) } catch {}
+  if (outKeepAlive) { try { outKeepAlive.stop(); outKeepAlive.disconnect() } catch {}; outKeepAlive = null }
   const el = $('appAudio')
   try { el.pause() } catch {}
   try { el.srcObject = null } catch {}
