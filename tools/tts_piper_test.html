@@ -237,6 +237,35 @@
   let lastAudioResult = null;
   let audioCtx = null;
 
+  // ★piper-plus 0.7.0 の JS は、つくよみちゃん（tsukuyomi-chan-6lang-fp16.onnx）が宣言している入力と形が合わない
+  //   （2026-09-26 に ONNX の graph.input を直接読んで確認）：
+  //     speaker_embedding      float32 [batch, 256]   ← JS の既定は 192 次元のゼロ
+  //     speaker_embedding_mask int64   [batch, 1]     ← JS は [1]（1 次元）で渡す＝ "Invalid rank ... Got: 1 Expected: 2"
+  //   他のランタイムは PR #443（2026-05）で (1,1) int64・256 次元に直っているが wasm 版は未修正（dev も同じ）。
+  //   ここでは ONNX Runtime の run() を包み、feed の形をモデルの宣言に合わせて直す。マスク 0 ＝ 埋め込み不使用（既定の声）。
+  const patchOrt = ort => {
+    if (!ort || !ort.InferenceSession || ort.InferenceSession.prototype.__potPatched) return;
+    const run = ort.InferenceSession.prototype.run;
+    ort.InferenceSession.prototype.run = function (feeds, ...rest) {
+      try {
+        const names = new Set(this.inputNames || []);
+        if (names.has('speaker_embedding')) {
+          const se = feeds.speaker_embedding;
+          if (!se || se.dims.length !== 2 || se.dims[1] !== 256) {
+            feeds.speaker_embedding = new ort.Tensor('float32', new Float32Array(256), [1, 256]);
+            feeds.speaker_embedding_mask = new ort.Tensor('int64', new BigInt64Array([0n]), [1, 1]);
+          } else if (names.has('speaker_embedding_mask')) {
+            const m = feeds.speaker_embedding_mask;
+            const v = m && m.data && m.data.length ? m.data[0] : 1n;
+            feeds.speaker_embedding_mask = new ort.Tensor('int64', new BigInt64Array([v]), [1, 1]);
+          }
+        }
+      } catch (e) { console.warn('[patchOrt]', e); }
+      return run.call(this, feeds, ...rest);
+    };
+    ort.InferenceSession.prototype.__potPatched = true;
+  };
+
   // チップ選択
   document.querySelectorAll('.chip').forEach(c => {
     c.onclick = () => { $('txtInput').value = c.dataset.text; };
@@ -254,6 +283,8 @@
     try {
       // ONNX Runtime の WASM パスと並列スレッド数の設定
       if (globalThis.ort) {
+        patchOrt(globalThis.ort);   // ★上のコメント参照（feed の形をモデルに合わせる）
+        log('ORT の run() を包んで speaker_embedding(256) / mask [1,1] に合わせます');
         globalThis.ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/';
         globalThis.ort.env.wasm.numThreads = 1; // モバイル（特にiOS Safari）での安全動作
         globalThis.ort.env.wasm.simd = true;
@@ -301,9 +332,10 @@
 
     const start = performance.now();
     try {
+      // speakerEmbedding は渡さない：ゼロベクトルを「声の指定」として渡すと（mask=1）声が崩れる。
+      // 既定の声にするには mask=0 が要り、それは上の patchOrt が入れる
       lastAudioResult = await tts.synthesize(text, {
         language: 'ja',
-        speakerEmbedding: new Float32Array(256), // モデルの期待次元数(256)に合わせたゼロベクトル
         lengthScale: 1.4, // MB-iSTFT版の自然な発話速度推奨値(1.4〜1.5)
         noiseScale: 0.667
       });
