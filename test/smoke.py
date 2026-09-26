@@ -1095,7 +1095,7 @@ def T49(r, a, b):
 
 def T55(r, a, b):
     """ひとことの読み上げ v2（v0.14.42）：配信部屋のオーナーだけに設定が出て、オンで見本を読み、リスナーのひとことを
-    「名前、文面」で読む（URL は「URL省略」・絵文字は落ちる）。リスナー側は何も合成しない。オフで読まない。設定は localStorage に残る。
+    「名前、文面」で読む（URL は「URL省略」・絵文字は落ちる）。リスナー側は何も合成しない。オフで読まない。設定は保存しない（v0.14.50）。
 
     ★T27 の直後・T27b（つなぎ直しを繰り返す）の前に走る（a＝配信者・b＝聞き役・どちらも通話中のまま）。
     実エンジン（100MB）は落とさず、INSTRUMENT の差し替え口 window.__potTts（偽エンジン）で判定する（__T.ttsTexts）。
@@ -1108,7 +1108,7 @@ def T55(r, a, b):
     n0 = a.eval("window.__T.ttsTexts.length")
     a.eval("document.getElementById('sndTts').click()")
     sample = a.wait_for("window.__T.ttsTexts.length > %d" % n0, timeout=SHORT)   # オンにした操作で見本を1回読む
-    saved = a.eval("localStorage.getItem('pot-call-snd-tts2') === '1'")
+    saved = a.eval("localStorage.getItem('pot-call-snd-tts2') === null && localStorage.getItem('pot-call-snd-tts') === null")   # v0.14.50：保存しない
     note = a.eval("!document.getElementById('sndTtsNote').hidden")
     # 段階②：聞き役に案内が届き（{ok} を返し）2 本目のトラックが載って仮想行 🗣 が出る。配信者の行も残っている
     vrow_b = b.wait_for("!!document.querySelector('#members .member.virtual')", timeout=SHORT)
@@ -1132,13 +1132,13 @@ def T55(r, a, b):
     shown = a.wait_for("document.getElementById('chatLog').textContent.includes('よまない')", timeout=SHORT)
     time.sleep(1.0)
     off_quiet = shown and a.eval("window.__T.ttsTexts.length") == n2
-    off_saved = a.eval("localStorage.getItem('pot-call-snd-tts2') === '0'")
+    off_saved = a.eval("localStorage.getItem('pot-call-snd-tts2') === null")   # v0.14.50：保存しない
     vrow_gone = b.wait_for("!document.querySelector('#members .member.virtual')", timeout=SHORT)   # オフの案内で仮想行が消える
     show_tab(a, 'members'); show_tab(b, 'members')
     ok = (row_owner and row_listener and sample and saved and note and vrow_b and two and vrow_a and face and arrived and shape and lit
           and listener_quiet and off_quiet and off_saved and vrow_gone)
     r.check('T55', '読み上げ v2：配信者だけに設定・オンで読む・2本目のトラックと仮想行・URL省略・名前付き・聞き役は合成しない・オフで消える', ok, 'pass',
-            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存=%s / 注記=%s / 聞き役に仮想行=%s / 音声2本=%s / 配信者に仮想行=%s / 顔=%s / 届いた=%s / 文面=%r / 投稿者の行が光る=%s / 聞き役は合成しない=%s / オフで読まない=%s / オフ保存=%s / オフで仮想行が消える=%s'
+            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存しない=%s / 注記=%s / 聞き役に仮想行=%s / 音声2本=%s / 配信者に仮想行=%s / 顔=%s / 届いた=%s / 文面=%r / 投稿者の行が光る=%s / 聞き役は合成しない=%s / オフで読まない=%s / オフでも保存しない=%s / オフで仮想行が消える=%s'
             % (row_owner, row_listener, sample, saved, note, vrow_b, two, vrow_a, face, arrived, text, lit, listener_quiet, off_quiet, off_saved, vrow_gone))
 
 
