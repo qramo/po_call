@@ -18,6 +18,17 @@
 - **nostr-tools** — The Unlicense（パブリックドメイン相当・義務なし）
   https://github.com/nbd-wtf/nostr-tools
 
+以下は「ひとことの読み上げ」（配信部屋・配信者がオンにしたときだけ）で、jsDelivr／unpkg／Hugging Face から実行時に読み込むもの。
+本リポジトリはこれらを再配布していません。
+
+- **piper-plus**（`piper-plus`・`@piper-plus/g2p`）— MIT License — © ayutaz and contributors
+  https://github.com/ayutaz/piper-plus
+- **ONNX Runtime Web**（`onnxruntime-web`）— MIT License — © Microsoft Corporation
+  https://github.com/microsoft/onnxruntime
+- **音声モデル「つくよみちゃん 6lang」**（`ayousanz/piper-plus-tsukuyomi-chan`・Hugging Face）— piper-plus の配布物。
+  学習データは「つくよみちゃんコーパス」（夢前黎）で、その利用規約に従います。
+  https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan ／ https://tyc.rei-yumesaki.net/about/terms/
+
 ---
 
 ## 同梱している素材
@@ -56,6 +67,15 @@ ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
   2019-01-09 より前の公開なので、公開当時の CC0 1.0 でもある。
 - 本プロジェクトでの扱い：塗りを CSS の色に差し替え、湯気の線を描き足した**改変版**を、案内ページの一部として
   埋め込んでいる。この挿絵だけを切り出しての再配布は、Pixabay の条件に従うこと（本プロジェクトの MIT の対象外）。
+
+### 顔グラフィック「つくよみちゃん」（`img/tsukuyomi-128.png`）— つくよみちゃんキャラクターライセンス
+
+- 元素材：「つくよみちゃんミニキャラ素材（夢前黎）」ver.1.1.0 の「05 文字なし・口開け」を、顔の部分だけ切り抜いて 128px に縮小した**改変版**
+  （このセットは「加工は無制限に許可」）。 https://tyc.rei-yumesaki.net/material/illust/
+- クレジット（必須）：フリー素材キャラクター「つくよみちゃん」 https://tyc.rei-yumesaki.net/ ／ Illustration by 夢前黎
+- 使い方：メンバー一覧の「読み上げ」の行の顔グラフィックとしてのみ使用（規約が許可の例に挙げる「自作アプリ内の顔グラフィック」）。
+  **アプリアイコン・ファビコン・ヘッダー・OGP には使わない**（規約で禁止）。この画像だけを切り出しての再配布・転売・グッズ化は不可
+  （本プロジェクトの MIT の対象外。上のキャラクターライセンスに従うこと）。
 
 ## 本ライセンスの対象外
 

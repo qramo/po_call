@@ -1110,6 +1110,7 @@ def T55(r, a, b):
     vrow_b = b.wait_for("!!document.querySelector('#members .member.virtual')", timeout=SHORT)
     two = b.wait_for("%s >= 2" % AUDIOS, timeout=SHORT + 10)
     vrow_a = a.eval("!!document.querySelector('#members .member.virtual')")
+    face = b.eval("(() => { const i = document.querySelector('#members .member.virtual img.m-face'); return !!i && i.getAttribute('src') === 'img/tsukuyomi-128.png' })()")   # 顔グラフィック（v0.14.46）
     n1 = a.eval("window.__T.ttsTexts.length")
     time.sleep(1.5)
     show_tab(b, 'chat')
@@ -1130,11 +1131,11 @@ def T55(r, a, b):
     off_saved = a.eval("localStorage.getItem('pot-call-snd-tts2') === '0'")
     vrow_gone = b.wait_for("!document.querySelector('#members .member.virtual')", timeout=SHORT)   # オフの案内で仮想行が消える
     show_tab(a, 'members'); show_tab(b, 'members')
-    ok = (row_owner and row_listener and sample and saved and note and vrow_b and two and vrow_a and arrived and shape and lit
+    ok = (row_owner and row_listener and sample and saved and note and vrow_b and two and vrow_a and face and arrived and shape and lit
           and listener_quiet and off_quiet and off_saved and vrow_gone)
     r.check('T55', '読み上げ v2：配信者だけに設定・オンで読む・2本目のトラックと仮想行・URL省略・名前付き・聞き役は合成しない・オフで消える', ok, 'pass',
-            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存=%s / 注記=%s / 聞き役に仮想行=%s / 音声2本=%s / 配信者に仮想行=%s / 届いた=%s / 文面=%r / 投稿者の行が光る=%s / 聞き役は合成しない=%s / オフで読まない=%s / オフ保存=%s / オフで仮想行が消える=%s'
-            % (row_owner, row_listener, sample, saved, note, vrow_b, two, vrow_a, arrived, text, lit, listener_quiet, off_quiet, off_saved, vrow_gone))
+            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存=%s / 注記=%s / 聞き役に仮想行=%s / 音声2本=%s / 配信者に仮想行=%s / 顔=%s / 届いた=%s / 文面=%r / 投稿者の行が光る=%s / 聞き役は合成しない=%s / オフで読まない=%s / オフ保存=%s / オフで仮想行が消える=%s'
+            % (row_owner, row_listener, sample, saved, note, vrow_b, two, vrow_a, face, arrived, text, lit, listener_quiet, off_quiet, off_saved, vrow_gone))
 
 
 def T55b(r, a, b):

@@ -356,6 +356,8 @@ python3 -m http.server 8000
 - 2026/09/26 — **v0.14.45**
     - 配信者自身のひとことも読み上げるようにしました（読み上げがオンのとき）
     - 読み上げの設定の下に「届いている人：n / m 人」を出すようにしました。古い版のクライアントには届かないので、ページを開き直してもらう目安になります
+- 2026/09/26 — **v0.14.46**
+    - 読み上げ v2 の仕上げ。メンバー一覧の「つくよみちゃん」の行に公式イラストの顔を出すようにしました（絵文字から変更）。ヘルプに読み上げの説明とクレジットを載せ、THIRD_PARTY_NOTICES に piper-plus・onnxruntime-web・つくよみちゃんの項を追加しました
 ---
 
 ## 📊 アクセス状況（透明性のため公開）
@@ -456,6 +458,7 @@ python3 -m http.server 8000
 [MIT](LICENSE) で公開しています。自由に使用・改変・再配布できます（著作権表示の保持が条件）。
 
 利用・同梱している第三者ソフトウェアの著作権表示は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) にまとめています ── [Trystero](https://github.com/dmotz/trystero)（MIT）、[qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator)（MIT）、[nostr-tools](https://github.com/nbd-wtf/nostr-tools)（Unlicense）、アイコンは [Lucide](https://lucide.dev/)（ISC）。
+読み上げ（配信部屋）は [piper-plus](https://github.com/ayutaz/piper-plus)（MIT）と [onnxruntime-web](https://github.com/microsoft/onnxruntime)（MIT）をブラウザ内で動かし、声と顔はフリー素材キャラクター「つくよみちゃん」（https://tyc.rei-yumesaki.net/ ・声：つくよみちゃんコーパス／Illustration by 夢前黎）を[キャラクターライセンス](https://tyc.rei-yumesaki.net/about/terms/)に従って使っています。
 
 ---
 
