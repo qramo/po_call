@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.43
+  ぽっと通話〈実験版〉 v0.14.44
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -663,6 +663,7 @@
   }
   /* 無視中の行。**自分にだけ見える印**（相手には何も伝わらない）。忘れて混乱しないための表示 */
   .member.ignored{ opacity:.5 }
+  .member.virtual{ box-shadow:0 0 0 1px var(--accent-dim) inset }   /* 読み上げの仮想メンバー（🗣 つくよみちゃん）。人ではない印に薄い枠 */
   .member.ignored .m-name{ text-decoration:line-through }
   .member.muted .m-name{ color:var(--sub) }
   /* 接続経路アイコン＝行の右端。中継=Cloudflareオレンジ雲／直結=アプリ色ティール矢印。
@@ -1083,7 +1084,7 @@
            音は BGM と同じ出口（Web Audio → appAudio）から出す。OS の合成（Web Speech API）は v0.14.33〜41 で iOS に勝てず撤去
            （経緯は internal/HANDOFF と PLAN-tts-piper-2026-09-26.md）。**既定はオフ**＝オンにした操作が約 100MB の読み込みの合図 -->
       <label class="snd-opt" id="sndTtsRow" hidden><input type="checkbox" id="sndTts"> 🗣 ひとことを つくよみちゃんが読み上げる</label>
-      <p class="vol-note" id="sndTtsNote" hidden>いまは自分にだけ鳴ります（次の段階で部屋の全員に届きます）。初回は約 100 MB を読み込みます（Wi-Fi 推奨）。
+      <p class="vol-note" id="sndTtsNote" hidden>部屋の全員に聞こえます（🗣 つくよみちゃんの行に音が付きます）。初回は約 100 MB を読み込みます（Wi-Fi 推奨）。
         ミュート中でも読みます。人が話している間は待って、間が空いてから読みます。</p>
       <p class="vol-note" id="sndTtsProg" hidden></p>
       <p class="vol-note" id="sndTtsCrash" hidden></p>
@@ -1311,7 +1312,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.43'
+const APP_VERSION = 'v0.14.44'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -1356,7 +1357,12 @@ const CALL_INIT = () => ({
   wantWake: false,      // 画面を消さない状態にしたいか（復帰時に取り直すかの判断に使う）
   wakeLock: null,       // 実際に取れた WakeLockSentinel
   peers: new Set(),     // 接続できている相手の peerId
-  audios: new Map(),    // peerId → audio要素[]（相手の退出時に個別破棄する）
+  audios: new Map(),    // peerId → audio要素[]（相手の退出時に個別破棄する）。読み上げの仮想行は 'tts'
+  ttsAction: null,      // 読み上げの案内（配信者→全員：{sid,on}／{now}。聞き役→配信者：{ok}）
+  ttsAnn: null,         // 受け取った最新の案内 {from, sid, on}。配信者からのものかは ttsSidOf() が名簿で確かめる
+  ttsAckedFrom: '',     // {ok} を返した相手（配信者の peerId）。配信者が入り直せば別 ID になるので返し直す
+  ttsSent: new Set(),   // 配信者：読み上げのストリームを渡した相手（{ok} を返してきた人だけ）
+  ttsSeen: new Map(),   // 案内の連打よけ
   profiles: new Map(),  // peerId → {name, emoji, muted, relay}（相手から届いたプロフィール）
   profileAction: null,  // 名前・絵文字・ミュート状態を配るデータチャネル（参加中だけ有効）
   metaAction: null,     // 部屋のメタデータ（名前・タグ）のデータチャネル（v0.13.0）
@@ -2277,13 +2283,16 @@ const renderMembers = () => {
     const row = memberRow(emoji, name, you, isMuted, stage, relay, action, bc)
     emojiEls.set(uid, row.querySelector('.m-emoji'))
     membersEl.appendChild(row)
+    return row
   }
+  let ownerRow = null   // 読み上げの仮想行はこの直下に置く
   // 配信部屋の印。配信者は 📣、あとから許された人は 🎙、それ以外は無印（＝聞き役）。
   // **誰が配信者かも署名の中に入っている**ので、自分の行か相手の行かで判断を変えなくてよい。
   const bcMark = id => !call.bcast ? '' : (id && id === call.ownerPeer ? '📣' : call.speakers.has(id) ? '🎙' : '')
   // 聞き役はマイクを持っていないので、ミュート印を出しておく（一覧の見え方を「話せない人」で揃える）
-  add('self', profile.emoji, profile.name, true, micOff(), stageOf(), call.usingRelay, null,
+  const selfRow = add('self', profile.emoji, profile.name, true, micOff(), stageOf(), call.usingRelay, null,
     call.bcast ? { mark: bcMark(myPeerId), grant: call.ownerKey ? { hidden: true } : null } : null)
+  if (call.ownerKey) ownerRow = selfRow
   // peers（接続の事実）を軸にし、プロフィール未着の相手は仮表示にする（経路も未着なら undefined＝アイコンなし）
   call.peers.forEach(id => {
     const p = call.profiles.get(id) || {}
@@ -2300,11 +2309,20 @@ const renderMembers = () => {
     }
     // 無視中でも**接続は生きている**ので peers に残る。行を薄くして取り消し線を引くのは
     // **自分にだけ見える印**（相手には何も伝わらない）。忘れて混乱しないためのもの。
-    add(id, p.emoji, p.name, false, !!p.muted, p.stage, p.relay, ig
+    const row = add(id, p.emoji, p.name, false, !!p.muted, p.stage, p.relay, ig
       ? { off: true, title: 'この人の音をまた受け取る', onClick: () => unignorePeer(id) }
       : { off: false, title: 'この人の音を受け取らない（無視。相手には伝わりません）', onClick: () => ignorePeer(id) }, bc)
-    if (ig) membersEl.lastElementChild.classList.add('ignored')
+    if (ig) row.classList.add('ignored')
+    if (id === call.ownerPeer) ownerRow = row
   })
+  // 読み上げの仮想メンバー 🗣「つくよみちゃん」（v0.14.44）。人ではないので人数に数えず、名簿の印も付けない。
+  // 配信者の行の直下。音は 'tts' の <audio>（受け取る側）か自分の合成（配信者）で、跳ねは解析器（vadTick）が描く
+  if (ttsVisible()) {
+    const v = memberRow('🗣', 'つくよみちゃん', false, false, '', undefined, null, call.bcast ? { mark: '' } : null)
+    v.classList.add('virtual'); v.title = '読み上げ（配信者の端末で合成）'
+    emojiEls.set('tts', v.querySelector('.m-emoji'))
+    if (ownerRow) ownerRow.after(v); else membersEl.appendChild(v)
+  }
   renderBcNote()
 }
 
@@ -2969,6 +2987,34 @@ let ttsQueue = [], ttsTimer = null, ttsSpeaking = false, ttsSource = null
 let ttsReadingUid = null, ttsLast = ''   // いま読んでいる人（行を光らせる）／最後の出来事（診断窓用）
 let ttsEngine = null, ttsLoading = null, ttsProg = ''   // エンジン／読み込み中の約束／進捗の文言（設定行・診断窓）
 const ttsAllowed = () => ttsOk && !!call.joinedId && call.bcast && !!call.ownerKey   // 配信部屋のオーナーの通話中だけ
+// ─ 配る（v0.14.44・段階②）─ 合成音は MediaStreamDestination から **2 本目の音声トラック**として全員へ。
+//   受け取る側は案内 {sid,on} でそれを見分け、配信者の行ではなく仮想行 🗣「つくよみちゃん」に載せる（canHear は不変：配信者は名簿にいる）。
+//   ★ストリームは **{ok} を返してきた相手にだけ**送る：古いクライアント（〜v0.14.43）は案内を知らず、2 本目を配信者の行に
+//     載せて（mkAudio は 1 人 1 本）配信者の声を捨ててしまう。返事の無い相手には送らない＝読まれないだけで壊れない。
+//   オフは removeStream せず（再ネゴでマイクが途切れる環境がある）トラックを無音にして案内 {on:false}。退出時にまとめて片づく。
+let ttsDest = null   // 通話ごとに作り直す（AudioContext と寿命を合わせる。leaveCall で null）
+const ttsEnsureDest = () => { if (!ttsDest) ttsDest = ensureAudioCtx().createMediaStreamDestination(); return ttsDest }
+const ttsAnnounce = target => {   // 配信者：案内。target 省略＝全員
+  if (!call.ttsAction || !ttsAllowed() || !ttsDest) return
+  sendTo(call.ttsAction, { sid: ttsDest.stream.id, on: !!sndTts }, target)
+}
+const ttsSetOn = on => {          // 配信者：オン／オフをトラックと案内に反映
+  if (!ttsAllowed()) return
+  ttsEnsureDest().stream.getTracks().forEach(t => { t.enabled = on })
+  ttsAnnounce(); renderMembers()
+}
+// 受け取る側：案内が配信者（名簿の値）からのものなら、そのストリーム id
+const ttsSidOf = () => (call.ttsAnn && call.ttsAnn.on && call.ttsAnn.from === call.ownerPeer) ? call.ttsAnn.sid : ''
+const ttsVisible = () => !!call.joinedId && call.bcast && (call.ownerKey ? (sndTts && !!ttsDest) : !!ttsSidOf())   // 仮想行を出すか
+// 名簿が後から確定することがある（署名の検証は非同期）ので、案内はいったん覚えておき、ここで評価する。
+// 配信者からの案内なら {ok} を返す（1 人の配信者につき 1 回。入り直せば別 ID なので返し直す）
+const ttsSync = () => {
+  const ann = call.ttsAnn
+  if (ann && ann.on && ann.from === call.ownerPeer && call.ttsAckedFrom !== ann.from) {
+    call.ttsAckedFrom = ann.from; sendTo(call.ttsAction, { ok: true }, ann.from)
+  }
+  renderMembers()
+}
 // piper-plus 0.7.0 の feed をモデルの宣言に合わせる（上の★）。ort.InferenceSession.prototype.run を包む
 const patchOrt = ort => {
   if (!ort || !ort.InferenceSession || ort.InferenceSession.prototype.__potPatched) return
@@ -3064,12 +3110,15 @@ const ttsSpeak = async (uid, text) => {
     buf.copyToChannel(pcm, 0)
     const src = ctx.createBufferSource(); src.buffer = buf
     const g = ctx.createGain(); g.gain.value = masterVol
-    src.connect(g); g.connect(ensureOut())
+    src.connect(g); g.connect(ensureOut())              // 自分の耳（マスター音量に従う）
+    try { src.connect(ttsEnsureDest()) } catch {}         // 相手へ（2 本目のトラック・音量は相手側で調整）
     ttsSource = src; ttsMark(uid, true); ttsLast = 'play'
+    sendTo(call.ttsAction, { now: uid === 'self' ? myPeerId : uid })   // 読んでいる人の行を相手の画面でも光らせる
     await new Promise(res => { src.onended = res; src.start() })
     ttsLast = 'end'
   } catch (e) { ttsLast = 'error:' + (e && e.message ? e.message : e) }
   finally {
+    sendTo(call.ttsAction, { now: null })
     ttsMark(uid, false); ttsSource = null; ttsSpeaking = false
     clearTimeout(ttsTimer); ttsTimer = setTimeout(pumpTts, 50)   // 次を取り出す
   }
@@ -3105,14 +3154,18 @@ const syncTtsRow = () => {
   renderTtsProg()
 }
 // 読み込み → 見本を 1 回読む（準備ができたことが耳で分かる）。トグル ON と、保存オンでの入室（warm）の両方から
-const ttsStart = () => loadTts().then(() => { if (sndTts && ttsAllowed() && !ttsSpeaking) ttsSpeak('self', '読み上げの準備ができました') }).catch(() => {})
+const ttsStart = () => loadTts().then(() => {
+  if (!sndTts || !ttsAllowed()) return
+  ttsSetOn(true)                                        // 2 本目のトラックを用意して案内（{ok} が来た相手へ送る）
+  if (!ttsSpeaking) ttsSpeak('self', '読み上げの準備ができました')
+}).catch(() => {})
 const ttsWarm = () => { if (sndTts && ttsAllowed()) ttsStart() }
 {
   const box = $('sndTts')
   box.checked = sndTts
   box.onchange = () => {
     sndTts = box.checked; lsSet(SND_TTS_KEY, sndTts ? '1' : '0'); syncTtsRow()
-    if (!sndTts) { stopSpeech(); return }
+    if (!sndTts) { stopSpeech(); ttsSetOn(false); return }
     ttsStart()
   }
 }
@@ -3412,13 +3465,18 @@ const mkAudio = (id, ms, sid) => {
   return a
 }
 // 同じ物が既に載っているか（相手側のストリーム id か、トラック id のどちらかが一致すれば同じ物）
-const hasStream = (id, stream) => (call.audios.get(id) || []).some(a =>
+const audiosOf = id => (call.audios.get(id) || []).concat(id && id === call.ownerPeer ? (call.audios.get('tts') || []) : [])
+const hasStream = (id, stream) => audiosOf(id).some(a =>
   a.sid === stream.id || (a.srcObject && a.srcObject.getTracks().some(t => stream.getTracks().some(u => u.id === t.id))))
 // 相手の音を載せ替える：要素（1本）→解析（絵文字の跳ね）→音量経路→再生。onPeerStream と __potTrack の共通部
+// ★配信者の「読み上げ」のストリーム（案内 {sid} と一致）は、配信者の行ではなく仮想行 'tts' に載せる。
+//   mkAudio は 1 人 1 本（古い方を捨てる）なので、配信者の行に載せると配信者の声が消える。
+//   案内は必ずストリームより先に届く（配信者は {ok} を返した相手にだけストリームを送る）
 const attachStream = (id, ms, sid) => {
-  const a = mkAudio(id, ms, sid)   // 古い方は中で捨てる
-  addAnalyser(id, ms)              // 相手の音量を測って絵文字を跳ねさせる（中で古い方を外している）
-  routePeer(id)                    // 音量が 100% でなければマスター音量の経路に繋ぎ替える
+  const uid = sid && id === call.ownerPeer && sid === ttsSidOf() ? 'tts' : id
+  const a = mkAudio(uid, ms, sid)  // 古い方は中で捨てる
+  addAnalyser(uid, ms)             // 相手の音量を測って絵文字を跳ねさせる（中で古い方を外している）
+  routePeer(uid)                   // 音量が 100% でなければマスター音量の経路に繋ぎ替える
   play(a)
 }
 // 「送り直して」に応じる：**一度外してから、新しい MediaStream に包んで入れ直す。**
@@ -3924,6 +3982,7 @@ const acceptRoster = async d => {
   call.rosterSeen = t; call.ownerPeer = own
   call.roster = { pk: pub, t, o: own, ids, sig }
   setSpeakers(ids)
+  ttsSync()   // 読み上げの案内が名簿より先に届いていたら、ここで評価する（{ok} を返す・仮想行を出す）
   // ★「枠主が誰か」が分かった**その瞬間**に、いまの募集と公開中のお便りを取りに行く。
   // 枠主からの push（mailSync）は**名簿より先に着くことがある**（名簿の送信は署名の計算を挟むので
   // 非同期）。先に着いた分は ownerPeer が未確定なので捨てられる＝**後から入った人に募集が出ない**
@@ -4339,7 +4398,7 @@ const wireRoom = () => {
     if (!call.room || !e.track || e.track.kind !== 'audio') return
     const id = Object.keys(call.room.getPeers()).find(k => call.room.getPeers()[k] === pc)
     if (!id || !canHear(id)) return
-    if ((call.audios.get(id) || []).some(a => a.srcObject && a.srcObject.getTracks().some(t => t.id === e.track.id))) return
+    if (audiosOf(id).some(a => a.srcObject && a.srcObject.getTracks().some(t => t.id === e.track.id))) return
     attachStream(id, new MediaStream([e.track]), e.streams[0] ? e.streams[0].id : e.track.id)
   }
 
@@ -4348,6 +4407,28 @@ const wireRoom = () => {
   // 古いクライアントは送ってこないので、その相手は常に「切れた」扱いになる＝**過剰に警告する側**へ倒す。
   call.byeAction = call.room.makeAction('bye')
   call.byeAction.onMessage = (_d, { peerId }) => call.byeSeen.add(peerId)
+
+  // 読み上げの案内（v0.14.44）。配信者→全員 {sid,on}／{now}、聞き役→配信者 {ok}。古いクライアントは知らない action として捨てる
+  call.ttsAction = call.room.makeAction('tts')
+  call.ttsAction.onMessage = (d, { peerId }) => {
+    if (!d || typeof d !== 'object') return
+    if ('ok' in d) {   // 「受け取れます」→ その相手にだけストリームを送る（上の★）
+      if (!call.ownerKey || !ttsDest || !sndTts || call.ttsSent.has(peerId)) return
+      call.ttsSent.add(peerId)
+      try { call.room.addStream(ttsDest.stream, { target: peerId }) } catch {}
+      return
+    }
+    if ('now' in d) {  // 読んでいる人の行を光らせる（配信者からだけ）。連打よけはここだけ
+      if (peerId !== call.ownerPeer || tooSoon(call.ttsSeen, peerId, 100)) return
+      if (ttsReadingUid) ttsMark(ttsReadingUid, false)
+      const uid = typeof d.now === 'string' ? (d.now === myPeerId ? 'self' : d.now.slice(0, 64)) : null
+      if (uid && (uid === 'self' || call.peers.has(uid))) ttsMark(uid, true)
+      return
+    }
+    // 案内 {sid,on} は**状態**なので捨てない（{now:null} の直後に {on:false} が来る＝連打よけに掛けると消し損ねる・T55 で踏んだ）
+    call.ttsAnn = { from: peerId, sid: typeof d.sid === 'string' ? d.sid.slice(0, 64) : '', on: !!d.on }
+    ttsSync()
+  }
 
   call.chatAction = call.room.makeAction('chat')
   call.chatAction.onMessage = (data, { peerId }) => {
@@ -4468,7 +4549,7 @@ const wireRoom = () => {
     flyReaction(peerId, data)
   }
 
-  call.room.onPeerJoin = id => { call.peers.add(id); call.peerSince.set(id, Date.now()); if (call.stream) call.room.addStream(call.stream, { target: id }); sendProfile(id); sendMeta(id); if (call.bcast) { forwardRoster(id); mailSync(id) }; call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin(); scheduleCapacityCheck() }
+  call.room.onPeerJoin = id => { call.peers.add(id); call.peerSince.set(id, Date.now()); if (call.stream) call.room.addStream(call.stream, { target: id }); sendProfile(id); sendMeta(id); if (call.bcast) { forwardRoster(id); mailSync(id); ttsAnnounce(id) }; call.warn = ''; call.lostPeer = false; call.lostAt = 0; setCount(); render(); renderMembers(); soundJoin(); scheduleCapacityCheck() }
   call.room.onPeerLeave = id => {
     // 'bye' が来ていなければ異常な切断。本物の回線障害でも出るが、**理由は分からなくても
     // 「何かおかしい」と分かる**ほうがよい（自分の回線のせいだと思い込まないため）。
@@ -4480,6 +4561,8 @@ const wireRoom = () => {
     call.peers.delete(id); call.profiles.delete(id); call.peerSince.delete(id)
     call.nudges.delete(id); call.nudgeSeen.delete(id); call.byeSeen.delete(id)
     call.ignored.delete(id)   // peerId は使い捨て。入り直すと別人なので、無視も持ち越さない
+    call.ttsSent.delete(id)   // 読み上げを配った記録（入り直せば別 ID＝改めて {ok} を待つ）
+    if (id === call.ownerPeer && call.ttsAnn) { call.ttsAnn = null; dropAudios('tts'); removeAnalyser('tts') }   // 配信者が抜けた＝仮想行も畳む
     // 登壇の許可も同じ理由で持ち越さない（入り直した人は別の peerId＝改めて許可し直す）。
     // オーナーは原本から消すが、**名簿を配り直さない**：残った人の許可は変わらないので、
     // 抜けた人ぶんの署名をやり直す必要が無い（次の grant/revoke か定期配布で揃う）。
@@ -4904,7 +4987,7 @@ const leaveCall = () => {
   stopAudioWatch()   // 音声到着の監視を停止＋待ち時間と催促回数の記憶を捨てる
   diagSince = 0      // 診断窓の「参加から何秒」を戻す（窓そのものは出しっぱなしでよい）
   stopBgm()                          // BGM を止める（**stopVad より先に**＝AudioContext を閉じる前に畳む）
-  stopSpeech()                       // 読み上げの待ち行列と発話を捨てる（join/leave の対称）
+  stopSpeech(); ttsDest = null       // 読み上げの待ち行列と発話を捨て、2 本目のトラックの出所も畳む（join/leave の対称。ctx は stopVad が閉じる）
   stopPipFeed()                      // 小窓を閉じて映像トラックも止める（join/leave の対称）
   stopWakeWatch()                    // 復帰の見張りも止める（join/leave の対称）
   stopVad(); resetTalk(); stopEq()   // 解析ループ停止＋AudioContext破棄（join が確保したものを全て解放）
