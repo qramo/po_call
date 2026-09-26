@@ -301,7 +301,8 @@
       }
 
       tts = await PiperPlus.initialize({
-        model: 'tsukuyomi', // または "ayousanz/piper-plus-tsukuyomi-chan"
+        // ?model=<URL または HF の repo 名> で声のモデルを差し替えて聞き比べる（int8 量子化の検証用・2026-09-26）。既定は tsukuyomi
+        model: new URLSearchParams(location.search).get('model') || 'tsukuyomi',
         ort: globalThis.ort,
         wasmG2pUrl: 'https://unpkg.com/piper-plus@0.7.0/dist/rust-wasm/piper_plus_wasm.js',
         onProgress: ({ stage, progress, message }) => {
