@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.47
+  ぽっと通話〈実験版〉 v0.14.48
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1324,7 +1324,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.47'
+const APP_VERSION = 'v0.14.48'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -3049,11 +3049,14 @@ const ttsSync = () => {
   renderMembers()
 }
 // piper-plus 0.7.0 の feed をモデルの宣言に合わせる（上の★）。ort.InferenceSession.prototype.run を包む
-// ★メモリ（2026-09-26・Mac Chrome のレンダラ RSS で実測）：エンジン読み込みで約 +270MB（固定）。合成のたびに約 2.5MB ずつ増え続けた
-//   （10 回で +25MB・wasm のメモリは縮まない＝長い配信で何十回も読むうちに iPhone が落ちる筋。実機で crash3）。
-//   ORT のアリーナ（enableCpuMemArena）とメモリパターン（enableMemPattern）を止めると、最初の 10 回で +23MB に達したあと**頭打ち**になった。
-//   実行は wasm 固定（piper-plus も int64 の都合で wasm に倒しているが、明示して WebGPU の GPU メモリを使わせない）
-const TTS_ORT_OPTS = { executionProviders: ['wasm'], graphOptimizationLevel: 'extended', enableMemPattern: false, enableCpuMemArena: false }
+// ★メモリ（2026-09-26・Mac Chrome のレンダラ RSS で実測・internal/HANDOFF）：配信者タブは読み込みで **297MB → 1,068MB（+770MB）**。
+//   内訳＝ONNX セッション作成（38MB の fp16 モデル）で +650MB、辞書入り wasm で +110MB。合成のたびに約 2.5MB ずつ増え続けた
+//   （wasm のメモリは縮まない＝長い配信で iPhone が落ちる筋。実機で crash3）。
+//   ・アリーナ（enableCpuMemArena）とメモリパターン（enableMemPattern）を止める → 増加が 10 回目以降ほぼ頭打ち
+//   ・グラフ最適化を 'disabled' に → セッション作成が +650MB → +370MB（合計 +770 → +570MB）。速さは変わらない（RTF 0.08〜0.11 のまま）
+//   ・実行は wasm 固定（piper-plus も int64 の都合で wasm に倒しているが、明示して WebGPU の GPU メモリを使わせない）
+//   まだ重い分＝fp16→fp32 の重み複製（int8 量子化で減る見込み）と辞書（wasm の作り直しが要る）。
+const TTS_ORT_OPTS = { executionProviders: ['wasm'], graphOptimizationLevel: 'disabled', enableMemPattern: false, enableCpuMemArena: false }
 // 測定用の差し替え口 window.__potOrtOpts が優先
 const patchOrt = ort => {
   if (!ort || !ort.InferenceSession || ort.InferenceSession.prototype.__potPatched) return
