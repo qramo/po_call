@@ -99,14 +99,55 @@
   }
   .log-err { color: var(--err); }
   .log-ok { color: var(--accent); }
+  .log-warn { color: var(--warn); }
   .note { font-size: 0.78rem; color: var(--text-sub); line-height: 1.4; }
   .status-text { font-size: 0.85rem; font-weight: 600; color: var(--accent); }
 </style>
+
+<!-- 先行エラーハンドラ（モジュール解決エラー等も画面ログに表示） -->
+<script>
+  window.__logsQueue = [];
+  window.sysLog = function(msg, cls) {
+    window.__logsQueue.push({ msg, cls });
+    const logEl = document.getElementById('log');
+    if (logEl) {
+      while (window.__logsQueue.length > 0) {
+        const item = window.__logsQueue.shift();
+        const d = document.createElement('div');
+        if (item.cls) d.className = item.cls;
+        const time = new Date().toLocaleTimeString('ja-JP', { hour12: false });
+        d.textContent = `[${time}] ${item.msg}`;
+        logEl.appendChild(d);
+      }
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    console.log(msg);
+  };
+
+  window.addEventListener('error', function(e) {
+    const detail = e.message || 'モジュールまたはスクリプトの実行に失敗しました';
+    window.sysLog(`❌ スクリプトエラー: ${detail} (${e.filename || 'module'}:${e.lineno || 0})`, 'log-err');
+    const pText = document.getElementById('pText');
+    if (pText) pText.textContent = `エラー: ${detail}`;
+  });
+
+  window.addEventListener('unhandledrejection', function(e) {
+    const reason = e.reason ? (e.reason.stack || e.reason.message || e.reason) : 'Promise rejection';
+    window.sysLog(`❌ 非同期エラー: ${reason}`, 'log-err');
+  });
+</script>
+
+<!-- onnxruntime-web (WASMのパス解決を確実にするためスクリプトタグで先読み) -->
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.js"></script>
+
+<!-- importmap: piper-plus とその依存 @piper-plus/g2p を定義 -->
 <script type="importmap">
 {
   "imports": {
     "piper-plus": "https://cdn.jsdelivr.net/npm/piper-plus@0.7.0/src/index.js",
-    "onnxruntime-web": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.mjs"
+    "piper-plus/": "https://cdn.jsdelivr.net/npm/piper-plus@0.7.0/",
+    "@piper-plus/g2p": "https://cdn.jsdelivr.net/npm/@piper-plus/g2p@0.4.2/src/index.js",
+    "@piper-plus/g2p/": "https://cdn.jsdelivr.net/npm/@piper-plus/g2p@0.4.2/"
   }
 }
 </script>
@@ -114,18 +155,18 @@
 <body>
 <div class="wrap">
   <h1>🗣 piper-plus 実機検証 <span class="badge">Wasm/ONNX</span></h1>
-  <p class="note">ブラウザ内音声合成エンジン <b>piper-plus（つくよみちゃんモデル）</b> が iPhone Safari で落ちずに動くか、所要時間や音質をテストするための検証ページです。</p>
+  <p class="note">ブラウザ内音声合成エンジン <b>piper-plus（つくよみちゃんモデル）</b> が iPhone Safari / Chrome で落ちずに動くか、所要時間や音質をテストするための検証ページです。</p>
 
   <!-- ステップ 1: エンジン初期化 -->
   <div class="card">
     <h2>1. エンジン初期化（初回ダウンロード）</h2>
     <div class="stat-grid">
-      <div class="stat-box"><div class="stat-lbl">状態</div><div class="stat-val" id="engineStatus">未初期化</div></div>
+      <div class="stat-box"><div class="stat-lbl">状態</div><div class="stat-val" id="engineStatus">準備中…</div></div>
       <div class="stat-box"><div class="stat-lbl">初期化所要時間</div><div class="stat-val" id="initTime">—</div></div>
     </div>
     <div class="progress-wrap"><div class="progress-bar" id="pBar"></div></div>
-    <div class="status-text" id="pText">「初期化を開始」を押してください</div>
-    <button id="btnInit">🚀 エンジン初期化を開始</button>
+    <div class="status-text" id="pText">スクリプト読み込み中…</div>
+    <button id="btnInit" disabled>🚀 エンジン初期化を開始</button>
     <p class="note">※ 初回のみ辞書・Wasm・モデル（約 100〜120MB）を取得します。2回目以降は IndexedDB から即座に読み込まれます。</p>
   </div>
 
@@ -161,25 +202,30 @@
 </div>
 
 <script type="module">
-  import { PiperPlus } from 'piper-plus';
-  import * as ort from 'onnxruntime-web';
-
   const $ = id => document.getElementById(id);
   const logEl = $('log');
 
-  const log = (msg, cls = '') => {
-    const d = document.createElement('div');
-    if (cls) d.className = cls;
-    const time = new Date().toLocaleTimeString('ja-JP', { hour12: false });
-    d.textContent = `[${time}] ${msg}`;
-    logEl.appendChild(d);
-    logEl.scrollTop = logEl.scrollHeight;
-    console.log(msg);
-  };
+  // 先行ログのフラッシュ
+  if (window.__logsQueue && window.__logsQueue.length > 0) {
+    window.sysLog('モジュール読み込み開始...');
+  }
 
-  window.onerror = (msg, src, line, col, err) => {
-    log(`❌ エラー: ${msg} (${line}:${col})`, 'log-err');
-  };
+  const log = (msg, cls = '') => window.sysLog(msg, cls);
+
+  let PiperPlus = null;
+  try {
+    const mod = await import('piper-plus');
+    PiperPlus = mod.PiperPlus;
+    log('piper-plus モジュール読み込み成功 ✅', 'log-ok');
+    $('engineStatus').textContent = '未初期化';
+    $('pText').textContent = '「初期化を開始」を押してください';
+    $('btnInit').disabled = false;
+  } catch (err) {
+    log(`モジュール読み込み失敗: ${err.message || err}`, 'log-err');
+    $('engineStatus').textContent = 'モジュール読込失敗 ❌';
+    $('pText').textContent = 'ライブラリの読み込みに失敗しました';
+    throw err;
+  }
 
   let tts = null;
   let lastAudioResult = null;
@@ -200,13 +246,16 @@
 
     const start = performance.now();
     try {
-      // ONNX Runtime の設定（WebAssembly / WASM）
-      ort.env.wasm.numThreads = 1; // モバイルでの安全動作
-      ort.env.wasm.simd = true;
+      // ONNX Runtime の WASM パスと並列スレッド数の設定
+      if (globalThis.ort) {
+        globalThis.ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/';
+        globalThis.ort.env.wasm.numThreads = 1; // モバイル（特にiOS Safari）での安全動作
+        globalThis.ort.env.wasm.simd = true;
+      }
 
       tts = await PiperPlus.initialize({
         model: 'tsukuyomi', // または "ayousanz/piper-plus-tsukuyomi-chan"
-        ort,
+        ort: globalThis.ort,
         onProgress: ({ stage, progress, message }) => {
           const pct = Math.round((progress || 0) * 100);
           $('pBar').style.width = `${Math.max(5, pct)}%`;
@@ -290,7 +339,10 @@
     }
   };
 
-  $('btnClearLog').onclick = () => { logEl.innerHTML = ''; };
+  $('btnClearLog').onclick = () => {
+    logEl.innerHTML = '';
+    window.__logsQueue = [];
+  };
 </script>
 </body>
 </html>
