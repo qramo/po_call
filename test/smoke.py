@@ -1137,6 +1137,28 @@ def T55(r, a, b):
             % (row_owner, row_listener, sample, saved, note, vrow_b, two, vrow_a, arrived, text, lit, listener_quiet, off_quiet, off_saved, vrow_gone))
 
 
+def T55b(r, a, b):
+    """読み上げ v2：**配信者がオンにした後から入った人**にも案内→{ok}→2本目のトラック→仮想行が届く（T55 の後・a は配信者）"""
+    if not a or not b:
+        return
+    show_tab(a, 'settings')
+    a.eval("document.getElementById('sndTts').click()")   # T55 の最後でオフにしてあるので、もう一度オン
+    on = a.wait_for("document.getElementById('sndTts').checked", timeout=SHORT)
+    c = r.open_tab(hash_=a.eval('location.hash'))
+    c.eval("localStorage.removeItem('pot-call-bcast')")   # 聞き役にする（T27 と同じ理由）
+    click_join(c)
+    met = c.wait_for('%s >= 2' % MEMBERS, timeout=DISCOVER)
+    vrow = c.wait_for("!!document.querySelector('#members .member.virtual')", timeout=DISCOVER)
+    two = c.wait_for("%s >= 2" % AUDIOS, timeout=DISCOVER)
+    sent = a.wait_for("document.getElementById('sndTtsSent').textContent.startsWith('届いている人：2 / 2')", timeout=SHORT)
+    a.eval("document.getElementById('sndTts').click()")   # 後のテストに持ち越さない
+    show_tab(a, 'members')
+    click_leave(c)
+    ok = on and met and vrow and two and sent
+    r.check('T55b', '読み上げ v2：後から入った聞き役にも仮想行と2本目のトラックが届く', ok, 'pass',
+            'オン=%s / 合流=%s / 仮想行=%s / 音声2本=%s / 配信者に「届いている人：2 / 2」=%s' % (on, met, vrow, two, sent))
+
+
 def T57(r, a, b):
     """読み上げ v2：雑談部屋では設定行が出ない（配信部屋のオーナー限定）。★T49 のあと（A・B は雑談部屋で通話中）"""
     show_tab(a, 'settings'); show_tab(b, 'settings')
@@ -2380,6 +2402,8 @@ def main():
             bc_a, bc_b = T27(r, room)
             if run('T55'):
                 T55(r, bc_a, bc_b)   # ★T27b（つなぎ直しを繰り返す）より前＝a が配信者のまま通話中の状態で見る
+                if run('T55b'):
+                    T55b(r, bc_a, bc_b)
             if run('T27b'):
                 T27b(r, bc_a, bc_b)
         if run('T31'):

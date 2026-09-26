@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.44
+  ぽっと通話〈実験版〉 v0.14.45
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1087,6 +1087,7 @@
       <p class="vol-note" id="sndTtsNote" hidden>部屋の全員に聞こえます（🗣 つくよみちゃんの行に音が付きます）。初回は約 100 MB を読み込みます（Wi-Fi 推奨）。
         ミュート中でも読みます。人が話している間は待って、間が空いてから読みます。</p>
       <p class="vol-note" id="sndTtsProg" hidden></p>
+      <p class="vol-note" id="sndTtsSent" hidden></p>
       <p class="vol-note" id="sndTtsCrash" hidden></p>
     </div>
     <!-- 音が届かない相手がいるときだけ出る。頼んでも直らなかった＝本人の操作が要る場合の最終手段 -->
@@ -1312,7 +1313,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.44'
+const APP_VERSION = 'v0.14.45'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2317,6 +2318,7 @@ const renderMembers = () => {
   })
   // 読み上げの仮想メンバー 🗣「つくよみちゃん」（v0.14.44）。人ではないので人数に数えず、名簿の印も付けない。
   // 配信者の行の直下。音は 'tts' の <audio>（受け取る側）か自分の合成（配信者）で、跳ねは解析器（vadTick）が描く
+  renderTtsSent()
   if (ttsVisible()) {
     const v = memberRow('🗣', 'つくよみちゃん', false, false, '', undefined, null, call.bcast ? { mark: '' } : null)
     v.classList.add('virtual'); v.title = '読み上げ（配信者の端末で合成）'
@@ -3087,7 +3089,7 @@ const loadTts = () => {
 const ttsText = (uid, text) => {
   const t = text.replace(/https?:\/\/\S+|www\.\S+/gi, 'URL省略').replace(TTS_STRIP, '').replace(/\s+/g, ' ').trim()
   if (!t) return ''
-  const name = ((call.profiles.get(uid) || {}).name || 'ゲスト').replace(TTS_STRIP, '').trim()
+  const name = ((uid === 'self' ? profile : call.profiles.get(uid) || {}).name || 'ゲスト').replace(TTS_STRIP, '').trim()
   return (name ? name + '、' : '') + t
 }
 // 読んでいる間は**その人の声として**見せる＝行を .speaking にし、絵文字も弾ませる（vadTick が ttsReadingUid を見る）。
@@ -3151,7 +3153,15 @@ const stopSpeech = () => {
 const syncTtsRow = () => {
   $('sndTtsRow').hidden = !ttsAllowed()
   $('sndTtsNote').hidden = !(ttsAllowed() && sndTts)
-  renderTtsProg()
+  renderTtsProg(); renderTtsSent()
+}
+// 配信者に「誰に届いているか」を見せる。古い版のクライアントは受け取れない（返事が無い＝送らない）ので、ここで気づける
+const renderTtsSent = () => {
+  const el = $('sndTtsSent')
+  el.hidden = !(ttsAllowed() && sndTts && ttsDest)
+  if (el.hidden) return
+  const n = [...call.peers].filter(id => call.ttsSent.has(id)).length
+  el.textContent = '届いている人：' + n + ' / ' + call.peers.size + ' 人' + (n < call.peers.size ? '（古い版の人には届きません。ページを開き直してもらってください）' : '')
 }
 // 読み込み → 見本を 1 回読む（準備ができたことが耳で分かる）。トグル ON と、保存オンでの入室（warm）の両方から
 const ttsStart = () => loadTts().then(() => {
@@ -3848,6 +3858,7 @@ const sendChat = () => {
   call.chatAt = now
   sendTo(call.chatAction, text)
   showBubble('self', text)                 // 送信は自分に返らないので自分の分は自分で出す
+  speakChat('self', text)                  // 配信者の読み上げがオンなら自分のひとことも読む（全員に届く・v0.14.45）
   chatText.value = ''
 }
 chatSend.onclick = sendChat
@@ -4416,6 +4427,7 @@ const wireRoom = () => {
       if (!call.ownerKey || !ttsDest || !sndTts || call.ttsSent.has(peerId)) return
       call.ttsSent.add(peerId)
       try { call.room.addStream(ttsDest.stream, { target: peerId }) } catch {}
+      renderTtsSent()
       return
     }
     if ('now' in d) {  // 読んでいる人の行を光らせる（配信者からだけ）。連打よけはここだけ
@@ -4593,7 +4605,8 @@ const diagAudio = () => {
       e ? (e.paused ? '停止' : '再生中') + ' t=' + e.currentTime.toFixed(1) + ' rs=' + e.readyState + (e.muted ? ' muted' : '') + ' vol=' + e.volume : '',
       tr ? 'track:' + tr.readyState + (tr.muted ? '/muted' + (e.mutedSince ? Math.round((Date.now() - e.mutedSince) / 1000) + 's' : '') : '/live') + (tr.enabled ? '' : '/disabled') : 'track:なし', 'flow=' + [...call.peers].filter(audioFlowing).length,
       'ctx=' + ctx, 'out=' + ($('appAudio').srcObject ? ($('appAudio').paused ? '停止' : '再生中') : 'なし'), '音量=' + Math.round(masterVol * 100) + '%', 'peers=' + call.peers.size, 'hear=' + [...call.peers].filter(canHear).length,
-      'tts=' + (!ttsOk ? 'なし' : ttsEngine ? 'ready' : ttsLoading ? 'loading' : 'none') + (sndTts ? ' on' : ' off') + ' q' + ttsQueue.length + (ttsSpeaking ? ' spk' : '') + (ttsLast ? ' ' + ttsLast : '') + (ttsProg ? ' [' + ttsProg + ']' : '') + ' crash' + ttsCrashes(),
+      'tts=' + (!ttsOk ? 'なし' : ttsEngine ? 'ready' : ttsLoading ? 'loading' : 'none') + (sndTts ? ' on' : ' off') + ' q' + ttsQueue.length + (ttsSpeaking ? ' spk' : '') + (ttsLast ? ' ' + ttsLast : '') + (ttsProg ? ' [' + ttsProg + ']' : '') + ' crash' + ttsCrashes()
+        + (call.ownerKey ? ' sent' + call.ttsSent.size : ' ann:' + (call.ttsAnn ? (call.ttsAnn.on ? 'on' : 'off') + (call.ttsAnn.from === call.ownerPeer ? '/owner' : '/other') : 'none') + ' ack:' + (call.ttsAckedFrom ? 'y' : 'n') + ' ttsEl' + (call.audios.get('tts') || []).length),
       navigator.audioSession ? 'as=' + navigator.audioSession.type + '/' + navigator.audioSession.state : '',
       diagSince ? '参加' + Math.round((Date.now() - diagSince) / 1000) + 's' : '未参加'
     ]
