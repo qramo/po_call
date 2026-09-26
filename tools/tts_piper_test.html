@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>piper-plus TTS 実機検証 | ぽっと通話</title>
+<style>
+  :root {
+    --bg: #090e1a;
+    --card: #141c2e;
+    --card-border: rgba(255,255,255,0.08);
+    --text: #eef2f8;
+    --text-sub: #9fb0c7;
+    --accent: #00e5cc;
+    --warn: #ffb84d;
+    --err: #ff6b6b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 16px;
+    padding-bottom: 60px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 540px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  h1 { font-size: 1.15rem; font-weight: 800; display: flex; align-items: center; gap: 6px; }
+  .badge { font-size: 0.7rem; background: rgba(0,229,204,0.15); color: var(--accent); padding: 2px 6px; border-radius: 4px; font-weight: 700; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .card h2 { font-size: 0.88rem; font-weight: 700; color: var(--text-sub); }
+  button {
+    background: var(--accent);
+    color: #05141c;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.05s;
+    touch-action: manipulation;
+  }
+  button:active { transform: scale(0.98); }
+  button:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+  button.sub { background: rgba(255,255,255,0.1); color: var(--text); font-weight: 600; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .progress-wrap { background: rgba(255,255,255,0.06); height: 8px; border-radius: 4px; overflow: hidden; position: relative; }
+  .progress-bar { background: var(--accent); height: 100%; width: 0%; transition: width 0.2s; }
+  textarea {
+    width: 100%;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    padding: 10px;
+    color: var(--text);
+    font-size: 0.95rem;
+    resize: vertical;
+    font-family: inherit;
+  }
+  textarea:focus { outline: 1px solid var(--accent); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    font-size: 0.78rem;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--card-border);
+    color: var(--text-sub);
+    padding: 4px 10px;
+    border-radius: 14px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .chip:active { background: rgba(0,229,204,0.25); color: var(--accent); }
+  .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .stat-box { background: rgba(0,0,0,0.25); padding: 8px 10px; border-radius: 6px; }
+  .stat-lbl { font-size: 0.72rem; color: var(--text-sub); }
+  .stat-val { font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #log {
+    background: #050810;
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 8px;
+    padding: 10px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+    color: #abbdd4;
+    height: 180px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .log-err { color: var(--err); }
+  .log-ok { color: var(--accent); }
+  .note { font-size: 0.78rem; color: var(--text-sub); line-height: 1.4; }
+  .status-text { font-size: 0.85rem; font-weight: 600; color: var(--accent); }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "piper-plus": "https://cdn.jsdelivr.net/npm/piper-plus@0.7.0/src/index.js",
+    "onnxruntime-web": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.mjs"
+  }
+}
+</script>
+</head>
+<body>
+<div class="wrap">
+  <h1>🗣 piper-plus 実機検証 <span class="badge">Wasm/ONNX</span></h1>
+  <p class="note">ブラウザ内音声合成エンジン <b>piper-plus（つくよみちゃんモデル）</b> が iPhone Safari で落ちずに動くか、所要時間や音質をテストするための検証ページです。</p>
+
+  <!-- ステップ 1: エンジン初期化 -->
+  <div class="card">
+    <h2>1. エンジン初期化（初回ダウンロード）</h2>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-lbl">状態</div><div class="stat-val" id="engineStatus">未初期化</div></div>
+      <div class="stat-box"><div class="stat-lbl">初期化所要時間</div><div class="stat-val" id="initTime">—</div></div>
+    </div>
+    <div class="progress-wrap"><div class="progress-bar" id="pBar"></div></div>
+    <div class="status-text" id="pText">「初期化を開始」を押してください</div>
+    <button id="btnInit">🚀 エンジン初期化を開始</button>
+    <p class="note">※ 初回のみ辞書・Wasm・モデル（約 100〜120MB）を取得します。2回目以降は IndexedDB から即座に読み込まれます。</p>
+  </div>
+
+  <!-- ステップ 2: 音声合成 -->
+  <div class="card">
+    <h2>2. テキスト音声合成テスト</h2>
+    <div class="chips">
+      <div class="chip" data-text="こんにちは！ぽっと通話のテストです。">挨拶（20文字）</div>
+      <div class="chip" data-text="こんばんは。今日の配信もお疲れ様です！楽しみに聞いてます。">お便り風（31文字）</div>
+      <div class="chip" data-text="部屋番号は1234番、合言葉はポッポです。">数字と漢字（21文字）</div>
+      <div class="chip" data-text="URL省略、WebRTCの接続完了です。">英単語混じり（20文字）</div>
+    </div>
+    <textarea id="txtInput" rows="3">こんにちは！ぽっと通話のテストです。</textarea>
+    
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-lbl">合成所要時間</div><div class="stat-val" id="synthTime">—</div></div>
+      <div class="stat-box"><div class="stat-lbl">リアルタイム比（RTF）</div><div class="stat-val" id="rtfVal">—</div></div>
+    </div>
+
+    <div class="btn-row">
+      <button id="btnSynth" disabled>⚡ 合成して再生</button>
+      <button id="btnPlayWebAudio" class="sub" disabled>🔊 Web Audio で鳴らす</button>
+    </div>
+    <p class="note">※「Web Audio で鳴らす」が成功すれば、WebRTC の音声トラックとして相手に送れることが証明されます。</p>
+  </div>
+
+  <!-- コンソールログ -->
+  <div class="card">
+    <h2>3. 実行ログ</h2>
+    <div id="log"></div>
+    <button class="sub" id="btnClearLog">ログ消去</button>
+  </div>
+</div>
+
+<script type="module">
+  import { PiperPlus } from 'piper-plus';
+  import * as ort from 'onnxruntime-web';
+
+  const $ = id => document.getElementById(id);
+  const logEl = $('log');
+
+  const log = (msg, cls = '') => {
+    const d = document.createElement('div');
+    if (cls) d.className = cls;
+    const time = new Date().toLocaleTimeString('ja-JP', { hour12: false });
+    d.textContent = `[${time}] ${msg}`;
+    logEl.appendChild(d);
+    logEl.scrollTop = logEl.scrollHeight;
+    console.log(msg);
+  };
+
+  window.onerror = (msg, src, line, col, err) => {
+    log(`❌ エラー: ${msg} (${line}:${col})`, 'log-err');
+  };
+
+  let tts = null;
+  let lastAudioResult = null;
+  let audioCtx = null;
+
+  // チップ選択
+  document.querySelectorAll('.chip').forEach(c => {
+    c.onclick = () => { $('txtInput').value = c.dataset.text; };
+  });
+
+  // 1. 初期化ボタン
+  $('btnInit').onclick = async () => {
+    $('btnInit').disabled = true;
+    $('engineStatus').textContent = '読込中…';
+    $('pBar').style.width = '5%';
+    $('pText').textContent = 'モデル＆Wasmの取得を開始…';
+    log('PiperPlus.initialize() を開始...');
+
+    const start = performance.now();
+    try {
+      // ONNX Runtime の設定（WebAssembly / WASM）
+      ort.env.wasm.numThreads = 1; // モバイルでの安全動作
+      ort.env.wasm.simd = true;
+
+      tts = await PiperPlus.initialize({
+        model: 'tsukuyomi', // または "ayousanz/piper-plus-tsukuyomi-chan"
+        ort,
+        onProgress: ({ stage, progress, message }) => {
+          const pct = Math.round((progress || 0) * 100);
+          $('pBar').style.width = `${Math.max(5, pct)}%`;
+          $('pText').textContent = `[${stage}] ${pct}%: ${message || ''}`;
+          log(`進捗 [${stage}] ${pct}% - ${message || ''}`);
+        }
+      });
+
+      const elapsed = ((performance.now() - start) / 1000).toFixed(2);
+      $('initTime').textContent = `${elapsed} 秒`;
+      $('engineStatus').textContent = '準備完了 ✅';
+      $('engineStatus').classList.add('log-ok');
+      $('pBar').style.width = '100%';
+      $('pText').textContent = '初期化完了！合成テストが可能です。';
+      log(`初期化完了！(${elapsed}s)`, 'log-ok');
+
+      $('btnSynth').disabled = false;
+    } catch (err) {
+      log(`初期化に失敗しました: ${err.message || err}`, 'log-err');
+      $('engineStatus').textContent = '失敗 ❌';
+      $('pText').textContent = 'エラーが発生しました。ログを確認してください。';
+      $('btnInit').disabled = false;
+    }
+  };
+
+  // 2. 合成ボタン
+  $('btnSynth').onclick = async () => {
+    if (!tts) return;
+    const text = $('txtInput').value.trim();
+    if (!text) return alert('テキストを入力してください');
+
+    $('btnSynth').disabled = true;
+    $('btnPlayWebAudio').disabled = true;
+    $('synthTime').textContent = '合成中…';
+    log(`合成開始: "${text}"`);
+
+    const start = performance.now();
+    try {
+      lastAudioResult = await tts.synthesize(text, { language: 'ja' });
+      const elapsedMs = performance.now() - start;
+      const audioDuration = lastAudioResult.duration || (lastAudioResult.samples.length / lastAudioResult.sampleRate);
+      const rtf = ((elapsedMs / 1000) / audioDuration).toFixed(2);
+
+      $('synthTime').textContent = `${(elapsedMs / 1000).toFixed(2)} 秒`;
+      $('rtfVal').textContent = `${rtf}x (${audioDuration.toFixed(1)}s 音声)`;
+      log(`合成完了: ${(elapsedMs / 1000).toFixed(2)}s (音声長: ${audioDuration.toFixed(1)}s, RTF: ${rtf})`, 'log-ok');
+      log(`PCM サンプル数: ${lastAudioResult.samples.length}, レート: ${lastAudioResult.sampleRate}Hz`);
+
+      // 通常再生
+      log('audio.play() で再生中...');
+      await lastAudioResult.play();
+      log('再生終了', 'log-ok');
+
+      $('btnPlayWebAudio').disabled = false;
+    } catch (err) {
+      log(`合成エラー: ${err.message || err}`, 'log-err');
+      $('synthTime').textContent = 'エラー';
+    } finally {
+      $('btnSynth').disabled = false;
+    }
+  };
+
+  // 3. Web Audio での再生（WebRTC 送信の基礎確認）
+  $('btnPlayWebAudio').onclick = async () => {
+    if (!lastAudioResult || !lastAudioResult.samples) return;
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+      log('Web Audio (AudioBufferSourceNode) で再生中...');
+      const buffer = audioCtx.createBuffer(1, lastAudioResult.samples.length, lastAudioResult.sampleRate);
+      buffer.getChannelData(0).set(lastAudioResult.samples);
+
+      const src = audioCtx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(audioCtx.destination);
+      src.start();
+      src.onended = () => log('Web Audio 再生終了', 'log-ok');
+    } catch (err) {
+      log(`Web Audio 再生エラー: ${err.message || err}`, 'log-err');
+    }
+  };
+
+  $('btnClearLog').onclick = () => { logEl.innerHTML = ''; };
+</script>
+</body>
+</html>
