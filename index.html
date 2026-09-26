@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.46
+  ぽっと通話〈実験版〉 v0.14.47
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -667,6 +667,10 @@
   /* 仮想行の顔＝公式イラスト（img/tsukuyomi-128.png）。絵文字と同じ 1em の丸で置き、跳ね（transform）も人と揃う。
      規約上「自作アプリ内の顔グラフィック」は可・アプリアイコンやファビコンには使わない（THIRD_PARTY_NOTICES.md） */
   .m-emoji img.m-face{ width:1em; height:1em; border-radius:50%; object-fit:cover; display:inline-block; vertical-align:-0.12em }
+  /* 読み上げ中の「解析器の無い行」（配信者の画面のつくよみちゃん・聞き役の画面の投稿者など）は CSS の拍で弾ませる。
+     解析器のある行は vadTick が transform を毎フレーム書くので、こちらは付けない（ttsMark が振り分ける） */
+  @keyframes tts-pulse{ from{ transform:scale(1) } to{ transform:scale(1.16) } }
+  .member.reading .m-emoji{ animation:tts-pulse .55s ease-in-out infinite alternate }
   .member.ignored .m-name{ text-decoration:line-through }
   .member.muted .m-name{ color:var(--sub) }
   /* 接続経路アイコン＝行の右端。中継=Cloudflareオレンジ雲／直結=アプリ色ティール矢印。
@@ -1318,7 +1322,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.46'
+const APP_VERSION = 'v0.14.47'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -3026,8 +3030,18 @@ const ttsSync = () => {
   renderMembers()
 }
 // piper-plus 0.7.0 の feed をモデルの宣言に合わせる（上の★）。ort.InferenceSession.prototype.run を包む
+// ★メモリ（2026-09-26・Mac Chrome のレンダラ RSS で実測）：エンジン読み込みで約 +270MB（固定）。合成のたびに約 2.5MB ずつ増え続けた
+//   （10 回で +25MB・wasm のメモリは縮まない＝長い配信で何十回も読むうちに iPhone が落ちる筋。実機で crash3）。
+//   ORT のアリーナ（enableCpuMemArena）とメモリパターン（enableMemPattern）を止めると、最初の 10 回で +23MB に達したあと**頭打ち**になった。
+//   実行は wasm 固定（piper-plus も int64 の都合で wasm に倒しているが、明示して WebGPU の GPU メモリを使わせない）
+const TTS_ORT_OPTS = { executionProviders: ['wasm'], graphOptimizationLevel: 'extended', enableMemPattern: false, enableCpuMemArena: false }
+// 測定用の差し替え口 window.__potOrtOpts が優先
 const patchOrt = ort => {
   if (!ort || !ort.InferenceSession || ort.InferenceSession.prototype.__potPatched) return
+  const create = ort.InferenceSession.create
+  ort.InferenceSession.create = function (model, opts, ...rest) {   // メモリの持ち方をこちらで決める（下の測定を参照）
+    return create.call(this, model, Object.assign({}, opts || {}, window.__potOrtOpts || TTS_ORT_OPTS), ...rest)
+  }
   const run = ort.InferenceSession.prototype.run
   ort.InferenceSession.prototype.run = function (feeds, ...rest) {
     try {
@@ -3105,8 +3119,15 @@ const ttsText = (uid, text) => {
 const ttsMark = (uid, on) => {
   ttsReadingUid = on ? uid : (ttsReadingUid === uid ? null : ttsReadingUid)
   const row = uid && emojiEls.get(uid)?.parentElement
-  if (row && !on && !analysers.has(uid)) row.classList.remove('speaking')
-  if (row && on) row.classList.add('speaking')
+  if (!row) return
+  if (on) row.classList.add('speaking'); else if (!analysers.has(uid)) row.classList.remove('speaking')
+  row.classList.toggle('reading', on && !analysers.has(uid))   // 解析器が無ければ CSS の拍で弾ませる
+}
+// つくよみちゃんの行（配信者の画面には解析器が無い＝2026-09-26 実機「つくよみは静か」）。聞き役の画面では解析器が跳ねを描く
+const ttsMarkV = on => {
+  const row = emojiEls.get('tts')?.parentElement
+  if (!row || analysers.has('tts')) return
+  row.classList.toggle('speaking', on); row.classList.toggle('reading', on)
 }
 // 合成して鳴らす。出口は BGM と同じ（ensureOut）。音量はマスター音量に従う（通知音・BGM と同じ流儀）
 const ttsSpeak = async (uid, text) => {
@@ -3122,14 +3143,14 @@ const ttsSpeak = async (uid, text) => {
     const g = ctx.createGain(); g.gain.value = masterVol
     src.connect(g); g.connect(ensureOut())              // 自分の耳（マスター音量に従う）
     try { src.connect(ttsEnsureDest()) } catch {}         // 相手へ（2 本目のトラック・音量は相手側で調整）
-    ttsSource = src; ttsMark(uid, true); ttsLast = 'play'
+    ttsSource = src; ttsMark(uid, true); ttsMarkV(true); ttsLast = 'play'
     sendTo(call.ttsAction, { now: uid === 'self' ? myPeerId : uid })   // 読んでいる人の行を相手の画面でも光らせる
     await new Promise(res => { src.onended = res; src.start() })
     ttsLast = 'end'
   } catch (e) { ttsLast = 'error:' + (e && e.message ? e.message : e) }
   finally {
     sendTo(call.ttsAction, { now: null })
-    ttsMark(uid, false); ttsSource = null; ttsSpeaking = false
+    ttsMark(uid, false); ttsMarkV(false); ttsSource = null; ttsSpeaking = false
     clearTimeout(ttsTimer); ttsTimer = setTimeout(pumpTts, 50)   // 次を取り出す
   }
 }
