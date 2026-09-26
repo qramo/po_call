@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.41
+  ぽっと通話〈実験版〉 v0.14.42
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -20,6 +20,16 @@
      preconnect は DNS と TLS の握手を前倒しするだけ。モバイル回線ではここが各100〜300ms かかり、
      直列に積み上がると体感の遅さになる。esm.sh 側は modulepreload が効かないブラウザ向けの保険。
      `crossorigin` は必須：実際の取得が CORS（匿名）なので、付けないと別の接続として扱われ再利用されない。 -->
+<!-- 読み上げ（piper-plus）の import map。bare specifier（'piper-plus'・'@piper-plus/g2p'・'onnxruntime-web'）を CDN に写像する。
+     ★modulepreload より**前**に置くこと（後に置くと import map は無視される）。読み込み自体は設定をオンにしたときの
+     動的 import（Trystero と同じ段階読み込み）。wasm 本体（60MB）は jsDelivr の 50MB 上限に当たるので unpkg から（JS 側の定数） -->
+<script type="importmap">{"imports":{
+  "piper-plus":       "https://cdn.jsdelivr.net/npm/piper-plus@0.7.0/src/index.js",
+  "piper-plus/":      "https://cdn.jsdelivr.net/npm/piper-plus@0.7.0/",
+  "@piper-plus/g2p":  "https://cdn.jsdelivr.net/npm/@piper-plus/g2p@0.4.2/src/index.js",
+  "@piper-plus/g2p/": "https://cdn.jsdelivr.net/npm/@piper-plus/g2p@0.4.2/",
+  "onnxruntime-web":  "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.mjs"
+}}</script>
 <link rel="preconnect" href="https://esm.sh" crossorigin>
 <link rel="preconnect" href="https://pot-turn.itsuma-kuramoto.workers.dev" crossorigin>
 <link rel="modulepreload" href="https://esm.sh/trystero@0.25.4?bundle">
@@ -35,14 +45,16 @@
      無いと default-src 'none' に落ちて塞がれ、**小窓が空のまま**になる（T21 が捕まえた）。
      ★列挙した wss: は TRYSTERO_BASE.relayConfig.urls と**同じもの**。Trystero を上げたときに
      設定キー名が変わると黙って既定リレーへ落ちるが、それはここでブロックされて全滅する
-     （静かな設定ドリフトが派手な失敗に変わる）。上げたら必ず2台で疎通確認すること。 -->
+     （静かな設定ドリフトが派手な失敗に変わる）。上げたら必ず2台で疎通確認すること。
+     ★読み上げ（v0.14.42）：script-src の cdn.jsdelivr.net／unpkg.com はライブラリと wasm、'wasm-unsafe-eval' は wasm の
+     コンパイルに要る。connect-src の huggingface.co／*.hf.co は声のモデル（302 で地域の host へ飛ぶのでワイルドカード）。 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'none';
-  script-src 'self' 'unsafe-inline' https://esm.sh https://static.cloudflareinsights.com;
+  script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://esm.sh https://static.cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com;
   style-src 'self' 'unsafe-inline';
   img-src 'self' data:;
   media-src 'self' blob:;
-  connect-src 'self' https://esm.sh https://pot-turn.itsuma-kuramoto.workers.dev https://cloudflareinsights.com wss://relay.primal.net wss://purplerelay.com wss://bucket.coracle.social wss://yabu.me/v2 wss://x.kojira.io wss://relay.notoshi.win wss://relay.mostr.pub;
+  connect-src 'self' https://esm.sh https://pot-turn.itsuma-kuramoto.workers.dev https://cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com https://huggingface.co https://*.hf.co wss://relay.primal.net wss://purplerelay.com wss://bucket.coracle.social wss://yabu.me/v2 wss://x.kojira.io wss://relay.notoshi.win wss://relay.mostr.pub;
   manifest-src 'self';
   base-uri 'self';
   form-action 'none';
@@ -1067,23 +1079,13 @@
         スピーカーだと自分のマイクが拾って相手に流れるので、イヤホンをおすすめします。</p>
       <label class="snd-opt" id="sndPeerRow" style="display:none"><input type="checkbox" id="sndPeer"> 🔔 入室・退出を音で知らせる</label>
       <label class="snd-opt" id="sndReactRow" style="display:none"><input type="checkbox" id="sndReact"> 🎵 リアクションを音で鳴らす</label>
-      <!-- ひとことの読み上げ（端末の中の音声合成）。**既定はオフ**（BGM と同じ理由）。
-           対応していないブラウザでは行ごと隠す（下の sndTts の初期化を参照） -->
-      <label class="snd-opt" id="sndTtsRow" hidden><input type="checkbox" id="sndTts"> 🗣 ひとことを読み上げる</label>
-      <!-- 読み上げは OS がスピーカーから鳴らすので、WebRTC のエコー除去が「自分の再生音」として参照できない＝
-           スピーカーだとマイクが拾った分が**除去されずに**相手へ届く（2026-09-26・MacBook＋やまびこ部屋で確認）。BGM より強く注意する -->
-      <p class="vol-note" id="sndTtsNote" hidden>自分にだけ鳴ります。人が話している間は待って、間が空いてから読みます。
-        <b>スピーカーだと読み上げの声がそのまま相手に届きます</b>（通話のエコー除去が効きません）。イヤホンをおすすめします。</p>
-      <!-- iPhone/iPad の合成音声は「システムの読み上げ」扱いで、**サイレントスイッチ（消音）がオンだと鳴らない**
-           （2026-09-25・実機で確認。通話の声や BGM は鳴るので気づきにくい）。playback セッションの明示でも避けられなかった -->
-      <p class="vol-note" id="sndTtsIos" hidden>⚠️ iPhone / iPad は、サイレントスイッチ（消音）がオンだと読み上げが鳴りません。
-        通話の声は鳴るので気づきにくいです。</p>
-      <!-- iPhone でマイクを使う部屋で読み上げると、その後**相手の声が聞こえなくなる**（2026-09-26 実機。ページから見ると
-           AudioContext も出口も再生中＝iOS の出力経路が切り替わったまま。API が無く直せない）。
-           v0.14.37〜40 で AudioContext の起こし直し・マイクの取り直し（replaceTrack）を試したが、読み上げ中に動くと
-           読み上げを殺し、読み終わってから動かしても経路は戻らなかった（HANDOFF）。マイクを取っている間は読まない -->
-      <p class="vol-note" id="sndTtsIosMic" hidden>⚠️ iPhone / iPad では、マイクを使う部屋での読み上げを止めています
-        （読み上げの後に相手の声が聞こえなくなるため）。配信部屋で聞くだけのときは読みます。</p>
+      <!-- ひとことの読み上げ v2（v0.14.42）：**配信部屋のオーナーだけ**。合成はブラウザ内の piper-plus（つくよみちゃん）で、
+           音は BGM と同じ出口（Web Audio → appAudio）から出す。OS の合成（Web Speech API）は v0.14.33〜41 で iOS に勝てず撤去
+           （経緯は internal/HANDOFF と PLAN-tts-piper-2026-09-26.md）。**既定はオフ**＝オンにした操作が約 100MB の読み込みの合図 -->
+      <label class="snd-opt" id="sndTtsRow" hidden><input type="checkbox" id="sndTts"> 🗣 ひとことを つくよみちゃんが読み上げる</label>
+      <p class="vol-note" id="sndTtsNote" hidden>いまは自分にだけ鳴ります（次の段階で部屋の全員に届きます）。初回は約 100 MB を読み込みます（Wi-Fi 推奨）。
+        ミュート中でも読みます。人が話している間は待って、間が空いてから読みます。</p>
+      <p class="vol-note" id="sndTtsProg" hidden></p>
     </div>
     <!-- 音が届かない相手がいるときだけ出る。頼んでも直らなかった＝本人の操作が要る場合の最終手段 -->
     <div id="audioWarn" class="audio-warn" hidden></div>
@@ -1308,7 +1310,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.41'
+const APP_VERSION = 'v0.14.42'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2920,37 +2922,97 @@ const soundRoom  = () => { if (sndRoom) playTones([[988, 0, 0.09], [1319, 0.08, 
   }
 }
 
-// ─ ひとことの読み上げ（v0.14.33）─ 端末の中の音声合成（Web Speech API）。通信もライブラリも増えない。
-// **既定はオフ**（BGM と同じ：通話アプリで勝手に音が鳴るのは事故。VoiceOver の人は二重読みになる）。
-// 音の出口は Web Audio ではなく OS 直なので、音量は utterance.volume に masterVol を渡して揃える
-// （iOS は無視する版がある）。読む文面は表示と同じ capText 済みのものに、さらに
-//   ①URL は「URL省略」に置き換える（長い記号列を読まない。ドメインだけの書き方は拾わない＝誤検出のほうが害）
-//   ②絵文字を落とす（「にっこり顔」と読まれる）③名前を頭に付ける（画面を見ずに聞くと誰の発言か分からない）
-// **人が話している間は待つ**：vadTick が「最後に声が検出された時刻」を lastVoiceAt に置くので、
-// TTS_GAP_MS 静かになるまで取り出さない。ただし TTS_MAX_WAIT_MS を過ぎたら会話中でも読む
-// （文面は画面に残っているので、遅すぎる読み上げより「読まれない」ほうが混乱する）。
-// 読み上げ中に誰かが話し始めても止めない（pause() は Android Chrome で効かず iOS でも不安定。
-// ひとことは 60 字＝3〜5 秒なので、始める前に待てば足りる）。
-// **毎回 cancel() してから speak() はしない**：相手ごと CHAT_ACCEPT_MS で受けるので、2〜3 人が続けて打つと
-// 先の発話が語の途中で切れて最後の 1 件しか残らない。自前のキューに積み、溢れたら古い方を捨てる。
-// ボイスは localService（端末内）の日本語だけ選ぶ。デスクトップ Chrome の「Google 日本語」は文面を
-// Google のサーバへ送る＝ブラウザの外へ出る新しい経路になるので使わない。無ければ lang だけ指定する。
+// ─ ひとことの読み上げ v2（v0.14.42）─ ブラウザ内の合成エンジン piper-plus（つくよみちゃん）で PCM を作り、
+// BGM と同じ出口（Web Audio → appAudio）から鳴らす。**配信部屋のオーナーだけ**（設計＝internal/PLAN-tts-piper-2026-09-26.md）。
+// なぜ OS の合成（Web Speech API）をやめたか：iOS はマイク使用中に OS の合成音声を鳴らすと、読んだ後に通話の出力が
+// 受話口側へ戻ったままになる（v0.14.37〜40 で復帰処理・マイク取り直しを試して全滅）。消音スイッチでも消える。AEC の参照に
+// 入らないのでスピーカーだと読み上げが相手へ素通しになる。PCM を自分の出口に流せばこの 3 つが同時に消える。
+// エンジンは段階読み込み（Trystero と同じ作法）：①piper-plus ②onnxruntime-web ③initialize（wasm 60MB＝gzip 19MB・ORT 約 10MB・
+// モデル 38MB は Hugging Face から取得し IndexedDB に残る）。**オンにしたときだけ**読み込む（メモリ約 200MB を他の人に負わせない）。
+// 一度読み込んだら退出しても捨てない（再入室で 15 秒待たせない）。
+// ★wasm 本体は unpkg から：jsDelivr は 1 ファイル 50MB 上限で 60MB の wasm が 403 になる（2026-09-26 確認）。
+// ★モデルは sha で固定：エイリアス 'tsukuyomi' は HF の main を解決するので、差し替わると feed の形が変わり得る。
+// ★ORT の feed パッチ（patchOrt）：piper-plus 0.7.0 の JS はモデルの宣言（speaker_embedding float32[batch,256]・
+//   speaker_embedding_mask int64[batch,1]）と合わず rank エラーになる（graph.input を直接読んで確認・upstream 未修正）。
+// 読む文面・キュー・「人が話している間は待つ」は v0.14.33 の設計をそのまま：
+//   URL→「URL省略」／絵文字を落とす／名前を頭に付ける／キュー 3 件／700ms 静かになるまで待ち最大 8 秒／読み上げ中は行を光らせる。
+//   毎回止めてから読む、はしない（連投で先の読み上げが切れる）。読み上げ中に誰かが話し始めても止めない。
+// テストの差し替え口：window.__potTts（{ synth(text) → {samples, sampleRate} }）があれば実エンジン（100MB）を落とさない。
 const SND_TTS_KEY = 'pot-call-snd-tts'
 const TTS_GAP_MS = 700         // これだけ静かなら「区切り」（息継ぎは 200〜500ms）
 const TTS_MAX_WAIT_MS = 8000   // これ以上は待たずに読む
-const TTS_STUCK_MS = 20000     // speaking が立ったまま戻らない（Chrome の既知の癖）とみなす長さ
 const TTS_QUEUE_MAX = 3        // 溜めすぎない（溢れたら古い順に捨てる）
 const TTS_RETRY_MS = 250
-const TTS_STRIP = /[\p{Extended_Pictographic}\uFE0F\u200D]/gu   // 絵文字（結合子・異体字セレクタごと）
-const ttsOk = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window
+const TTS_STRIP = /[\p{Extended_Pictographic}️‍]/gu   // 絵文字（結合子・異体字セレクタごと）
+const TTS_MODEL_SHA = '36b59c825c36bd386b8960cf3f604382f52f2a87'
+const TTS_MODEL_URL = 'https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan/resolve/' + TTS_MODEL_SHA + '/tsukuyomi-chan-6lang-fp16.onnx'
+const TTS_WASM_URL = 'https://unpkg.com/piper-plus@0.7.0/dist/rust-wasm/piper_plus_wasm.js'
+const TTS_ORT_DIST = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/'
+const TTS_LENGTH_SCALE = 1.4   // 実機で聞き取りやすかった速さ（1.0 は早口）
+const TTS_NOISE_SCALE = 0.667
+const ttsOk = typeof WebAssembly === 'object'
 let sndTts = ttsOk && lsGet(SND_TTS_KEY) === '1'   // 未保存＝オフ
 let lastVoiceAt = 0            // vadTick が更新（聞こえる相手か自分が話していれば）
-let ttsQueue = [], ttsTimer = null, ttsSpokeAt = 0, ttsUnlocked = false
-let ttsReadingUid = null, ttsLast = ''   // いま読んでいる人（行を光らせる）／最後のイベント（診断窓用）
-const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-let ttsCurrent = null   // Chrome は参照を持たないと発話中の utterance を GC して onend が来ない（既知の癖）
-const ttsVoice = () => {
-  try { return speechSynthesis.getVoices().find(v => v.localService && /^ja/i.test(v.lang)) || null } catch { return null }
+let ttsQueue = [], ttsTimer = null, ttsSpeaking = false, ttsSource = null
+let ttsReadingUid = null, ttsLast = ''   // いま読んでいる人（行を光らせる）／最後の出来事（診断窓用）
+let ttsEngine = null, ttsLoading = null, ttsProg = ''   // エンジン／読み込み中の約束／進捗の文言（設定行・診断窓）
+const ttsAllowed = () => ttsOk && !!call.joinedId && call.bcast && !!call.ownerKey   // 配信部屋のオーナーの通話中だけ
+// piper-plus 0.7.0 の feed をモデルの宣言に合わせる（上の★）。ort.InferenceSession.prototype.run を包む
+const patchOrt = ort => {
+  if (!ort || !ort.InferenceSession || ort.InferenceSession.prototype.__potPatched) return
+  const run = ort.InferenceSession.prototype.run
+  ort.InferenceSession.prototype.run = function (feeds, ...rest) {
+    try {
+      const names = new Set(this.inputNames || [])
+      if (names.has('speaker_embedding')) {
+        const se = feeds.speaker_embedding
+        if (!se || se.dims.length !== 2 || se.dims[1] !== 256) {
+          feeds.speaker_embedding = new ort.Tensor('float32', new Float32Array(256), [1, 256])
+          feeds.speaker_embedding_mask = new ort.Tensor('int64', new BigInt64Array([0n]), [1, 1])   // 0＝埋め込み不使用（既定の声）
+        } else if (names.has('speaker_embedding_mask')) {
+          const m = feeds.speaker_embedding_mask
+          const v = m && m.data && m.data.length ? m.data[0] : 1n
+          feeds.speaker_embedding_mask = new ort.Tensor('int64', new BigInt64Array([v]), [1, 1])
+        }
+      }
+    } catch (e) { console.warn('[patchOrt]', e) }
+    return run.call(this, feeds, ...rest)
+  }
+  ort.InferenceSession.prototype.__potPatched = true
+}
+const renderTtsProg = () => { const p = $('sndTtsProg'); p.hidden = !ttsProg; p.textContent = ttsProg }
+const ttsStage = (msg) => { ttsProg = msg; renderTtsProg() }
+// ①ライブラリ ②推論エンジン ③声のモデル。段階ごとに失敗の文言を分ける（どこで詰まったかが設定行で分かる）
+const loadTts = () => {
+  if (ttsEngine) return Promise.resolve(ttsEngine)
+  if (ttsLoading) return ttsLoading
+  ttsLoading = (async () => {
+    try {
+      if (window.__potTts) { ttsEngine = window.__potTts; ttsStage(''); return ttsEngine }   // テストの差し替え口
+      ttsStage('読み上げの準備 ①/③ ライブラリ…')
+      let Piper; try { Piper = (await import('piper-plus')).PiperPlus } catch (e) { throw new Error('ライブラリ（piper-plus）を読み込めませんでした') }
+      ttsStage('読み上げの準備 ②/③ 推論エンジン…')
+      let ort; try { ort = await import('onnxruntime-web') } catch (e) { throw new Error('推論エンジン（onnxruntime）を読み込めませんでした') }
+      try { ort.env.wasm.wasmPaths = TTS_ORT_DIST; ort.env.wasm.numThreads = 1 } catch {}   // 1 スレッド＝Worker を作らない（CSP・iOS）
+      patchOrt(ort)
+      ttsStage('読み上げの準備 ③/③ 声のモデル…')
+      const label = { model: '声のモデル', phonemizer: '辞書', ready: '準備完了' }
+      const eng = await Piper.initialize({
+        model: TTS_MODEL_URL, ort, wasmG2pUrl: TTS_WASM_URL,
+        onProgress: ({ stage, progress }) => ttsStage('読み上げの準備 ③/③ ' + (label[stage] || stage) + ' ' + Math.round((progress || 0) * 100) + '%')
+      })
+      ttsEngine = { synth: async text => {
+        const r = await eng.synthesize(text, { language: 'ja', lengthScale: TTS_LENGTH_SCALE, noiseScale: TTS_NOISE_SCALE })
+        return { samples: r.samples, sampleRate: r.sampleRate || 22050 }
+      } }
+      ttsStage('')
+      return ttsEngine
+    } catch (e) {
+      ttsStage('⚠️ ' + (e && e.message ? e.message : '読み上げの準備に失敗しました'))
+      throw e
+    } finally { ttsLoading = null }
+  })()
+  return ttsLoading
 }
 // 表示の文字（capText 済み）から読む文面を作る。空なら読まない
 const ttsText = (uid, text) => {
@@ -2960,78 +3022,74 @@ const ttsText = (uid, text) => {
   return (name ? name + '、' : '') + t
 }
 // 読んでいる間は**その人の声として**見せる＝行を .speaking にし、絵文字も弾ませる（vadTick が ttsReadingUid を見る）。
-// 解析器の無い相手（配信部屋のリスナー等）は vadTick が回らないので、ここで直接付け外しする。
+// 解析器の無い相手（配信部屋のリスナー）は vadTick が回らないので、ここで直接付け外しする。
 const ttsMark = (uid, on) => {
   ttsReadingUid = on ? uid : (ttsReadingUid === uid ? null : ttsReadingUid)
   const row = uid && emojiEls.get(uid)?.parentElement
   if (row && !on && !analysers.has(uid)) row.classList.remove('speaking')
   if (row && on) row.classList.add('speaking')
 }
-const ttsSpeak = (uid, text) => {
-  const u = new SpeechSynthesisUtterance(text)
-  u.lang = 'ja-JP'; u.rate = 1.1; u.volume = masterVol
-  const v = ttsVoice(); if (v) u.voice = v
-  u.onstart = () => { ttsLast = 'start'; ttsMark(uid, true) }
-  const done = e => {
-    ttsLast = e && e.type === 'error' ? 'error:' + (e.error || '?') : 'end'
-    ttsMark(uid, false); clearTimeout(ttsTimer); ttsTimer = setTimeout(pumpTts, 50)   // 次を取り出す
+// 合成して鳴らす。出口は BGM と同じ（ensureOut）。音量はマスター音量に従う（通知音・BGM と同じ流儀）
+const ttsSpeak = async (uid, text) => {
+  ttsSpeaking = true; ttsLast = 'synth'
+  try {
+    const { samples, sampleRate } = await ttsEngine.synth(text)
+    if (!call.joinedId || !sndTts) return                       // 合成している間に退出・オフ
+    const pcm = samples instanceof Float32Array ? samples : Float32Array.from(samples)
+    const ctx = ensureAudioCtx()
+    const buf = ctx.createBuffer(1, pcm.length, sampleRate)
+    buf.copyToChannel(pcm, 0)
+    const src = ctx.createBufferSource(); src.buffer = buf
+    const g = ctx.createGain(); g.gain.value = masterVol
+    src.connect(g); g.connect(ensureOut())
+    ttsSource = src; ttsMark(uid, true); ttsLast = 'play'
+    await new Promise(res => { src.onended = res; src.start() })
+    ttsLast = 'end'
+  } catch (e) { ttsLast = 'error:' + (e && e.message ? e.message : e) }
+  finally {
+    ttsMark(uid, false); ttsSource = null; ttsSpeaking = false
+    clearTimeout(ttsTimer); ttsTimer = setTimeout(pumpTts, 50)   // 次を取り出す
   }
-  u.onend = done; u.onerror = done
-  ttsSpokeAt = performance.now(); ttsCurrent = u; ttsLast = 'speak'
-  // iOS はキューを paused のまま残すことがあり、その間の speak() は「動いているのに無音」になる。
-  // 読む前に必ず起こす（他のブラウザでは paused でなければ何もしない）
-  try { speechSynthesis.resume() } catch {}
-  // ★navigator.audioSession.type は触らない（v0.14.35 でリスナーのとき 'playback' を明示してみたが、iOS の
-  //   消音スイッチには勝てず、しかも同じページのまま雑談部屋へ入るとマイクの取得と衝突して
-  //   「マイクを使えませんでした」になった＝2026-09-26 実機。v0.14.36 で撤去）
-  try { speechSynthesis.speak(u) } catch (e) { ttsLast = 'throw:' + e.name }
 }
 const pumpTts = () => {
   clearTimeout(ttsTimer); ttsTimer = null
-  if (!sndTts || !ttsQueue.length) return
+  if (!sndTts || !ttsQueue.length || !ttsAllowed()) { ttsQueue = []; return }
+  if (!ttsEngine) { if (ttsLoading) ttsTimer = setTimeout(pumpTts, TTS_RETRY_MS); else ttsQueue = []; return }   // 準備中は待つ・失敗なら捨てる
   const now = performance.now()
-  if (speechSynthesis.speaking && now - ttsSpokeAt > TTS_STUCK_MS) { try { speechSynthesis.cancel() } catch {} }
   const talking = now - lastVoiceAt < TTS_GAP_MS && now - ttsQueue[0].at < TTS_MAX_WAIT_MS
-  if (speechSynthesis.speaking || talking) { ttsTimer = setTimeout(pumpTts, TTS_RETRY_MS); return }
+  if (ttsSpeaking || talking) { ttsTimer = setTimeout(pumpTts, TTS_RETRY_MS); return }
   const it = ttsQueue.shift(); ttsSpeak(it.uid, it.text)
 }
 const speakChat = (uid, text) => {
-  if (!sndTts || document.hidden || ttsBlocked()) return
+  if (!sndTts || !ttsAllowed()) return
   const t = ttsText(uid, text)
   if (!t) return
   ttsQueue.push({ uid, text: t, at: performance.now() })
   while (ttsQueue.length > TTS_QUEUE_MAX) ttsQueue.shift()
   if (!ttsTimer) pumpTts()
 }
-// 注記の出し分け。iOS の消音スイッチの注意はオンのとき常に（armJoined と退出時にも呼ぶのは将来の出し分けのため）
-const ttsBlocked = () => IS_IOS && !!call.stream   // iOS でマイクを取っている間は読まない（上の HTML コメント）
-const syncTtsNote = () => {
-  $('sndTtsNote').hidden = !sndTts
-  $('sndTtsIos').hidden = !(sndTts && IS_IOS && !ttsBlocked())
-  $('sndTtsIosMic').hidden = !(sndTts && ttsBlocked())
-}
-// 退出・背面化で畳む（join/leave の対称。背面では iOS が読まず、復帰した瞬間にまとめて喋るのを防ぐ）
+// 退出で畳む（join/leave の対称。エンジンは捨てない＝再入室で待たせない）。**stopVad（ctx を閉じる）より先に**呼ぶ
 const stopSpeech = () => {
   ttsQueue = []; clearTimeout(ttsTimer); ttsTimer = null
   if (ttsReadingUid) ttsMark(ttsReadingUid, false)
-  if (ttsOk) { try { speechSynthesis.cancel() } catch {} }
+  try { ttsSource && ttsSource.stop() } catch {}
+  ttsSource = null; ttsSpeaking = false
 }
-document.addEventListener('visibilitychange', () => { if (document.hidden) stopSpeech() })
-// iOS はユーザー操作の中で一度 speak() を通さないと、後からデータチャネル経由で届いた分を読まない。
-// 参加ボタン・解錠タップ・トグル ON（見本を読む）のどれかで必ず通す。オフのときは何もしない。
-const unlockSpeech = () => {
-  if (!sndTts || ttsUnlocked) return
-  ttsUnlocked = true
-  try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u) } catch {}
+// 設定行は配信部屋のオーナーの通話中だけ出す（armJoined と退出時に呼ぶ）。保存がオンなら入室時に先に読み込んでおく
+const syncTtsRow = () => {
+  $('sndTtsRow').hidden = !ttsAllowed()
+  $('sndTtsNote').hidden = !(ttsAllowed() && sndTts)
+  renderTtsProg()
 }
+const ttsWarm = () => { if (sndTts && ttsAllowed()) loadTts().catch(() => {}) }
 {
-  const box = $('sndTts'), row = $('sndTtsRow')
-  row.hidden = !ttsOk   // 対応していないブラウザには出さない
-  box.checked = sndTts; syncTtsNote()
+  const box = $('sndTts')
+  box.checked = sndTts
   box.onchange = () => {
-    sndTts = box.checked; lsSet(SND_TTS_KEY, sndTts ? '1' : '0'); syncTtsNote()
-    if (sndTts && !ttsBlocked()) { ttsUnlocked = true; ttsSpeak('self', 'ひとことを読み上げます') }   // オンにした操作で解錠＋見本を1回読む
-    else stopSpeech()
+    sndTts = box.checked; lsSet(SND_TTS_KEY, sndTts ? '1' : '0'); syncTtsRow()
+    if (!sndTts) { stopSpeech(); return }
+    // オンにした操作で読み込み → 見本を 1 回読む（準備ができたことが耳で分かる）
+    loadTts().then(() => { if (sndTts && ttsAllowed() && !ttsSpeaking) ttsSpeak('self', '読み上げの準備ができました') }).catch(() => {})
   }
 }
 const addAnalyser = (uid, stream) => {
@@ -3374,7 +3432,7 @@ const audioFlowing = id => {
 //   ボタンは v0.11.8 で下のほうへ移したので、画面上部からは見えないことがある（2026-09-20・利用者が
 //   「つなぎ直しで相手の声が戻らない」＝実はボタンが下にあった）。**出ている間は画面のどこをタップしても
 //   解錠**し、状態カードの上のほうにも案内を出す
-const unlockNow = () => { if (audioCtx) audioCtx.resume().then(applyVolume).catch(() => {}); $('appAudio').play().catch(() => {}); allAudios().forEach(a => a.play().catch(() => {})); unlockSpeech(); $('unlock').style.display = 'none'; showPeerNotice('') }
+const unlockNow = () => { if (audioCtx) audioCtx.resume().then(applyVolume).catch(() => {}); $('appAudio').play().catch(() => {}); allAudios().forEach(a => a.play().catch(() => {})); $('unlock').style.display = 'none'; showPeerNotice('') }
 let unlockArmed = false
 const showUnlock = () => {
   $('unlock').style.display = 'block'
@@ -4137,7 +4195,6 @@ const micErrText = e => ({
 let joining = false
 const joinCall = async () => {
   if (joining) return
-  unlockSpeech()   // 参加ボタンの操作で読み上げも解錠（iOS）。つなぎ直しから来ても害はない
   joining = true
   $('join').disabled = true
   try { await runJoin() } finally { joining = false; $('join').disabled = false }
@@ -4429,8 +4486,7 @@ const diagAudio = () => {
       e ? (e.paused ? '停止' : '再生中') + ' t=' + e.currentTime.toFixed(1) + ' rs=' + e.readyState + (e.muted ? ' muted' : '') + ' vol=' + e.volume : '',
       tr ? 'track:' + tr.readyState + (tr.muted ? '/muted' + (e.mutedSince ? Math.round((Date.now() - e.mutedSince) / 1000) + 's' : '') : '/live') + (tr.enabled ? '' : '/disabled') : 'track:なし', 'flow=' + [...call.peers].filter(audioFlowing).length,
       'ctx=' + ctx, 'out=' + ($('appAudio').srcObject ? ($('appAudio').paused ? '停止' : '再生中') : 'なし'), '音量=' + Math.round(masterVol * 100) + '%', 'peers=' + call.peers.size, 'hear=' + [...call.peers].filter(canHear).length,
-      'tts=' + (ttsOk ? (sndTts ? 'on' : 'off') + ' q' + ttsQueue.length + (speechSynthesis.speaking ? ' spk' : '') + (speechSynthesis.pending ? ' pend' : '') + (speechSynthesis.paused ? ' paused' : '')
-        + ' v' + speechSynthesis.getVoices().filter(v => /^ja/i.test(v.lang)).length + '/' + (ttsVoice() ? 'local' : 'default') + (ttsLast ? ' ' + ttsLast : '') : 'なし'),
+      'tts=' + (!ttsOk ? 'なし' : ttsEngine ? 'ready' : ttsLoading ? 'loading' : 'none') + (sndTts ? ' on' : ' off') + ' q' + ttsQueue.length + (ttsSpeaking ? ' spk' : '') + (ttsLast ? ' ' + ttsLast : '') + (ttsProg ? ' [' + ttsProg + ']' : ''),
       navigator.audioSession ? 'as=' + navigator.audioSession.type + '/' + navigator.audioSession.state : '',
       diagSince ? '参加' + Math.round((Date.now() - diagSince) / 1000) + 's' : '未参加'
     ]
@@ -4520,7 +4576,7 @@ const armJoined = (roomId, name, bcast) => {
   $('unlock').style.display = 'none'
   $('sndPeerRow').style.display = 'flex'   // 入室・退出音のトグルは通話中だけ表示（ミュート/退出と同じ）
   $('sndReactRow').style.display = 'flex'
-  syncTtsNote()   // iOS の「マイク使用中は鳴らない」注記は通話中だけ
+  syncTtsRow(); ttsWarm()   // 読み上げは配信部屋のオーナーだけ。保存がオンなら先に読み込む
   $('retry').hidden = false
   roomInput.disabled = true; lockProfile(true); syncKindRow(); syncCreateBox()
   // 通話中は名前も部屋名も変えられないので、入力欄ごと畳む（名前は参加者リスト、部屋名は状態表示に出ている）
@@ -4702,7 +4758,7 @@ const resetJoinedUI = () => {
   $('speak').style.display = 'none'; $('speak').disabled = false
   $('sndPeerRow').style.display = 'none'
   $('sndReactRow').style.display = 'none'
-  syncTtsNote()   // 退出したので iOS の注記を畳む（call.stream は reset 済み）
+  syncTtsRow()    // 退出したので読み上げの行を畳む（joinedId は reset 済み）
   $('retry').hidden = true
   $('pip').hidden = true
   $('tagRow').hidden = true; $('tagForm').hidden = true   // 話題タグの行（join/leave の対称）

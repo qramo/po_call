@@ -84,15 +84,15 @@ INSTRUMENT = r"""
   T.statsWrites = 0;
   const origSet = localStorage.setItem.bind(localStorage);
   localStorage.setItem = (k, v) => { if (k === 'pot-call-stats') T.statsWrites++; return origSet(k, v); };
-  // ひとことの読み上げ（v0.14.33）。音は聞けないので speak/cancel を差し替えて文面を控える。
-  // ヘッドレス Chrome にはボイスが無く speaking も立たないので、キューは常に即座に流れる。
-  T.spoken = []; T.ttsCancels = 0;
-  if (window.speechSynthesis) {
-    const ss = window.speechSynthesis;
-    // start→end も流す（読み上げ中に行を光らせる経路が例外を出さないことを兼ねて確かめる）
-    ss.speak = u => { T.spoken.push(u.text); setTimeout(() => u.onstart && u.onstart({type:'start'}), 0); setTimeout(() => u.onend && u.onend({type:'end'}), 300); };
-    ss.cancel = () => { T.ttsCancels++; };
-  }
+  // ひとことの読み上げ v2（v0.14.42）。実エンジン（piper-plus・約 100MB）は落とさず、アプリの差し替え口 window.__potTts に
+  // 偽エンジン（440Hz・0.6 秒の PCM）を入れる。読んだ文面は T.ttsTexts に控える（音は聞けないので）。
+  T.ttsTexts = [];
+  window.__potTts = { synth: async text => {
+    T.ttsTexts.push(text);
+    const n = 13230, a = new Float32Array(n);
+    for (let i = 0; i < n; i++) a[i] = Math.sin(i / 22050 * 440 * 2 * Math.PI) * 0.3;
+    return { samples: a, sampleRate: 22050 };
+  } };
   // 通知音は WebAudio の発振器で作る。鳴ったかどうかはこれで数えられる（音は聞けないので）。
   T.osc = 0;
   const origOsc = AudioContext.prototype.createOscillator;
@@ -1090,44 +1090,52 @@ def T49(r, a, b):
 
 
 def T55(r, a, b):
-    """ひとことの読み上げ（v0.14.33）：設定オンで相手のひとことが読まれる。URL は「URL省略」、絵文字は落ち、名前が頭に付く。
-    自分の送信は読まない。オフにすると cancel が走り読まない。設定は localStorage に残る。
+    """ひとことの読み上げ v2（v0.14.42）：配信部屋のオーナーだけに設定が出て、オンで見本を読み、リスナーのひとことを
+    「名前、文面」で読む（URL は「URL省略」・絵文字は落ちる）。リスナー側は何も合成しない。オフで読まない。設定は localStorage に残る。
 
-    ★T49 のあとに走る（A・B は通話中のまま後続へ渡すので**ここでは退出しない**）。
-    音は聞けないので INSTRUMENT の差し替え（__T.spoken / __T.ttsCancels）で判定する。
-    人が話している間は待つ（最大 8 秒）＝偽マイクの音で相手が「話している」扱いになり得るので、待ち時間は長めに取る。
+    ★T27 の直後・T27b（つなぎ直しを繰り返す）の前に走る（a＝配信者・b＝聞き役・どちらも通話中のまま）。
+    実エンジン（100MB）は落とさず、INSTRUMENT の差し替え口 window.__potTts（偽エンジン）で判定する（__T.ttsTexts）。
     """
-    show_tab(b, 'settings')
-    row_shown = b.eval("!document.getElementById('sndTtsRow').hidden && !!document.getElementById('sndTtsRow').offsetParent")
-    before = b.eval("window.__T.spoken.length")
-    b.eval("document.getElementById('sndTts').click()")
-    sample = b.wait_for("window.__T.spoken.length > %d" % before, timeout=SHORT)   # オンにした操作で見本を1回読む
-    saved = b.eval("localStorage.getItem('pot-call-snd-tts') === '1'")
-    note = b.eval("!document.getElementById('sndTtsNote').hidden")
-    n0 = b.eval("window.__T.spoken.length")
-    time.sleep(2.5)   # 受信側の CHAT_ACCEPT_MS を空ける
-    show_tab(a, 'chat')
-    a.eval("(() => { const i = document.getElementById('chatText'); i.value = 'こんにちは🎉 https://example.com/a?b=1 です'; document.getElementById('chatSend').click() })()")
-    arrived = b.wait_for("window.__T.spoken.length > %d" % n0, timeout=SHORT + 10)
-    text = b.eval("window.__T.spoken[window.__T.spoken.length - 1]")
+    if not a or not b:
+        return
+    show_tab(a, 'settings'); show_tab(b, 'settings')
+    row_owner = a.wait_for("!document.getElementById('sndTtsRow').hidden && !!document.getElementById('sndTtsRow').offsetParent", timeout=SHORT)
+    row_listener = b.eval("document.getElementById('sndTtsRow').hidden")
+    n0 = a.eval("window.__T.ttsTexts.length")
+    a.eval("document.getElementById('sndTts').click()")
+    sample = a.wait_for("window.__T.ttsTexts.length > %d" % n0, timeout=SHORT)   # オンにした操作で見本を1回読む
+    saved = a.eval("localStorage.getItem('pot-call-snd-tts') === '1'")
+    note = a.eval("!document.getElementById('sndTtsNote').hidden")
+    n1 = a.eval("window.__T.ttsTexts.length")
+    time.sleep(1.5)
+    show_tab(b, 'chat')
+    b.eval("(() => { const i = document.getElementById('chatText'); i.value = 'こんにちは🎉 https://example.com/a?b=1 です'; document.getElementById('chatSend').click() })()")
+    arrived = a.wait_for("window.__T.ttsTexts.length > %d" % n1, timeout=SHORT + 10)
+    text = a.eval("window.__T.ttsTexts[window.__T.ttsTexts.length - 1]")
     shape = bool(text) and text.endswith('、こんにちは URL省略 です') and '🎉' not in text and 'example' not in text
-    self_quiet = a.eval("window.__T.spoken.length") == 0   # A は設定オフ＝自分の送信も相手の分も読まない
-    # オフにすると cancel が走り（stopSpeech）、以後は読まない
-    c0 = b.eval("window.__T.ttsCancels")
-    b.eval("document.getElementById('sndTts').click()")
-    cancelled = b.eval("window.__T.ttsCancels") > c0
-    n1 = b.eval("window.__T.spoken.length")
-    time.sleep(2.5)
-    a.eval("(() => { const i = document.getElementById('chatText'); i.value = 'よまない'; document.getElementById('chatSend').click() })()")
-    shown = b.wait_for("document.getElementById('chatLog').textContent.includes('よまない')", timeout=SHORT)
+    listener_quiet = b.eval("window.__T.ttsTexts.length") == 0   # 聞き役は合成しない
+    # オフにすると読まない
+    a.eval("document.getElementById('sndTts').click()")
+    n2 = a.eval("window.__T.ttsTexts.length")
+    time.sleep(2.5)   # 受信側の CHAT_ACCEPT_MS を空ける
+    b.eval("(() => { const i = document.getElementById('chatText'); i.value = 'よまない'; document.getElementById('chatSend').click() })()")
+    shown = a.wait_for("document.getElementById('chatLog').textContent.includes('よまない')", timeout=SHORT)
     time.sleep(1.0)
-    off_quiet = shown and b.eval("window.__T.spoken.length") == n1
-    off_saved = b.eval("localStorage.getItem('pot-call-snd-tts') === '0'")
-    show_tab(b, 'members')
-    ok = row_shown and sample and saved and note and arrived and shape and self_quiet and cancelled and off_quiet and off_saved
-    r.check('T55', 'ひとことの読み上げ：オンで読む・URL省略・絵文字なし・名前付き・オフで止まる', ok, 'pass',
-            '行が出る=%s / 見本=%s / 保存=%s / 注記=%s / 届いた=%s / 文面=%r / 自分は読まない=%s / オフでcancel=%s / オフで読まない=%s / オフ保存=%s'
-            % (row_shown, sample, saved, note, arrived, text, self_quiet, cancelled, off_quiet, off_saved))
+    off_quiet = shown and a.eval("window.__T.ttsTexts.length") == n2
+    off_saved = a.eval("localStorage.getItem('pot-call-snd-tts') === '0'")
+    show_tab(a, 'members'); show_tab(b, 'members')
+    ok = row_owner and row_listener and sample and saved and note and arrived and shape and listener_quiet and off_quiet and off_saved
+    r.check('T55', '読み上げ v2：配信者だけに設定・オンで読む・URL省略・絵文字なし・名前付き・聞き役は合成しない・オフで読まない', ok, 'pass',
+            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存=%s / 注記=%s / 届いた=%s / 文面=%r / 聞き役は合成しない=%s / オフで読まない=%s / オフ保存=%s'
+            % (row_owner, row_listener, sample, saved, note, arrived, text, listener_quiet, off_quiet, off_saved))
+
+
+def T57(r, a, b):
+    """読み上げ v2：雑談部屋では設定行が出ない（配信部屋のオーナー限定）。★T49 のあと（A・B は雑談部屋で通話中）"""
+    show_tab(a, 'settings'); show_tab(b, 'settings')
+    hidden = a.eval("document.getElementById('sndTtsRow').hidden") and b.eval("document.getElementById('sndTtsRow').hidden")
+    show_tab(a, 'members'); show_tab(b, 'members')
+    r.check('T57', '読み上げ v2：雑談部屋では設定が出ない', hidden, 'pass', '両方とも非表示=%s' % hidden)
 
 
 def T50(r, room):
@@ -2336,8 +2344,8 @@ def main():
                     T25c(r, a_tab, b_tab)
                 if run('T49'):
                     T49(r, a_tab, b_tab)
-                if run('T55'):
-                    T55(r, a_tab, b_tab)
+                if run('T57'):
+                    T57(r, a_tab, b_tab)
             if run('T24'):
                 T24(r, a_tab, b_tab)
             if run('T23'):
@@ -2363,6 +2371,8 @@ def main():
             T26(r, room)
         if run('T27'):
             bc_a, bc_b = T27(r, room)
+            if run('T55'):
+                T55(r, bc_a, bc_b)   # ★T27b（つなぎ直しを繰り返す）より前＝a が配信者のまま通話中の状態で見る
             if run('T27b'):
                 T27b(r, bc_a, bc_b)
         if run('T31'):
