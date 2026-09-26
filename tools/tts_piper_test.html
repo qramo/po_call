@@ -135,6 +135,12 @@
     const reason = e.reason ? (e.reason.stack || e.reason.message || e.reason) : 'Promise rejection';
     window.sysLog(`❌ 非同期エラー: ${reason}`, 'log-err');
   });
+
+  const origWarn = console.warn;
+  console.warn = function(...args) {
+    origWarn.apply(console, args);
+    window.sysLog(`⚠️ 警告: ${args.join(' ')}`, 'log-warn');
+  };
 </script>
 
 <!-- onnxruntime-web (WASMのパス解決を確実にするためスクリプトタグで先読み) -->
@@ -256,6 +262,7 @@
       tts = await PiperPlus.initialize({
         model: 'tsukuyomi', // または "ayousanz/piper-plus-tsukuyomi-chan"
         ort: globalThis.ort,
+        wasmG2pUrl: 'https://unpkg.com/piper-plus@0.7.0/dist/rust-wasm/piper_plus_wasm.js',
         onProgress: ({ stage, progress, message }) => {
           const pct = Math.round((progress || 0) * 100);
           $('pBar').style.width = `${Math.max(5, pct)}%`;
