@@ -526,6 +526,10 @@ def T30(r, a, b):
     show_tab(a, 'settings')
     set_ok = a.eval("%s('sndPeerRow') && %s('chatRow') === false" % (VISIBLE, VISIBLE))
     h_set = a.eval("document.getElementById('panSettings').offsetHeight")
+    # 設定タブをもう一度押すと直前のタブ（ひとこと）に戻る（トグルで閉じる）
+    show_tab(a, 'settings')
+    toggle_ok = a.eval("%s('chatRow') && %s('sndPeerRow') === false" % (VISIBLE, VISIBLE))
+    show_tab(a, 'settings')   # 設定に戻しておく
     # ★ぴったり一致は求めない。**経路の凡例が参加直後だけ開いている**（8秒で畳む）ので、
     #   メンバーパネルの高さはそのぶん十数px動く。見ているのは「タブを切り替えたときに
     #   カードがガクッと動かないこと」なので、その範囲に収まっているかで判定する。
@@ -546,10 +550,10 @@ def T30(r, a, b):
         fits.append(a.eval(TAB_FITS))
     a.call('Emulation.clearDeviceMetricsOverride')
     narrow_ok = all(fits)
-    ok = default_ok and chat_ok and set_ok and back_ok and aria == 'tabSettings' and same_h and narrow_ok
+    ok = default_ok and chat_ok and set_ok and toggle_ok and back_ok and aria == 'tabSettings' and same_h and narrow_ok
     r.check('T30', 'タブでメンバー／ひとこと／設定が入れ替わる', ok, 'pass',
-            '既定=メンバー:%s / ひとこと:%s / 設定:%s / 戻る:%s / aria-selected=%r / 高さが揃っている=%s(%s/%s/%s) / 狭い画面で1行=%s'
-            % (default_ok, chat_ok, set_ok, back_ok, aria, same_h, h_members, h_chat, h_set, fits))
+            '既定=メンバー:%s / ひとこと:%s / 設定:%s / トグル閉じ=%s / 戻る:%s / aria-selected=%r / 高さが揃っている=%s(%s/%s/%s) / 狭い画面で1行=%s'
+            % (default_ok, chat_ok, set_ok, toggle_ok, back_ok, aria, same_h, h_members, h_chat, h_set, fits))
 
 
 def T35(r, a, b):
