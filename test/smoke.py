@@ -1104,7 +1104,7 @@ def T55(r, a, b):
     n0 = a.eval("window.__T.ttsTexts.length")
     a.eval("document.getElementById('sndTts').click()")
     sample = a.wait_for("window.__T.ttsTexts.length > %d" % n0, timeout=SHORT)   # オンにした操作で見本を1回読む
-    saved = a.eval("localStorage.getItem('pot-call-snd-tts') === '1'")
+    saved = a.eval("localStorage.getItem('pot-call-snd-tts2') === '1'")
     note = a.eval("!document.getElementById('sndTtsNote').hidden")
     n1 = a.eval("window.__T.ttsTexts.length")
     time.sleep(1.5)
@@ -1122,7 +1122,7 @@ def T55(r, a, b):
     shown = a.wait_for("document.getElementById('chatLog').textContent.includes('よまない')", timeout=SHORT)
     time.sleep(1.0)
     off_quiet = shown and a.eval("window.__T.ttsTexts.length") == n2
-    off_saved = a.eval("localStorage.getItem('pot-call-snd-tts') === '0'")
+    off_saved = a.eval("localStorage.getItem('pot-call-snd-tts2') === '0'")
     show_tab(a, 'members'); show_tab(b, 'members')
     ok = row_owner and row_listener and sample and saved and note and arrived and shape and listener_quiet and off_quiet and off_saved
     r.check('T55', '読み上げ v2：配信者だけに設定・オンで読む・URL省略・絵文字なし・名前付き・聞き役は合成しない・オフで読まない', ok, 'pass',
