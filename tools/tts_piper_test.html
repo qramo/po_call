@@ -284,6 +284,16 @@
       // ONNX Runtime の WASM パスと並列スレッド数の設定
       if (globalThis.ort) {
         patchOrt(globalThis.ort);   // ★上のコメント参照（feed の形をモデルに合わせる）
+        // ?opt=disabled|basic|extended|all で ORT のグラフ最適化レベルを切り替えて、速さとメモリを比べる（2026-09-26 のメモリ調査）
+        const opt = new URLSearchParams(location.search).get('opt');
+        if (opt && !globalThis.ort.InferenceSession.__potCreatePatched) {
+          const create = globalThis.ort.InferenceSession.create;
+          globalThis.ort.InferenceSession.create = function (m, o, ...rest) {
+            return create.call(this, m, Object.assign({}, o || {}, { executionProviders: ['wasm'], graphOptimizationLevel: opt, enableMemPattern: false, enableCpuMemArena: false }), ...rest);
+          };
+          globalThis.ort.InferenceSession.__potCreatePatched = true;
+          log('ORT graphOptimizationLevel=' + opt + '（アリーナ・メモリパターン停止）');
+        }
         log('ORT の run() を包んで speaker_embedding(256) / mask [1,1] に合わせます');
         globalThis.ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/';
         globalThis.ort.env.wasm.numThreads = 1; // モバイル（特にiOS Safari）での安全動作
