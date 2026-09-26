@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.49
+  ぽっと通話〈実験版〉 v0.14.50
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -1097,7 +1097,7 @@
            （経緯は internal/HANDOFF と PLAN-tts-piper-2026-09-26.md）。**既定はオフ**＝オンにした操作が約 100MB の読み込みの合図 -->
       <label class="snd-opt" id="sndTtsRow" hidden><input type="checkbox" id="sndTts"> 🗣 ひとことを つくよみちゃんが読み上げる</label>
       <p class="vol-note" id="sndTtsNote" hidden>部屋の全員に聞こえます（🗣 つくよみちゃんの行に音が付きます）。初回は約 100 MB を読み込みます（Wi-Fi 推奨）。
-        ミュート中でも読みます。人が話している間は待って、間が空いてから読みます。</p>
+        ミュート中でも読みます。人が話している間は待って、間が空いてから読みます。この設定は保存されず、ページを開くたびにオフから始まります。</p>
       <p class="vol-note" id="sndTtsProg" hidden></p>
       <p class="vol-note" id="sndTtsSent" hidden></p>
       <p class="vol-note" id="sndTtsCrash" hidden></p>
@@ -1327,7 +1327,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.49'
+const APP_VERSION = 'v0.14.50'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -3034,9 +3034,9 @@ const soundRoom  = () => { if (sndRoom) playTones([[988, 0, 0.09], [1319, 0.08, 
 //   URL→「URL省略」／絵文字を落とす／名前を頭に付ける／キュー 3 件／700ms 静かになるまで待ち最大 8 秒／読み上げ中は行を光らせる。
 //   毎回止めてから読む、はしない（連投で先の読み上げが切れる）。読み上げ中に誰かが話し始めても止めない。
 // テストの差し替え口：window.__potTts（{ synth(text) → {samples, sampleRate} }）があれば実エンジン（100MB）を落とさない。
-// ★キーは v2 で替えた（旧 'pot-call-snd-tts'）。旧版でオンにしていた人が、知らないうちに 100MB を読み込むことがないように
-//   （2026-09-26 実機：配信部屋にしたら最初からオンで、進捗も見本も出なかった）。100MB は必ず明示的な操作で始める
-const SND_TTS_KEY = 'pot-call-snd-tts2'
+// ★保存しない（v0.14.50・利用者の要望）：ページを開くたびにオフから始める。100MB の読み込みとメモリ +570MB は、そのつど
+//   明示的な操作で始めるもの。同じページ内で退出→入り直す間だけ、いまの状態を保つ（エンジンも捨てない）。
+//   旧キー 'pot-call-snd-tts'／'pot-call-snd-tts2' は読まない（v0.14.33〜49 の名残。残っていても無害）
 // 落ちた印：エンジンが準備できたら sessionStorage に立て、正規の離脱（pagehide・自前の再読み込み）で消す。
 // 次の起動で残っていれば「読み上げを読み込んだ状態でページが死んだ」＝メモリ不足の疑い（iOS はタブを黙って捨てて開き直す）。
 // リスナーの接続不良と見分けがつかない、という実機の声（2026-09-26）への答え。回数は localStorage に積む
@@ -3058,7 +3058,7 @@ const TTS_ORT_DIST = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/'
 const TTS_LENGTH_SCALE = 1.4   // 実機で聞き取りやすかった速さ（1.0 は早口）
 const TTS_NOISE_SCALE = 0.667
 const ttsOk = typeof WebAssembly === 'object'
-let sndTts = ttsOk && lsGet(SND_TTS_KEY) === '1'   // 未保存＝オフ
+let sndTts = false   // 毎回オフから（上の★）
 let lastVoiceAt = 0            // vadTick が更新（聞こえる相手か自分が話していれば）
 let ttsQueue = [], ttsTimer = null, ttsSpeaking = false, ttsSource = null
 let ttsReadingUid = null, ttsLast = ''   // いま読んでいる人（行を光らせる）／最後の出来事（診断窓用）
@@ -3269,7 +3269,7 @@ const ttsWarm = () => { if (sndTts && ttsAllowed()) ttsStart() }
   const box = $('sndTts')
   box.checked = sndTts
   box.onchange = () => {
-    sndTts = box.checked; lsSet(SND_TTS_KEY, sndTts ? '1' : '0'); syncTtsRow()
+    sndTts = box.checked; syncTtsRow()   // 保存しない（上の★）
     if (!sndTts) { stopSpeech(); ttsSetOn(false); return }
     ttsStart()
   }
