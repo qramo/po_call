@@ -2535,6 +2535,20 @@ const bgmRng = seed => {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
+// ノイズバッファの生成。
+// ★末尾 512 サンプルを先頭へ滑らかにクロスフェードさせてループ境界の不連続（1秒周期の「プチッ」ノイズ）を解消する。
+const bgmNoise = (ctx, sec = 2) => {
+  const len = Math.floor(ctx.sampleRate * sec)
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate)
+  const d = buf.getChannelData(0)
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1
+  const fade = Math.min(512, Math.floor(len / 4))
+  for (let i = 0; i < fade; i++) {
+    const r = i / fade
+    d[len - fade + i] = d[len - fade + i] * (1 - r) + d[i] * r
+  }
+  return buf
+}
 // BGM は**マスター音量にも従う**（アプリの音をまとめて下げたときに BGM だけ残らない）
 const bgmLevel = () => bgmVol * masterVol * 0.5
 const bgmTrack = n => { if (bgm) bgm.nodes.push(n); return n }
@@ -2592,7 +2606,6 @@ const bgmPing = (t, freq, dur, type, gain, pan) => {
   if (pan !== undefined && ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = pan; g.connect(p); out = p }
   o.connect(g); out.connect(bgm.gain)
   o.start(t); o.stop(t + dur + 0.05)
-  bgmTrack(o)
 }
 const BGM_HZ = m => 440 * Math.pow(2, (m - 69) / 12)
 const BGM_CHORDS = [   // Cキーのダイアトニック7th（外れの進行が出にくい範囲に絞る）
@@ -2604,9 +2617,7 @@ const bgmTune = seed => {
   const rnd = bgmRng(seed)
   const prog = [0, 1, 2, 3].map(() => BGM_CHORDS[Math.floor(rnd() * BGM_CHORDS.length)])
   const ctx = ctx0()
-  const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate)
-  const nd = noise.getChannelData(0)
-  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1
+  const noise = bgmNoise(ctx, 1.5)
   const comp = [0, 3, 6, 10, 13]
   bgmSchedule(60 / 120 / 4, (i, t) => {
     const [root, ivs] = prog[Math.floor(i / 16) % 4], sN = i % 16
@@ -2615,9 +2626,11 @@ const bgmTune = seed => {
     if (sN % 2 === 0) {
       const src = ctx.createBufferSource(), g = ctx.createGain(), f = ctx.createBiquadFilter()
       src.buffer = noise; f.type = 'highpass'; f.frequency.value = 6000
-      g.gain.setValueAtTime(sN % 4 === 0 ? 0.05 : 0.028, t)
+      const v = sN % 4 === 0 ? 0.05 : 0.028
+      g.gain.setValueAtTime(0.0001, t)
+      g.gain.linearRampToValueAtTime(v, t + 0.003)                  // 3ms のソフトアタック（ステップクリック防止）
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06)
-      src.connect(f); f.connect(g); g.connect(bgm.gain); src.start(t); src.stop(t + 0.08); bgmTrack(src)
+      src.connect(f); f.connect(g); g.connect(bgm.gain); src.start(t); src.stop(t + 0.08)
     }
     if (sN === 4 || sN === 12) bgmPing(t, BGM_HZ(root + ivs[Math.floor(rnd() * ivs.length)] + 12), 0.42, 'triangle', 0.09, 0.15)
   })
@@ -2644,7 +2657,7 @@ const bgmAmbient = seed => {
       g.gain.setValueAtTime(0.0001, t)
       g.gain.linearRampToValueAtTime(0.055, t + 3.2)
       g.gain.linearRampToValueAtTime(0.0001, t + 11)
-      o.connect(g); g.connect(filt); o.start(t); o.stop(t + 11.5); bgmTrack(o)
+      o.connect(g); g.connect(filt); o.start(t); o.stop(t + 11.5)
     })
   }
   chord()
@@ -2653,9 +2666,7 @@ const bgmAmbient = seed => {
 // 🔥 焚き火：温かいメラメラ炎（風切りなし）＋炭のチリチリ＋火の粉パチパチ
 const bgmBonfire = seed => {
   const ctx = ctx0()
-  const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate)
-  const d = noise.getChannelData(0)
-  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1
+  const noise = bgmNoise(ctx, 2.5)   // 2.5秒・末尾クロスフェード済み（ループ境界の周期クリック防止）
 
   // 1. 炎のメラメラ燃焼（低域ボディ＋3.6Hz振幅変調）
   const rSrc = bgmTrack(ctx.createBufferSource())
@@ -2689,20 +2700,23 @@ const bgmBonfire = seed => {
       const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain()
       src.buffer = noise; f.type = 'bandpass'; f.frequency.value = 1200 + Math.random() * 2000; f.Q.value = 4
       const dur = 0.007 + 0.0084 + Math.random() * 0.006
-      g.gain.setValueAtTime(0.700, t)
+      g.gain.setValueAtTime(0.0001, t)
+      g.gain.linearRampToValueAtTime(0.700, t + 0.0015)             // 1.5ms のソフトアタック（矩形ステップクリック防止）
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
       src.connect(f); f.connect(g)
       if (ctx.createStereoPanner) {
         const p = ctx.createStereoPanner(); p.pan.value = (Math.random() * 2 - 1) * 0.5
         g.connect(p); p.connect(bgm.gain)
       } else { g.connect(bgm.gain) }
-      src.start(t); src.stop(t + dur + 0.01); bgmTrack(src)
+      src.start(t); src.stop(t + dur + 0.01)
     }
     if (t > nextSnap) {
       nextSnap = t + 10.5 + Math.random() * 10.5
       const pSrc = ctx.createBufferSource(), pF = ctx.createBiquadFilter(), pG = ctx.createGain()
       pSrc.buffer = noise; pF.type = 'bandpass'; pF.frequency.value = 1000; pF.Q.value = 4.5
-      pG.gain.setValueAtTime(0.630, t); pG.gain.exponentialRampToValueAtTime(0.0001, t + 0.035)
+      pG.gain.setValueAtTime(0.0001, t)
+      pG.gain.linearRampToValueAtTime(0.630, t + 0.002)             // 2ms のソフトアタック
+      pG.gain.exponentialRampToValueAtTime(0.0001, t + 0.035)
       pSrc.connect(pF); pF.connect(pG)
       const osc = ctx.createOscillator(), og = ctx.createGain()
       osc.frequency.setValueAtTime(180, t); osc.frequency.exponentialRampToValueAtTime(55, t + 0.045)
@@ -2710,7 +2724,6 @@ const bgmBonfire = seed => {
       osc.connect(og)
       pG.connect(bgm.gain); og.connect(bgm.gain)
       pSrc.start(t); pSrc.stop(t + 0.04); osc.start(t); osc.stop(t + 0.055)
-      bgmTrack(pSrc); bgmTrack(osc)
     }
   })
 }
