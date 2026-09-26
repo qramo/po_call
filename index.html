@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.14.45
+  ぽっと通話〈実験版〉 v0.14.46
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -664,6 +664,9 @@
   /* 無視中の行。**自分にだけ見える印**（相手には何も伝わらない）。忘れて混乱しないための表示 */
   .member.ignored{ opacity:.5 }
   .member.virtual{ box-shadow:0 0 0 1px var(--accent-dim) inset }   /* 読み上げの仮想メンバー（🗣 つくよみちゃん）。人ではない印に薄い枠 */
+  /* 仮想行の顔＝公式イラスト（img/tsukuyomi-128.png）。絵文字と同じ 1em の丸で置き、跳ね（transform）も人と揃う。
+     規約上「自作アプリ内の顔グラフィック」は可・アプリアイコンやファビコンには使わない（THIRD_PARTY_NOTICES.md） */
+  .m-emoji img.m-face{ width:1em; height:1em; border-radius:50%; object-fit:cover; display:inline-block; vertical-align:-0.12em }
   .member.ignored .m-name{ text-decoration:line-through }
   .member.muted .m-name{ color:var(--sub) }
   /* 接続経路アイコン＝行の右端。中継=Cloudflareオレンジ雲／直結=アプリ色ティール矢印。
@@ -1219,6 +1222,7 @@
       <li>快適なのは <b>4〜6 人</b>くらいまで（全員が全員につながる方式のため）</li>
       <li>非公開の部屋はありません。人がいる部屋はかならず一覧に出ます</li>
       <li>過去の会話は残りません（録音・保存なし）。ブラウザが違えば別の人として扱われます</li>
+      <li>配信部屋では、配信者がオンにすると「ひとこと」が声で読み上げられ、部屋の全員に聞こえます（声と顔：つくよみちゃん）</li>
     </ul>
     <p>詳しくは<a href="https://potalk.app/manual/#trouble" target="_blank" rel="noopener">使い方の「困ったとき」</a>へ。</p>
   </details>
@@ -1231,6 +1235,7 @@
   <details class="help-sec"><summary>制作者</summary>
     <p>♨️🦈 qramo（クラモ）<a href="https://x.com/qraPo3" target="_blank" rel="noopener">@qraPo3</a>。開発の報告や勉強会は、ぽっと通話の部屋で開きます（日時は X で）。</p>
     <p class="help-credit">🤖 開発は <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a> と一緒に</p>
+    <p class="help-credit">🗣 読み上げの声と顔：フリー素材キャラクター「つくよみちゃん」<a href="https://tyc.rei-yumesaki.net/" target="_blank" rel="noopener">tyc.rei-yumesaki.net</a>（声：つくよみちゃんコーパス／Illustration by 夢前黎）。音声合成は <a href="https://github.com/ayutaz/piper-plus" target="_blank" rel="noopener">piper-plus</a>（MIT）</p>
   </details>
 
   <label class="help-hide"><input type="checkbox" id="helpHide"> 今後表示しない</label>
@@ -1313,7 +1318,7 @@ window.__potPcs = () => [...livePcs]   // 診断・テスト用
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.14.45'
+const APP_VERSION = 'v0.14.46'
 
 const $ = id => document.getElementById(id)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
@@ -2321,8 +2326,11 @@ const renderMembers = () => {
   renderTtsSent()
   if (ttsVisible()) {
     const v = memberRow('🗣', 'つくよみちゃん', false, false, '', undefined, null, call.bcast ? { mark: '' } : null)
-    v.classList.add('virtual'); v.title = '読み上げ（配信者の端末で合成）'
-    emojiEls.set('tts', v.querySelector('.m-emoji'))
+    v.classList.add('virtual'); v.title = '読み上げ（配信者の端末で合成）。声と顔：フリー素材キャラクター「つくよみちゃん」'
+    const av = v.querySelector('.m-emoji'); av.textContent = ''
+    const im = document.createElement('img'); im.className = 'm-face'; im.src = 'img/tsukuyomi-128.png'; im.alt = 'つくよみちゃん'; im.width = 22; im.height = 22
+    av.append(im)
+    emojiEls.set('tts', av)
     if (ownerRow) ownerRow.after(v); else membersEl.appendChild(v)
   }
   renderBcNote()
