@@ -301,7 +301,12 @@
 
     const start = performance.now();
     try {
-      lastAudioResult = await tts.synthesize(text, { language: 'ja' });
+      lastAudioResult = await tts.synthesize(text, {
+        language: 'ja',
+        speakerEmbedding: new Float32Array(256), // モデルの期待次元数(256)に合わせたゼロベクトル
+        lengthScale: 1.4, // MB-iSTFT版の自然な発話速度推奨値(1.4〜1.5)
+        noiseScale: 0.667
+      });
       const elapsedMs = performance.now() - start;
       const audioDuration = lastAudioResult.duration || (lastAudioResult.samples.length / lastAudioResult.sampleRate);
       const rtf = ((elapsedMs / 1000) / audioDuration).toFixed(2);
