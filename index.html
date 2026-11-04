@@ -24,7 +24,11 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- interactive-widget=resizes-content：Android の Chrome で、キーボードが出たら**ページの枠ごと縮める**。
+     既定（resizes-visual）は見えている範囲だけが縮み、画面の下に固定した操作盤がキーボードにめり込む
+     （2026-11-05 実機）。縮めれば固定の下端＝キーボードの上端になる。iPhone はこの指定を知らないので
+     visualViewport で持ち上げる（fitDock）。 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <!-- 起動を速くするための準備。**構造は何も変えない**（動的 import のままなので、CLAUDE.md が言う
      段階別エラー表示はそのまま生きている）。先に接続を温めておくだけ。
      modulepreload は HTML を読んでいる最中に Trystero（実体は約60KB）のダウンロードを始める
