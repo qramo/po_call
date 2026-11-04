@@ -391,6 +391,10 @@
   body.in-call .dock .eq{ margin-top:0; font-size:18px }
   body.in-call .dock .actions button, body.in-call .dock #unlock{ margin-top:8px; padding:12px }
   body.in-call .dock .leave-confirm{ margin-top:8px }
+  /* 通話中はタブの行を上に貼り付ける（スクロールの上限＝タブ。上の状態行や見出しは流れて消え、
+     中身だけが下で動く。利用者 2026-11-05）。貼り付く範囲はカード（.status）の中 */
+  body.in-call #tabs{ position:sticky; top:env(safe-area-inset-top, 0px); z-index:20; background:var(--panel);
+    box-shadow:0 6px 10px -8px rgba(0,0,0,.25) }
   /* 段（tray）。参加前：シェアの段だけ普通に流れる（招待リンクは参加前にも出る）。通話中：選んだ段だけ */
   .tray-pane[data-pane="fn"], .tray-pane[data-pane="chat"]{ display:none }
   body.in-call .tray-pane{ display:none }
