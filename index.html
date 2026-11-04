@@ -1828,6 +1828,17 @@ const trayShow = n => {
   if (n === 'chat' && call.joinedId) { selectTab('chat'); try { $('chatText').focus({ preventScroll: true }) } catch {} }
 }
 document.querySelectorAll('.tray-tab').forEach(t => { t.onclick = () => trayShow(t.dataset.pane) })
+// iPhone の Safari では、キーボードが出ても position:fixed の盤は持ち上がらず、キーボードの裏に隠れる
+// （固定の基準はレイアウトの viewport で、縮むのは見えている viewport のほう）。見えている画面の下端を
+// visualViewport から求め、盤の bottom をそこへ合わせる。キーボードが消えれば 0 に戻る。
+// Android の Chrome はキーボードでレイアウトごと縮むので差は 0 のまま＝何もしないのと同じ
+const fitDock = () => {
+  const vv = window.visualViewport; if (!vv) return
+  const off = document.body.classList.contains('in-call') ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0
+  $('dock').style.bottom = off ? off + 'px' : ''
+}
+window.visualViewport?.addEventListener('resize', fitDock)
+window.visualViewport?.addEventListener('scroll', fitDock)
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
 // getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
 const lsGet = (k, d = null) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
