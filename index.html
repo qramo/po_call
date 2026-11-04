@@ -391,6 +391,8 @@
   body.in-call .dock .eq{ margin-top:0; font-size:18px }
   body.in-call .dock .actions button, body.in-call .dock #unlock{ margin-top:8px; padding:12px }
   body.in-call .dock .leave-confirm{ margin-top:8px }
+  body.in-call .dock .reactions{ margin-top:10px }
+  body.in-call .dock .reactions button{ padding:7px 0; font-size:18px }
   @media (max-width:560px){
     body.in-call .dock{ max-width:none; border-radius:0; padding-left:max(14px, env(safe-area-inset-left)); padding-right:max(14px, env(safe-area-inset-right)) }
     /* スマホ用の body{padding:0 0 env(...)} より後ろに置く＝下余白はこちらが勝つ */
@@ -1226,8 +1228,6 @@
     </div>
     <div id="panMembers" class="panel" role="tabpanel" aria-labelledby="tabMembers" hidden>
       <div id="members" class="members"></div>
-      <!-- リアクション。中身は JS が REACTIONS から作る（一覧の定義を1か所に保つ） -->
-      <div id="reactions" class="reactions" hidden></div>
       <!-- 経路アイコンの凡例。参加した直後だけ開いて出し、数秒で畳んで1行のボタンに戻る。
            中身は JS が入れる（行内アイコンと同じSVG定数を使い、見た目を必ず一致させるため） -->
       <details id="connLegend" class="conn-legend" hidden>
@@ -1347,6 +1347,9 @@
       <button id="mute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/><line class="mic-slash" x1="4" y1="3" x2="20" y2="21"/></svg><span class="lbl">ミュート</span></button>
       <button id="leave"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8"/><path d="M14 3v18"/><path d="M18 12h4"/><path d="m19 9 3 3-3 3"/></svg><span>退出</span></button>
     </div>
+    <!-- リアクション。中身は JS が REACTIONS から作る（一覧の定義を1か所に保つ）。
+         v0.16.25 試作でメンバーのタブから操作盤へ（どのタブを見ていても押せる・親指の届く最下段） -->
+    <div id="reactions" class="reactions" hidden></div>
     </div>
     <div style="margin-top:10px" id="shareWrap" hidden>
       <div id="qrBox" class="qr-inline" hidden>
