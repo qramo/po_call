@@ -1772,7 +1772,7 @@ const raf = fn => requestAnimationFrame(fn)
 const raf2 = fn => requestAnimationFrame(() => requestAnimationFrame(fn))
 // 操作盤（#dock）の高さを body の下余白に伝える（固定した盤の裏に一覧の末尾が隠れないように）。
 // ResizeObserver が無い古いブラウザは CSS の既定値（120px）で動く
-try { new ResizeObserver(([e]) => document.documentElement.style.setProperty('--dock-h', Math.ceil(e.contentRect.height + 18) + 'px')).observe($('dock')) } catch {}
+try { new ResizeObserver(([e]) => document.documentElement.style.setProperty('--dock-h', Math.ceil(e.contentRect.height + 26) + 'px')).observe($('dock')) } catch {}
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
 // getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
 const lsGet = (k, d = null) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
