@@ -380,6 +380,22 @@
   #leaveNo{ background:var(--chip); color:var(--chip-fg) }
   .actions{ display:flex; gap:12px }
   .actions button{ flex:1; width:auto }
+  /* 操作盤（#dock）。未参加はただの箱（中身は display:none のまま）。通話中（body.in-call）は画面の下に固定し、
+     カードと同じ幅で中央に。中身が隠れないよう body の下に同じ高さの余白（--dock-h は JS の ResizeObserver が入れる）。
+     背景は半透明＋ぼかしで、下を流れる一覧がうっすら見える（固定されていると分かる） */
+  body.in-call .dock{ position:fixed; left:0; right:0; bottom:0; z-index:30; margin:0 auto; max-width:440px; box-sizing:border-box;
+    padding:8px 14px calc(10px + env(safe-area-inset-bottom)); border-radius:16px 16px 0 0;
+    background:color-mix(in srgb, var(--card) 88%, transparent); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+    border-top:1px solid var(--chip); box-shadow:0 -6px 24px rgba(0,0,0,.12) }
+  body.in-call{ padding-bottom:calc(var(--dock-h, 120px) + 8px) }
+  body.in-call .dock .eq{ margin-top:0; font-size:18px }
+  body.in-call .dock .actions button, body.in-call .dock #unlock{ margin-top:8px; padding:12px }
+  body.in-call .dock .leave-confirm{ margin-top:8px }
+  @media (max-width:560px){
+    body.in-call .dock{ max-width:none; border-radius:0; padding-left:max(14px, env(safe-area-inset-left)); padding-right:max(14px, env(safe-area-inset-right)) }
+    /* スマホ用の body{padding:0 0 env(...)} より後ろに置く＝下余白はこちらが勝つ */
+    body.in-call{ padding-bottom:calc(var(--dock-h, 120px) + env(safe-area-inset-bottom)) }
+  }
   /* 入口の案内（お休み中／いま開いています）。注意の枠と同じ温度で */
   .entry-note{ margin-top:12px; padding:10px 12px; border-radius:10px; font-size:13px; line-height:1.6;
     background:var(--warn-bg); border:1px solid var(--warn-border); color:var(--text) }
@@ -1303,6 +1319,10 @@
          **スピーカーへ直接ではなく、この要素に流す**（iPhone で音量が確保でき、背面でも中断されない） -->
     <audio id="appAudio" playsinline aria-hidden="true"></audio>
     <video id="pipVideo" class="pip-video" playsinline muted aria-hidden="true"></video>
+    <!-- 操作盤（v0.16.25 試作・利用者の指定 2026-11-05）：イコライザー・音の解錠・退出の確認・ミュート／退出を 1 つの箱に
+         まとめ、**通話中は画面の下に固定**する（body.in-call）。スマホで参加者リストを見ている間もミュートと退出が
+         親指の届く所にある。箱の高さは JS が --dock-h に入れ、body の下余白で中身が隠れないようにする。 -->
+    <div id="dock" class="dock">
     <div id="eq" class="eq" hidden aria-hidden="true"></div>
     <!-- ミュート／退出は**イコライザーと招待リンクの間**（2026-09-18・利用者の指定）。
          カードの上に置くと、スマホでは参加者リストを見ている間に画面の外へ出て目に入らない。
@@ -1326,6 +1346,7 @@
       <button id="speak"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/></svg><span>マイクを使う</span></button>
       <button id="mute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/><line class="mic-slash" x1="4" y1="3" x2="20" y2="21"/></svg><span class="lbl">ミュート</span></button>
       <button id="leave"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8"/><path d="M14 3v18"/><path d="M18 12h4"/><path d="m19 9 3 3-3 3"/></svg><span>退出</span></button>
+    </div>
     </div>
     <div style="margin-top:10px" id="shareWrap" hidden>
       <div id="qrBox" class="qr-inline" hidden>
@@ -1749,6 +1770,9 @@ const vis = (id, on) => { const el = $(id); if (el) el.style.display = on ? 'fle
 // ─ frame スケジュールの共通化 ─ requestAnimationFrame の直書きを束ねる（2 段はスタイル確定待ち）
 const raf = fn => requestAnimationFrame(fn)
 const raf2 = fn => requestAnimationFrame(() => requestAnimationFrame(fn))
+// 操作盤（#dock）の高さを body の下余白に伝える（固定した盤の裏に一覧の末尾が隠れないように）。
+// ResizeObserver が無い古いブラウザは CSS の既定値（120px）で動く
+try { new ResizeObserver(([e]) => document.documentElement.style.setProperty('--dock-h', Math.ceil(e.contentRect.height + 18) + 'px')).observe($('dock')) } catch {}
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
 // getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
 const lsGet = (k, d = null) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
@@ -7445,7 +7469,7 @@ const armJoined = (roomId, name, bcast) => {
     //   🌷／🌻 の分かれ目は平均通話時間なので、長く話すと通話の途中で変わる
     if (stageOf() !== before) { sendTo(call.profileAction, myProfilePayload()); sendHeartbeat() }
   }, 30000)
-  vis('join', false); vis('leave', true)
+  vis('join', false); vis('leave', true); document.body.classList.add('in-call')   // 操作盤を下に固定（.dock）
   renderSpeak()   // ミュート／「マイクを使う」のどちらを出すかは、マイクを持っているかで決まる
   // 前の通話で出た「音声を有効化」を必ず消す。隠すのは resetJoinedUI だけだったが、あれは
   // つなぎ直しの途中では呼ばれない。＝一度出たボタンが居座り、押しても再生するものが無い、
@@ -7634,7 +7658,7 @@ $('mute').onclick = toggleMute
 
 // 参加中の見た目を「未参加」に戻す一式。退出時と、つなぎ直しに失敗して参加できなかった時に使う。
 const resetJoinedUI = () => {
-  vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false)
+  vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false); document.body.classList.remove('in-call')
   vis('speak', false); $('speak').disabled = false
   vis('sndPeerRow', false)
   vis('sndReactRow', false)
