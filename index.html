@@ -405,6 +405,11 @@
   /* QR を開いている間は URL の行を畳む（QR と部屋名があれば足りる・盤が無駄に高くならない。利用者 2026-11-05） */
   body.in-call .dock #qrBox:not([hidden]) ~ #shareLabel, body.in-call .dock #qrBox:not([hidden]) ~ br,
   body.in-call .dock #qrBox:not([hidden]) ~ a.share{ display:none }
+  /* 入力中（body.typing）は盤を入力欄だけに。畳む順は「盤の中で入力欄以外」 */
+  body.in-call.typing .dock .eq, body.in-call.typing .dock .actions, body.in-call.typing .dock .tray-tabs,
+  body.in-call.typing .dock #unlock, body.in-call.typing .dock .leave-confirm{ display:none }
+  body.in-call.typing .dock .tray-pane.on{ margin-top:0 }
+  body.in-call.typing .dock{ padding-top:10px }
   /* 最下段の切り替え（通話中だけ）。主タブと同じ「選んだものは文字色・下線」 */
   .tray-tabs{ display:none; gap:4px; margin-top:8px; padding-top:6px; border-top:1px solid var(--border) }
   body.in-call .tray-tabs{ display:flex }
@@ -1839,6 +1844,10 @@ const fitDock = () => {
 }
 window.visualViewport?.addEventListener('resize', fitDock)
 window.visualViewport?.addEventListener('scroll', fitDock)
+// 入力欄に入っている間（＝キーボードが出ている間）は、盤を入力欄だけにする（イコライザー・ミュート／退出・
+// 段の切り替えを畳む）。キーボードで狭くなった画面に盤が丸ごと乗ると、ひとことの記録が見えない（利用者 2026-11-05）
+$('chatText').addEventListener('focus', () => document.body.classList.add('typing'))
+$('chatText').addEventListener('blur', () => document.body.classList.remove('typing'))
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
 // getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
 const lsGet = (k, d = null) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
