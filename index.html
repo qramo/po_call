@@ -399,6 +399,12 @@
      中身だけが下で動く。利用者 2026-11-05）。貼り付く範囲はカード（.status）の中 */
   body.in-call #tabs{ position:sticky; top:env(safe-area-inset-top, 0px); z-index:20; background:var(--panel);
     box-shadow:0 6px 10px -8px rgba(0,0,0,.25) }
+  /* ノッチのある iPhone：貼り付く位置は安全領域の下なので、その上の隙間を中身が流れて見える
+     （利用者 2026-11-06 のスクショ）。貼り付いている間（.stuck・JS が #tabsTop との差で判定）だけ
+     行をカードの端まで広げ、上の隙間を同じ色で塗る */
+  body.in-call #tabs.stuck{ margin-left:-14px; margin-right:-14px; padding-left:14px; padding-right:14px }
+  body.in-call #tabs.stuck::before{ content:''; position:absolute; left:0; right:0; bottom:100%;
+    height:env(safe-area-inset-top, 0px); background:var(--panel) }
   /* 段（tray）。参加前：シェアの段だけ普通に流れる（招待リンクは参加前にも出る）。通話中：選んだ段だけ */
   .tray-pane[data-pane="fn"], .tray-pane[data-pane="chat"]{ display:none }
   body.in-call .tray-pane{ display:none }
@@ -1250,6 +1256,7 @@
     <!-- 通話中のタブ。**要素はどれもDOMから消さず、表示/非表示だけをここが握る**
          （消すと吹き出し・VAD・リアクションの座標など、行に紐づいた仕掛けが全部作り直しになる）。
          既定は「メンバー」。参加していない間はタブごと出さない。 -->
+    <div id="tabsTop" aria-hidden="true"></div><!-- 貼り付きの判定用（高さ 0） -->
     <div id="tabs" class="tabs" role="tablist" aria-label="通話中の表示" hidden>
       <button id="tabMembers" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panMembers"><span class="t-em">👥</span><span class="t-label">メンバー</span></button>
       <button id="tabChat" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panChat"><span class="t-em">💬</span><span class="t-label">ひとこと</span><span class="t-dot" aria-hidden="true"></span></button>
@@ -1852,6 +1859,15 @@ const fitDock = () => {
 }
 window.visualViewport?.addEventListener('resize', fitDock)
 window.visualViewport?.addEventListener('scroll', fitDock)
+// タブの行が上に貼り付いているか（CSS の .stuck）。sticky は自分では状態を持たないので、直前の
+// 高さ 0 の #tabsTop との距離が margin-top より開いたら貼り付いている、と見る
+const tabsStuck = () => {
+  const t = $('tabs'); if (t.hidden || !document.body.classList.contains('in-call')) { t.classList.remove('stuck'); return }
+  const gap = t.getBoundingClientRect().top - $('tabsTop').getBoundingClientRect().top
+  t.classList.toggle('stuck', gap > parseFloat(getComputedStyle(t).marginTop) + 1)
+}
+addEventListener('scroll', tabsStuck, { passive: true })
+window.visualViewport?.addEventListener('resize', tabsStuck)
 // 入力欄に入っている間（＝キーボードが出ている間）は、盤を入力欄だけにする（イコライザー・ミュート／退出・
 // 段の切り替えを畳む）。キーボードで狭くなった画面に盤が丸ごと乗ると、ひとことの記録が見えない（利用者 2026-11-05）
 $('chatText').addEventListener('focus', () => document.body.classList.add('typing'))
