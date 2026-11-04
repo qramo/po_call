@@ -402,6 +402,9 @@
   .fn-row .retry-btn svg{ width:18px; height:18px }
   body.in-call .dock .chat-row{ margin-top:0 }
   body.in-call .dock #shareWrap{ margin-top:0 !important }
+  /* QR を開いている間は URL の行を畳む（QR と部屋名があれば足りる・盤が無駄に高くならない。利用者 2026-11-05） */
+  body.in-call .dock #qrBox:not([hidden]) ~ #shareLabel, body.in-call .dock #qrBox:not([hidden]) ~ br,
+  body.in-call .dock #qrBox:not([hidden]) ~ a.share{ display:none }
   /* 最下段の切り替え（通話中だけ）。主タブと同じ「選んだものは文字色・下線」 */
   .tray-tabs{ display:none; gap:4px; margin-top:8px; padding-top:6px; border-top:1px solid var(--border) }
   body.in-call .tray-tabs{ display:flex }
