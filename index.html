@@ -1847,11 +1847,9 @@ window.visualViewport?.addEventListener('scroll', fitDock)
 // 入力欄に入っている間（＝キーボードが出ている間）は、盤を入力欄だけにする（イコライザー・ミュート／退出・
 // 段の切り替えを畳む）。キーボードで狭くなった画面に盤が丸ごと乗ると、ひとことの記録が見えない（利用者 2026-11-05）
 $('chatText').addEventListener('focus', () => document.body.classList.add('typing'))
-$('chatText').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('chatText')) document.body.classList.remove('typing') }, 150))
-// 送信を押した瞬間に入力欄のフォーカスが外れると、盤が元の形に戻って送信ボタンが動き、押したはずの click が
-// 空振りする（iPhone で「送信を押すとキーボードが引っ込むだけ」になった）。押し下げでフォーカスを奪わない＝
-// キーボードは出たまま、click は送信に届く。続けて打てる
-$('chatSend').addEventListener('mousedown', e => e.preventDefault())
+// 盤を元の形に戻すのは**少し待ってから**：送信を押すと、click より先に入力欄の blur が来る。すぐ戻すと
+// 送信ボタンが動いて click が空振りする（iPhone で「送信を押すとキーボードが引っ込むだけ」になった・2026-11-05）
+$('chatText').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('chatText')) document.body.classList.remove('typing') }, 450))
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
 // getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
 const lsGet = (k, d = null) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
@@ -6436,10 +6434,10 @@ const sendChat = () => {
   showBubble('self', text)                 // 送信は自分に返らないので自分の分は自分で出す
   speakChat('self', text)                  // 配信者の読み上げがオンなら自分のひとことも読む（全員に届く・v0.14.45）
   chatText.value = ''
-  // iPhone の日本語入力は、変換中（下線つき）のまま送ると**入力欄を空にしても IME の側に文が残る**。次に打った
-  // 文字がその古い変換に継ぎ足され、入力欄の value は空のまま＝2 つ目が送れない（2026-11-05 実機）。
-  // 入力欄から一度出て戻ると IME の変換が終わる。同じ操作の中で戻るのでキーボードは閉じない
-  if (document.activeElement === chatText) { chatText.blur(); chatText.focus({ preventScroll: true }) }
+  // ★送信後に入力欄へ留まらせない（キーボードは閉じる）。iPhone の日本語入力は、変換中のまま送って
+  // 入力欄を空にすると IME の側に文が残り、次が打てなくなる（2026-11-05 実機・blur→focus で戻す案も
+  // 「入力できない」になった）。入力欄から出れば変換が終わる＝元からの動き
+  chatText.blur()
 }
 chatSend.onclick = sendChat
 // スマホでキーボードが出ると、ブラウザが入力欄を見える位置へ持ち上げる。その結果
