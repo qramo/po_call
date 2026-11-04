@@ -6466,6 +6466,21 @@ chatText.addEventListener('focus', () => setTimeout(keepTopVisible, 350))
 window.visualViewport?.addEventListener('resize', () => {
   if (document.activeElement === chatText) setTimeout(keepTopVisible, 120)
 })
+// 入力欄が操作盤にある形（v0.16.25 試作）：キーボードが出ている間は、**ひとことの最後の行が入力欄の真上に
+// 来る位置**までページを送る。キーボードの出し入れでページの位置が流され、最後のコメントが見えなくなる
+// （2026-11-05 実機）。盤は visualViewport に合わせて持ち上げてあるので、盤の上端を基準にすればよい。
+// 新しい行が届いたときも同じ位置に保つ
+const keepLogVisible = () => {
+  if (!document.body.classList.contains('typing')) return
+  const log = chatLogEl, last = log.lastElementChild || log
+  if (log.hidden || !log.offsetParent) return
+  const want = $('dock').getBoundingClientRect().top - 8
+  const d = last.getBoundingClientRect().bottom - want
+  if (Math.abs(d) > 4) window.scrollBy({ top: d, behavior: 'auto' })
+}
+chatText.addEventListener('focus', () => { setTimeout(keepLogVisible, 350); setTimeout(keepLogVisible, 700) })
+window.visualViewport?.addEventListener('resize', () => { if (document.activeElement === chatText) setTimeout(keepLogVisible, 120) })
+try { new MutationObserver(() => keepLogVisible()).observe(chatLogEl, { childList: true }) } catch {}
 chatText.addEventListener('keydown', e => {
   // 変換中の Enter で送らない（日本語入力では確定にも Enter を使う）
   if (e.key === 'Enter' && !imeEnter(e)) { e.preventDefault(); sendChat() }
