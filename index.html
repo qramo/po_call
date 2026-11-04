@@ -1852,7 +1852,6 @@ $('chatText').addEventListener('blur', () => setTimeout(() => { if (document.act
 // 空振りする（iPhone で「送信を押すとキーボードが引っ込むだけ」になった）。押し下げでフォーカスを奪わない＝
 // キーボードは出たまま、click は送信に届く。続けて打てる
 $('chatSend').addEventListener('mousedown', e => e.preventDefault())
-$('chatSend').addEventListener('touchstart', e => { e.preventDefault(); $('chatSend').click() }, { passive: false })
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
 // getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
 const lsGet = (k, d = null) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
@@ -6437,6 +6436,10 @@ const sendChat = () => {
   showBubble('self', text)                 // 送信は自分に返らないので自分の分は自分で出す
   speakChat('self', text)                  // 配信者の読み上げがオンなら自分のひとことも読む（全員に届く・v0.14.45）
   chatText.value = ''
+  // iPhone の日本語入力は、変換中（下線つき）のまま送ると**入力欄を空にしても IME の側に文が残る**。次に打った
+  // 文字がその古い変換に継ぎ足され、入力欄の value は空のまま＝2 つ目が送れない（2026-11-05 実機）。
+  // 入力欄から一度出て戻ると IME の変換が終わる。同じ操作の中で戻るのでキーボードは閉じない
+  if (document.activeElement === chatText) { chatText.blur(); chatText.focus({ preventScroll: true }) }
 }
 chatSend.onclick = sendChat
 // スマホでキーボードが出ると、ブラウザが入力欄を見える位置へ持ち上げる。その結果
