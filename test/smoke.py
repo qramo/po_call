@@ -220,7 +220,7 @@ class Runner:
             '--remote-debugging-port=%d' % self.args.port,
             '--user-data-dir=' + self.profile,
             '--no-first-run', '--no-default-browser-check',
-            '--use-fake-device-for-media-capture',   # 偽マイク（許可ダイアログも出ない）
+            '--use-fake-device-for-media-stream',   # 偽マイク（許可ダイアログも出ない）
             '--use-fake-ui-for-media-stream',
             # 既定では自動再生を許してテストを安定させる。--real-autoplay を付けると本物の
             # ブラウザと同じ制限になり、「音声を有効化」ボタンが出る条件を再現できる。
