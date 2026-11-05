@@ -392,6 +392,14 @@
     background:color-mix(in srgb, var(--card) 88%, transparent); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
     border-top:1px solid var(--chip); box-shadow:0 -6px 24px rgba(0,0,0,.12) }
   body.in-call{ padding-bottom:calc(var(--dock-h, 120px) + 8px) }
+  /* PC（561 以上）：画面の下に固定せず、**カードの底板**として流す（2026-11-06・利用者の選択）。カードの中身のすぐ下に
+     来るので縦長の窓でも間が空かない。状態カードが窓より高いときだけ下端に貼り付く（sticky）。状態カードの余白 14px を
+     打ち消し、さらに外のカードの余白 28px も越えて**カードの端から端まで**（固定していたときと同じ幅・利用者 2026-11-06）。盤は #statusCard の中にあるのでその底に来る。版の行は従来どおりその下 */
+  @media (min-width:561px){
+    body.in-call .dock{ position:sticky; left:auto; right:auto; max-width:none; width:calc(100% + 84px); margin:14px -42px -14px;
+      border-radius:12px; box-shadow:0 -6px 24px rgba(0,0,0,.08) }
+    body.in-call{ padding-bottom:0 }
+  }
   body.in-call .dock .eq{ margin-top:0; font-size:18px }
   body.in-call .dock .actions button, body.in-call .dock #unlock{ margin-top:8px; padding:12px }
   body.in-call .dock .leave-confirm{ margin-top:8px }
@@ -482,8 +490,16 @@
      未参加のとき（説明文→プロフィール枠 24px）と同じ間隔に揃える（2026-09-20・利用者の指摘） */
   #setupFields.collapsed + .status{ margin-top:4px }
   /* 状態＝1行／操作＝次の行。部屋名が長くても折り返しがきれいに収まる */
-  .status-head{ display:flex; flex-direction:column; gap:8px }
-  .head-actions{ display:flex; gap:8px; justify-content:flex-end }
+  .status-head{ display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 10px }
+  .status-line{ flex:1 1 auto; min-width:0; overflow-wrap:anywhere }
+  /* 通話中は部屋名が見出し（17px）。「通話中：」は読み上げ用に残し画面には出さない（.sr） */
+  .status-line.heading{ font-size:17px; font-weight:800; line-height:1.35 }
+  .sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap }
+  .head-actions{ flex-basis:100%; display:flex; gap:8px; justify-content:flex-end }
+  .peers-line{ flex:none; max-width:46%; margin-left:auto; display:inline-flex; align-items:center; gap:4px;
+    font-size:12px; color:var(--sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .peers-line svg{ width:16px; height:16px; flex:none }
+  .peers-line [hidden]{ display:none }
   /* 出すボタンが1つも無いときは行ごと畳む（空の行が余白だけ作るのを防ぐ） */
   .head-actions:not(:has(button:not([hidden]))){ display:none }
   .retry-btn{ flex:none; width:auto; margin:0; padding:5px 11px; font-size:12px; font-weight:700;
@@ -507,7 +523,6 @@
   .dot.error{ background:#ff5d5d }   /* 失敗 */
   @keyframes dot-pulse{ 50%{ opacity:.35 } }
   @media (prefers-reduced-motion:reduce){ .dot.busy{ animation:none } }
-  .peers{ font-size:26px; font-weight:800; color:var(--link) }
   /* 共有リンクは長くなりがちなので既定は1行＋末尾を「…」で省略。コピー時とQR表示中だけ全文に開く */
   a.share{ display:block; color:var(--link); font-size:13px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
@@ -810,12 +825,20 @@
      ★font-size も 16px を下回らせないこと（16px 未満でも iOS は拡大する）。
      どちらも `user-scalable=no` では解決しない（拡大できないと困る人がいるので使わない）。 */
   /* 話題タグの行（通話中だけ）。状態の行と同じ温度。タグがあれば本文色、無ければ薄く */
-  .tag-row{ display:flex; align-items:center; gap:7px; margin-top:8px; font-size:13px; line-height:1.5 }
-  .tag-ic{ flex:none }
-  .tag-text{ flex:1; min-width:0; color:var(--sub); overflow-wrap:anywhere }
-  .tag-text b{ color:var(--text); font-size:14px }
-  .tag-text .tag-by{ color:var(--note); font-size:12px; margin-left:4px }
-  .tag-row .retry-btn{ margin:0 }
+  /* 話題の札（v0.16.25 試作）：左が尖って穴の「タグ」の形。多角形の clip-path は角を丸められないので
+     SVG の mask で切る（viewBox は横に長く、xMinYMid slice で高さに合わせて等倍→右は要素幅で切れる）。
+     穴は地の色の丸（::before）。outline は mask の外に出るので、フォーカスは内側の影で示す */
+  .tag-row{ display:flex; align-items:center; margin-top:9px; min-width:0 }
+  .tag-chip{ position:relative; display:inline-flex; align-items:center; gap:7px; min-width:0; max-width:100%; width:auto; margin:0; text-align:left;
+    padding:6px 12px 6px 22px; background:var(--chip); color:var(--text); font-size:15px; font-weight:800; line-height:1.3;
+    border:0; border-radius:0 3px 3px 0; -webkit-mask:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4000 100' preserveAspectRatio='xMinYMid slice'><path d='M5.2 55.9 Q0.0 50.0 5.2 44.1 L41.3 3.1 Q44.0 0.0 48.1 0.0 L3991.0 0.0 Q4000.0 0.0 4000.0 9.0 L4000.0 91.0 Q4000.0 100.0 3991.0 100.0 L48.1 100.0 Q44.0 100.0 41.3 96.9 Z'/></svg>") 0 0 / 100% 100% no-repeat; mask:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4000 100' preserveAspectRatio='xMinYMid slice'><path d='M5.2 55.9 Q0.0 50.0 5.2 44.1 L41.3 3.1 Q44.0 0.0 48.1 0.0 L3991.0 0.0 Q4000.0 0.0 4000.0 9.0 L4000.0 91.0 Q4000.0 100.0 3991.0 100.0 L48.1 100.0 Q44.0 100.0 41.3 96.9 Z'/></svg>") 0 0 / 100% 100% no-repeat }
+  .tag-chip::before{ content:''; position:absolute; left:9px; top:50%; width:7px; height:7px; margin-top:-3.5px; border-radius:50%; background:var(--panel); box-shadow:inset 0 0 0 1px rgba(0,0,0,.12) }
+  .tag-chip:focus-visible{ outline:none; box-shadow:inset 0 0 0 2px var(--link) }
+  .tag-chip .pen{ width:14px; height:14px; flex:none; color:var(--sub) }
+  .tag-text{ display:inline-flex; align-items:baseline; gap:7px; min-width:0 }
+  .tag-text b{ min-width:0; overflow-wrap:anywhere; color:var(--text) }
+  .tag-text .tag-by{ font-size:11px; font-weight:600; color:var(--note); white-space:nowrap }
+  .tag-chip.add{ background:var(--accent-dim); color:var(--sub); font-size:13px; font-weight:700 }
   /* ロビー：タグが付いた部屋はタグを大きく・元の部屋名を添える。
      部屋名は小さく落としつつも埋もれないよう太字・本文色で立てる（2026-09-26・利用者） */
   .room-sub{ font-size:13px; color:var(--sub); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:3px }
@@ -950,6 +973,12 @@
   .lobby-note{ margin:12px 0 0; font-size:12px; color:var(--note); line-height:1.6 }
   .legal{ width:100%; max-width:900px; margin:20px auto 0; text-align:center; font-size:11px; color:var(--legal); line-height:1.7 }
   .legal a{ color:var(--legal-link) }
+  /* PC（2 列＝カード 440＋ロビー 440＋間 18 が入る幅）では画面の右下に固定（2026-11-06・利用者の希望）。
+     ロビーの列の下に来るので操作盤（左の列に揃う）とは重ならない。中身の上に重なっても読めるよう地の色を敷く */
+  @media (min-width:950px){
+    .legal{ position:fixed; right:14px; bottom:12px; width:auto; max-width:none; margin:0; padding:4px 10px; z-index:5;
+      text-align:right; border-radius:8px; background:var(--g2); background:color-mix(in srgb, var(--g2) 88%, transparent) }
+  }
   .lobby-list{ display:flex; flex-direction:column; gap:10px; max-height:56vh; overflow-y:auto }
   .room{ width:100%; margin:0; padding:12px 14px; text-align:left; font-weight:400; font-size:14px;
     background:var(--panel); border:1px solid var(--card-border); border-radius:12px }
@@ -1233,15 +1262,16 @@
              **記号だけ借りて、言葉は「小窓」**にしてある（2026-09-13・利用者と検討） -->
         <!-- 小窓・つなぎ直すは v0.16.25 試作で操作盤の「機能」の段へ（下の #dock .tray） -->
       </div>
+      <!-- v0.16.25 試作：人数は見出しの右に小さく。ひとりのあいだは「相手を探しています…」（参加前は行ごと出さない） -->
+      <div id="countRow" class="peers-line" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5A5 5 0 0 1 21 19.5"/></svg><span class="peers"><span id="count">0</span> 人</span><span id="countAlone" hidden>相手を探しています…</span></div>
     </div>
-    <div style="margin-top:8px">いま一緒にいる人：<span class="peers" id="count">0</span> 人</div>
     <!-- 人数が多くなってきたときだけ出る注意（上限に達したら言い方が変わる） -->
     <!-- 話題タグ（v0.13.1）。話題が変わった部屋に「今の話題」を後付けする。誰でも上書き（最新1つ・履歴なし）。
          抑止として付けた人の名前を全員に出す。 -->
     <div id="tagRow" class="tag-row" hidden>
-      <span class="tag-ic" aria-hidden="true">🏷</span>
-      <span id="tagText" class="tag-text"></span>
-      <button id="tagEdit" class="retry-btn" type="button">つける</button>
+      <!-- v0.16.25 試作：札そのものがボタン（押すと入力欄）。形は SVG の mask（左が尖って穴・角 R 3px）。
+           「○○が付けた」は名前だけを小さく添える。無いときは薄い札で「話題をつける」 -->
+      <button id="tagEdit" class="tag-chip" type="button"><span id="tagText" class="tag-text"></span><svg class="pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg></button>
     </div>
     <div id="tagForm" class="chat-row" hidden>
       <input id="tagInput" name="topic" type="text" maxlength="30" placeholder="いまの話題（例：お昼ご飯の献立）"
@@ -1864,17 +1894,8 @@ const fitDock = () => {
 }
 window.visualViewport?.addEventListener('resize', fitDock)
 window.visualViewport?.addEventListener('scroll', fitDock)
-// PC（2 列）：盤の左右を**左の通話カードにぴったり**合わせる（利用者 2026-11-06）。カードの位置は中央寄せの
-// 計算（スクロールバー・折り返し）に依るので CSS で出さず、実測した left/width を盤に写す。スマホ（560 以下）は
-// CSS の全幅のまま＝ここでは触らない。退出でも外す
-const fitDockX = () => {
-  const d = $('dock'), c = document.querySelector('.wrap > .card')
-  if (!document.body.classList.contains('in-call') || window.innerWidth <= 560 || !c) { d.style.left = d.style.width = d.style.margin = ''; return }
-  const r = c.getBoundingClientRect()
-  d.style.left = Math.round(r.left) + 'px'; d.style.width = Math.round(r.width) + 'px'; d.style.margin = '0'
-}
-addEventListener('resize', fitDockX)
-try { new ResizeObserver(fitDockX).observe(document.querySelector('.wrap')) } catch {}
+// PC（561 以上）は盤をカードの底板として流す（CSS の sticky・下の @media）。以前はここで左のカードに実測で
+// 揃えていた（fitDockX・2026-11-06）が、カードの中に流せば位置合わせ自体が要らない
 // タブの行が上に貼り付いているか（CSS の .stuck）。sticky は自分では状態を持たないので、直前の
 // 高さ 0 の #tabsTop との距離が margin-top より開いたら貼り付いている、と見る
 const tabsStuck = () => {
@@ -3871,11 +3892,19 @@ window.__potRelays = () => {
 let stateKind = 'idle'
 const setState = (t, kind = 'idle') => {
   $('state').textContent = t; $('dot').className = 'dot' + (kind === 'idle' ? '' : ' ' + kind)
+  $('state').parentElement.classList.remove('heading')
   stateKind = kind
   // syncIdleChrome は後ろで定義されるので、初期化の途中で呼ばれても落ちないようにする
   try { syncIdleChrome() } catch {}
 }
-const setCount = () => { $('count').textContent = call.peers.size }
+const setCount = () => { $('count').textContent = call.joinedId ? call.peers.size + 1 : 0 }   // 自分を含めた人数（見出しの右に「N 人」）
+// 通話中の見出し：部屋名を大きく出し、「通話中：」の接頭は読み上げ用に残す（textContent には含まれる＝
+// smoke・再現スクリプトの「参加中｜通話中」の判定はそのまま）
+const setRoomState = (prefix, label, kind) => {
+  setState(prefix + label, kind)
+  const sr = document.createElement('span'); sr.className = 'sr'; sr.textContent = prefix
+  $('state').replaceChildren(sr, label); $('state').parentElement.classList.add('heading')
+}
 
 // ミュート印のマイク斜線SVG。参加者リストとロビーのチップで共用する（ボタンのミュート表示とも同じ形）。
 const MIC_OFF_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/><line x1="4" y1="3" x2="20" y2="21"/></svg>'
@@ -5897,14 +5926,15 @@ const renderTag = () => {
   if (!call.joinedId) { $('tagForm').hidden = true; return }
   const m = call.meta
   txt.replaceChildren()
+  const btn = $('tagEdit')
   if (m.tag) {
     const b = document.createElement('b'); b.textContent = m.tag
-    const by = document.createElement('span'); by.className = 'tag-by'; by.textContent = m.tagBy ? '（' + m.tagBy + 'が付けた）' : ''
-    txt.append('いまの話題：', b, by)
-    $('tagEdit').textContent = '変える'
+    const by = document.createElement('span'); by.className = 'tag-by'; by.textContent = m.tagBy || ''   // 付けた人（抑止）
+    txt.append(b, by)
+    btn.classList.remove('add'); btn.setAttribute('aria-label', 'いまの話題：' + m.tag + (m.tagBy ? '（' + m.tagBy + 'が付けた）' : '') + '。押すと変える')
   } else {
-    txt.textContent = '話題タグ：まだありません'
-    $('tagEdit').textContent = 'つける'
+    txt.textContent = '話題をつける'
+    btn.classList.add('add'); btn.removeAttribute('aria-label')
   }
 }
 const setTag = text => {
@@ -5922,19 +5952,21 @@ $('tagSend').onclick = () => { setTag($('tagInput').value.trim()); $('tagForm').
 $('tagInput').addEventListener('keydown', e => { if (e.key === 'Enter' && !imeEnter(e)) { e.preventDefault(); $('tagSend').onclick() } })
 const render = () => {
   renderTag()
-  if (!call.joinedId) return
+  if (!call.joinedId) { $('countRow').hidden = true; return }
   // 圏外・Wi-Fiオフでも参加自体は成功する（マイクはローカル、ライブラリは読込済み）。
   // 何も言わないと「誰も来ない部屋」に見えて原因が分からないので、まずこれを出す。
   // navigator.onLine は「回線があるか」までしか分からないが、外れても実害のない案内なのでこれで十分。
   const label = (call.bcast ? '📣 ' : '') + roomLabel(call.joinedId)   // 指紋もハッシュも出さない（読めても意味がない）
   if (!navigator.onLine) setState('インターネットに繋がっていません', 'error')
-  else if (call.peers.size) setState('通話中：' + label, 'ok')
+  else if (call.peers.size) setRoomState('通話中：', label, 'ok')
   // 誰とも繋がらないままエラーが出ている。**しばらく続いたら「つなぎ直す」へ誘導する**。
   // つなぎ直す＝リロードなので、ピアID（selfId）も TURN 資格情報も取り直される＝この手の
   // 詰まり（居残った幽霊ピア／期限切れの資格情報）に実際に効く、唯一こちらから打てる手。
   // ただし即座には言わない。相手の到着待ちで一時的にエラーが出ることは普通にあるため。
   else if (call.warn) setState(call.warn + (aloneLong() ? '（「つなぎ直す」を試してみてください）' : '（相手を探しています…）'), 'warn')
-  else setState('参加中：' + label + '（相手を探しています…）', 'ok')
+  else setRoomState('参加中：', label, 'ok')   // 「相手を探しています…」は人数の位置に出す
+  const roomy = $('state').parentElement.classList.contains('heading')
+  $('countRow').hidden = !roomy; $('countRow').querySelector('.peers').hidden = !call.peers.size; $('countAlone').hidden = !!call.peers.size
 }
 // 通話の途中で圏外になった／戻ったときにも表示を追従させる（通話中のみ render が中身を持つ）
 addEventListener('online', render)
@@ -7642,7 +7674,7 @@ const armJoined = (roomId, name, bcast) => {
     //   🌷／🌻 の分かれ目は平均通話時間なので、長く話すと通話の途中で変わる
     if (stageOf() !== before) { sendTo(call.profileAction, myProfilePayload()); sendHeartbeat() }
   }, 30000)
-  vis('join', false); vis('leave', true); document.body.classList.add('in-call'); fitDockX()   // 操作盤を下に固定（.dock）・PC は左のカードに揃える
+  vis('join', false); vis('leave', true); document.body.classList.add('in-call')   // 操作盤を下に固定（.dock）・PC はカードの底板（sticky）
   renderSpeak()   // ミュート／「マイクを使う」のどちらを出すかは、マイクを持っているかで決まる
   // 前の通話で出た「音声を有効化」を必ず消す。隠すのは resetJoinedUI だけだったが、あれは
   // つなぎ直しの途中では呼ばれない。＝一度出たボタンが居座り、押しても再生するものが無い、
@@ -7831,7 +7863,8 @@ $('mute').onclick = toggleMute
 
 // 参加中の見た目を「未参加」に戻す一式。退出時と、つなぎ直しに失敗して参加できなかった時に使う。
 const resetJoinedUI = () => {
-  vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false); document.body.classList.remove('in-call'); fitDockX(); trayShow('react')
+  $('countRow').hidden = true
+  vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false); document.body.classList.remove('in-call'); trayShow('react')
   vis('speak', false); $('speak').disabled = false
   vis('sndPeerRow', false)
   vis('sndReactRow', false)
