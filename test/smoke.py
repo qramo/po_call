@@ -524,15 +524,18 @@ def T30(r, a, b):
     # 高さは「5人ぶん」で決め打ち＝**タブを切り替えてもカードの高さが動かない**
     # （動くと下の共有リンクやロビーまで一緒に動いて落ち着かない）
     h_members = a.eval("document.getElementById('panMembers').offsetHeight")
+    # ★v0.16.25 試作から入力欄（#chatRow）は操作盤（#dock）の「ひとこと」の段にあり、主タブとは独立に出る
+    #   （メンバーを見ながら打てる）。主タブでひとことを開くと段もひとことになる（入力欄が見える）が、
+    #   設定に切り替えても段はそのまま＝入力欄は消えない。ここで見るのは**パネル（#panChat）**の入れ替え。
     show_tab(a, 'chat')
-    chat_ok = a.eval("%s('chatRow') && %s('members') === false" % (VISIBLE, VISIBLE))
+    chat_ok = a.eval("%s('chatRow') && %s('panChat') && %s('members') === false" % (VISIBLE, VISIBLE, VISIBLE))
     h_chat = a.eval("document.getElementById('panChat').offsetHeight")
     show_tab(a, 'settings')
-    set_ok = a.eval("%s('sndPeerRow') && %s('chatRow') === false" % (VISIBLE, VISIBLE))
+    set_ok = a.eval("%s('sndPeerRow') && %s('panChat') === false" % (VISIBLE, VISIBLE))
     h_set = a.eval("document.getElementById('panSettings').offsetHeight")
     # 設定タブをもう一度押すと直前のタブ（ひとこと）に戻る（トグルで閉じる）
     show_tab(a, 'settings')
-    toggle_ok = a.eval("%s('chatRow') && %s('sndPeerRow') === false" % (VISIBLE, VISIBLE))
+    toggle_ok = a.eval("%s('panChat') && %s('sndPeerRow') === false" % (VISIBLE, VISIBLE))
     show_tab(a, 'settings')   # 設定に戻しておく
     # ★ぴったり一致は求めない。**経路の凡例が参加直後だけ開いている**（8秒で畳む）ので、
     #   メンバーパネルの高さはそのぶん十数px動く。見ているのは「タブを切り替えたときに
