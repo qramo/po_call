@@ -1034,7 +1034,7 @@ def T47(r, room):
 def T48(r, room):
     """話題タグ（v0.13.1）：付けると相手にも届き、ロビーはタグを大きく・部屋名を小さく・付けた人を出す
 
-    ①参加前はタグの行が出ない ②A が付けると A・B の行に「いまの話題」と付けた人 ③ロビー（第三のタブ）で
+    ①参加前はタグの行が出ない ②A が付けると A・B の札に話題と付けた人の名前 ③ロビー（第三のタブ）で
     タグが見出しになり、部屋名と「◯◯が付けた」が小さく添えられる ④B が上書きすると A も新しいほうになる
     ⑤空にすると消える
     """
@@ -1069,7 +1069,7 @@ def T48(r, room):
     a_new = a.wait_for("%s.includes('初恋トーク')" % TXT, timeout=SHORT)
     # ⑤ 空にすると消える
     a.eval("(() => { document.getElementById('tagEdit').click(); const i = document.getElementById('tagInput'); i.value = ''; document.getElementById('tagSend').click() })()")
-    cleared = b.wait_for("%s.includes('まだありません')" % TXT, timeout=SHORT)
+    cleared = b.wait_for("%s.includes('話題をつける')" % TXT, timeout=SHORT)   # v0.16.25 試作：無いときは札に「話題をつける」
     ok = before and shown and a_has and b_has and lobby and name in sub and who in sub and ime_safe and a_new and cleared
     r.check('T48', '話題タグが相手とロビーに届く', ok, 'pass',
             '参加前は出ない=%s / 参加中は出る=%s / A=%s / B（付けた人つき）=%s / ロビーでタグが見出し=%s（添え=%r） / 変換中のEnterで送らない=%s / 上書き=%s / 空で消える=%s'
