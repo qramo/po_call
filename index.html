@@ -392,6 +392,14 @@
     background:color-mix(in srgb, var(--card) 88%, transparent); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
     border-top:1px solid var(--chip); box-shadow:0 -6px 24px rgba(0,0,0,.12) }
   body.in-call{ padding-bottom:calc(var(--dock-h, 120px) + 8px) }
+  /* PC（561 以上）：画面の下に固定せず、**カードの底板**として流す（2026-11-06・利用者の選択）。カードの中身のすぐ下に
+     来るので縦長の窓でも間が空かない。状態カードが窓より高いときだけ下端に貼り付く（sticky）。状態カードの余白 14px を
+     打ち消して端から端まで・角は状態カードに合わせる（盤は #statusCard の中にあるので、その底板になる。版の行は従来どおりその下） */
+  @media (min-width:561px){
+    body.in-call .dock{ position:sticky; left:auto; right:auto; max-width:none; width:calc(100% + 28px); margin:14px -14px -14px;
+      border-radius:0 0 10px 10px; box-shadow:0 -6px 24px rgba(0,0,0,.08) }
+    body.in-call{ padding-bottom:0 }
+  }
   body.in-call .dock .eq{ margin-top:0; font-size:18px }
   body.in-call .dock .actions button, body.in-call .dock #unlock{ margin-top:8px; padding:12px }
   body.in-call .dock .leave-confirm{ margin-top:8px }
@@ -1886,17 +1894,8 @@ const fitDock = () => {
 }
 window.visualViewport?.addEventListener('resize', fitDock)
 window.visualViewport?.addEventListener('scroll', fitDock)
-// PC（2 列）：盤の左右を**左の通話カードにぴったり**合わせる（利用者 2026-11-06）。カードの位置は中央寄せの
-// 計算（スクロールバー・折り返し）に依るので CSS で出さず、実測した left/width を盤に写す。スマホ（560 以下）は
-// CSS の全幅のまま＝ここでは触らない。退出でも外す
-const fitDockX = () => {
-  const d = $('dock'), c = document.querySelector('.wrap > .card')
-  if (!document.body.classList.contains('in-call') || window.innerWidth <= 560 || !c) { d.style.left = d.style.width = d.style.margin = ''; return }
-  const r = c.getBoundingClientRect()
-  d.style.left = Math.round(r.left) + 'px'; d.style.width = Math.round(r.width) + 'px'; d.style.margin = '0'
-}
-addEventListener('resize', fitDockX)
-try { new ResizeObserver(fitDockX).observe(document.querySelector('.wrap')) } catch {}
+// PC（561 以上）は盤をカードの底板として流す（CSS の sticky・下の @media）。以前はここで左のカードに実測で
+// 揃えていた（fitDockX・2026-11-06）が、カードの中に流せば位置合わせ自体が要らない
 // タブの行が上に貼り付いているか（CSS の .stuck）。sticky は自分では状態を持たないので、直前の
 // 高さ 0 の #tabsTop との距離が margin-top より開いたら貼り付いている、と見る
 const tabsStuck = () => {
@@ -7675,7 +7674,7 @@ const armJoined = (roomId, name, bcast) => {
     //   🌷／🌻 の分かれ目は平均通話時間なので、長く話すと通話の途中で変わる
     if (stageOf() !== before) { sendTo(call.profileAction, myProfilePayload()); sendHeartbeat() }
   }, 30000)
-  vis('join', false); vis('leave', true); document.body.classList.add('in-call'); fitDockX()   // 操作盤を下に固定（.dock）・PC は左のカードに揃える
+  vis('join', false); vis('leave', true); document.body.classList.add('in-call')   // 操作盤を下に固定（.dock）・PC はカードの底板（sticky）
   renderSpeak()   // ミュート／「マイクを使う」のどちらを出すかは、マイクを持っているかで決まる
   // 前の通話で出た「音声を有効化」を必ず消す。隠すのは resetJoinedUI だけだったが、あれは
   // つなぎ直しの途中では呼ばれない。＝一度出たボタンが居座り、押しても再生するものが無い、
@@ -7865,7 +7864,7 @@ $('mute').onclick = toggleMute
 // 参加中の見た目を「未参加」に戻す一式。退出時と、つなぎ直しに失敗して参加できなかった時に使う。
 const resetJoinedUI = () => {
   $('countRow').hidden = true
-  vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false); document.body.classList.remove('in-call'); fitDockX(); trayShow('react')
+  vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false); document.body.classList.remove('in-call'); trayShow('react')
   vis('speak', false); $('speak').disabled = false
   vis('sndPeerRow', false)
   vis('sndReactRow', false)
