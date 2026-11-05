@@ -607,7 +607,8 @@
   .tab{ width:auto; margin:0; padding:8px 11px; font-size:13px; font-weight:700; line-height:1.2;
     white-space:nowrap; display:inline-flex; align-items:center; gap:5px;
     background:transparent; color:var(--tab); border-radius:10px 10px 0 0; position:relative }
-  .t-em{ font-size:13px; line-height:1 }
+  .t-em{ font-size:13px; line-height:1; display:inline-flex }
+  .t-em svg{ width:16px; height:16px; flex:none }
   /* 未読の点：別のタブを見ている間にひとことが届いたら出す。開いたら消える（v0.13.4・利用者の要望） */
   .t-dot{ display:none; width:7px; height:7px; border-radius:50%; background:var(--red); margin-left:1px; flex:none }
   .tab.unread .t-dot{ display:inline-block }
@@ -635,6 +636,7 @@
     .tab .t-label{ display:none }
     .tab{ padding:8px 11px }
     .t-em{ font-size:15px }
+    .t-em svg{ width:19px; height:19px }
   }
   /* パネル先頭の余白は中身が持っているので、タブ直下は詰める */
   .panel > .members{ margin-top:10px }
@@ -1288,12 +1290,14 @@
          （消すと吹き出し・VAD・リアクションの座標など、行に紐づいた仕掛けが全部作り直しになる）。
          既定は「メンバー」。参加していない間はタブごと出さない。 -->
     <div id="tabsTop" aria-hidden="true"></div><!-- 貼り付きの判定用（高さ 0） -->
+    <!-- タブの印は泡版（pop_demo/icons.js）の線のアイコン（24×24・currentColor・線幅 2・端は丸め）。ひとこと＝chat（盤の段と同じ）・
+         おたより＝mail・設定＝gear は泡版そのまま。メンバーは泡版に無いので、見出しの右の人数と同じ「人ふたり」（2026-11-07） -->
     <div id="tabs" class="tabs" role="tablist" aria-label="通話中の表示" hidden>
-      <button id="tabMembers" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panMembers"><span class="t-em">👥</span><span class="t-label">メンバー</span></button>
-      <button id="tabChat" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panChat"><span class="t-em">💬</span><span class="t-label">ひとこと</span><span class="t-dot" aria-hidden="true"></span></button>
+      <button id="tabMembers" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panMembers"><span class="t-em"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5A5 5 0 0 1 21 19.5"/></svg></span><span class="t-label">メンバー</span></button>
+      <button id="tabChat" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panChat"><span class="t-em"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4c4.7 0 8.5 3.1 8.5 7s-3.8 7-8.5 7c-1 0-2-.1-2.9-.4L5 20l1.2-3.5C4.5 15.2 3.5 13.2 3.5 11c0-3.9 3.8-7 8.5-7z"/></svg></span><span class="t-label">ひとこと</span><span class="t-dot" aria-hidden="true"></span></button>
       <!-- おたよりは**配信部屋のときだけ**出す（枠主がはっきりしている部屋でしか成立しないため） -->
-      <button id="tabMail" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panMail" hidden><span class="t-em">📮</span><span class="t-label">おたより</span></button>
-      <button id="tabSettings" class="tab tab-right" type="button" role="tab" aria-selected="false" aria-controls="panSettings" aria-label="設定"><span class="t-em">⚙️</span><span class="t-label">設定</span></button>
+      <button id="tabMail" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panMail" hidden><span class="t-em"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1.5"/><rect x="14.5" y="7.5" width="4" height="4.5" rx=".5"/><path d="M6 9.5h5.5M6 12.5h5.5M6 15.5h9"/></svg></span><span class="t-label">おたより</span></button>
+      <button id="tabSettings" class="tab tab-right" type="button" role="tab" aria-selected="false" aria-controls="panSettings" aria-label="設定"><span class="t-em"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.90 5.32 L10.43 5.18 L10.66 2.49 L13.34 2.49 L13.57 5.18 L14.10 5.32 L15.23 5.79 L15.71 6.06 L17.78 4.33 L19.67 6.22 L17.94 8.29 L18.21 8.77 L18.68 9.90 L18.82 10.43 L21.51 10.66 L21.51 13.34 L18.82 13.57 L18.68 14.10 L18.21 15.23 L17.94 15.71 L19.67 17.78 L17.78 19.67 L15.71 17.94 L15.23 18.21 L14.10 18.68 L13.57 18.82 L13.34 21.51 L10.66 21.51 L10.43 18.82 L9.90 18.68 L8.77 18.21 L8.29 17.94 L6.22 19.67 L4.33 17.78 L6.06 15.71 L5.79 15.23 L5.32 14.10 L5.18 13.57 L2.49 13.34 L2.49 10.66 L5.18 10.43 L5.32 9.90 L5.79 8.77 L6.06 8.29 L4.33 6.22 L6.22 4.33 L8.29 6.06 L8.77 5.79Z"/><circle cx="12" cy="12" r="3"/></svg></span><span class="t-label">設定</span></button>
     </div>
     <div id="panMembers" class="panel" role="tabpanel" aria-labelledby="tabMembers" hidden>
       <div id="members" class="members"></div>
