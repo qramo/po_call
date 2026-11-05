@@ -430,6 +430,7 @@
   .tray-tab{ flex:1; width:auto; margin:0; padding:5px 0 3px; background:transparent; color:var(--sub); font-size:16px; font-weight:700;
     line-height:1.1; border-radius:8px; display:flex; flex-direction:column; align-items:center; gap:2px; position:relative }
   .tray-tab small{ font-size:10px; font-weight:600; letter-spacing:.02em }
+  .tray-tab svg{ width:22px; height:22px; flex:none }
   .tray-tab[aria-selected="true"]{ color:var(--text); background:var(--tab-on) }
   @media (max-width:560px){
     body.in-call .dock{ max-width:none; border-radius:0; padding-left:max(14px, env(safe-area-inset-left)); padding-right:max(14px, env(safe-area-inset-right)) }
@@ -1418,11 +1419,13 @@
       </div>
       </div>
     </div>
+    <!-- 印は泡版（pop_demo/icons.js）の線のアイコン：24×24・currentColor・線幅 2・端は丸め（参加・マイク・退出と同じ流儀）。
+         リアクション＝reactplus・ひとこと＝chat・シェア＝link は泡版そのまま。機能のレンチは泡版に無いので同じ流儀で描いた（2026-11-06） -->
     <div class="tray-tabs" role="tablist" aria-label="下の段の切り替え">
-      <button type="button" class="tray-tab" data-pane="react" aria-selected="true" aria-label="リアクション"><span aria-hidden="true">👏</span><small>リアクション</small></button>
-      <button type="button" class="tray-tab" data-pane="fn" aria-selected="false" aria-label="機能"><span aria-hidden="true">🛠</span><small>機能</small></button>
-      <button type="button" class="tray-tab" data-pane="chat" aria-selected="false" aria-label="ひとこと"><span aria-hidden="true">💬</span><small>ひとこと</small></button>
-      <button type="button" class="tray-tab" data-pane="share" aria-selected="false" aria-label="シェア"><span aria-hidden="true">🔗</span><small>シェア</small></button>
+      <button type="button" class="tray-tab" data-pane="react" aria-selected="true" aria-label="リアクション"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="13" r="7.5"/><path d="M7.5 15a4 4 0 0 0 6 0"/><path d="M8 10.5h.01M13 10.5h.01"/><path d="M19.5 2.5v5M17 5h5"/></svg><small>リアクション</small></button>
+      <button type="button" class="tray-tab" data-pane="fn" aria-selected="false" aria-label="機能"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 6.5a5 5 0 0 1-6.6 4.7l-8.3 8.3a2 2 0 0 1-2.8-2.8l8.3-8.3A5 5 0 0 1 17.3 2l-2.8 2.8 .7 2.8 2.8.7z"/></svg><small>機能</small></button>
+      <button type="button" class="tray-tab" data-pane="chat" aria-selected="false" aria-label="ひとこと"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4c4.7 0 8.5 3.1 8.5 7s-3.8 7-8.5 7c-1 0-2-.1-2.9-.4L5 20l1.2-3.5C4.5 15.2 3.5 13.2 3.5 11c0-3.9 3.8-7 8.5-7z"/></svg><small>ひとこと</small></button>
+      <button type="button" class="tray-tab" data-pane="share" aria-selected="false" aria-label="シェア"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13.5a4.5 4.5 0 0 0 6.8.5l2.7-2.7a4.5 4.5 0 0 0-6.4-6.4l-1.5 1.5"/><path d="M14 10.5a4.5 4.5 0 0 0-6.8-.5l-2.7 2.7a4.5 4.5 0 0 0 6.4 6.4l1.5-1.5"/></svg><small>シェア</small></button>
     </div>
     </div>
     </div>
