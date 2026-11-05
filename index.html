@@ -24,7 +24,11 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- interactive-widget=resizes-content：Android の Chrome で、キーボードが出たら**ページの枠ごと縮める**。
+     既定（resizes-visual）は見えている範囲だけが縮み、画面の下に固定した操作盤がキーボードにめり込む
+     （2026-11-05 実機）。縮めれば固定の下端＝キーボードの上端になる。iPhone はこの指定を知らないので
+     visualViewport で持ち上げる（fitDock）。 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <!-- 起動を速くするための準備。**構造は何も変えない**（動的 import のままなので、CLAUDE.md が言う
      段階別エラー表示はそのまま生きている）。先に接続を温めておくだけ。
      modulepreload は HTML を読んでいる最中に Trystero（実体は約60KB）のダウンロードを始める
@@ -380,6 +384,59 @@
   #leaveNo{ background:var(--chip); color:var(--chip-fg) }
   .actions{ display:flex; gap:12px }
   .actions button{ flex:1; width:auto }
+  /* 操作盤（#dock）。未参加はただの箱（中身は display:none のまま）。通話中（body.in-call）は画面の下に固定し、
+     カードと同じ幅で中央に。中身が隠れないよう body の下に同じ高さの余白（--dock-h は JS の ResizeObserver が入れる）。
+     背景は半透明＋ぼかしで、下を流れる一覧がうっすら見える（固定されていると分かる） */
+  body.in-call .dock{ position:fixed; left:0; right:0; bottom:0; z-index:30; margin:0 auto; max-width:440px; box-sizing:border-box;
+    padding:8px 14px calc(10px + env(safe-area-inset-bottom)); border-radius:16px 16px 0 0;
+    background:color-mix(in srgb, var(--card) 88%, transparent); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+    border-top:1px solid var(--chip); box-shadow:0 -6px 24px rgba(0,0,0,.12) }
+  body.in-call{ padding-bottom:calc(var(--dock-h, 120px) + 8px) }
+  body.in-call .dock .eq{ margin-top:0; font-size:18px }
+  body.in-call .dock .actions button, body.in-call .dock #unlock{ margin-top:8px; padding:12px }
+  body.in-call .dock .leave-confirm{ margin-top:8px }
+  /* 通話中はタブの行を上に貼り付ける（スクロールの上限＝タブ。上の状態行や見出しは流れて消え、
+     中身だけが下で動く。利用者 2026-11-05）。貼り付く範囲はカード（.status）の中 */
+  body.in-call #tabs{ position:sticky; top:env(safe-area-inset-top, 0px); z-index:20; background:var(--panel);
+    box-shadow:0 6px 10px -8px rgba(0,0,0,.25) }
+  /* ノッチのある iPhone：貼り付く位置は安全領域の下なので、その上の隙間を中身が流れて見える
+     （利用者 2026-11-06 のスクショ）。貼り付いている間（.stuck・JS が #tabsTop との差で判定）だけ
+     行をカードの端まで広げ、上の隙間を同じ色で塗る */
+  body.in-call #tabs.stuck{ margin-left:-14px; margin-right:-14px; padding-left:14px; padding-right:14px }
+  body.in-call #tabs.stuck::before{ content:''; position:absolute; left:0; right:0; bottom:100%;
+    height:env(safe-area-inset-top, 0px); background:var(--panel) }
+  /* 段（tray）。参加前：シェアの段だけ普通に流れる（招待リンクは参加前にも出る）。通話中：選んだ段だけ */
+  .tray-pane[data-pane="fn"], .tray-pane[data-pane="chat"]{ display:none }
+  body.in-call .tray-pane{ display:none }
+  body.in-call .tray-pane.on{ display:block; margin-top:10px }
+  body.in-call .dock .reactions{ margin-top:0 }
+  body.in-call .dock .reactions button{ padding:7px 0; font-size:18px }
+  .fn-row{ display:flex; gap:8px }
+  .fn-row .retry-btn{ flex:1; justify-content:center; padding:10px 11px; font-size:14px; border-radius:12px }
+  .fn-row .retry-btn svg{ width:18px; height:18px }
+  body.in-call .dock .chat-row{ margin-top:0 }
+  body.in-call .dock #shareWrap{ margin-top:0 !important }
+  /* QR を開いている間は URL の行を畳む（QR と部屋名があれば足りる・盤が無駄に高くならない。利用者 2026-11-05） */
+  body.in-call .dock #qrBox:not([hidden]) ~ #shareLabel, body.in-call .dock #qrBox:not([hidden]) ~ br,
+  body.in-call .dock #qrBox:not([hidden]) ~ a.share{ display:none }
+  /* 入力中（body.typing）は盤を入力欄だけに。畳む順は「盤の中で入力欄以外」 */
+  body.in-call.typing .dock .eq, body.in-call.typing .dock .actions, body.in-call.typing .dock .tray-tabs,
+  body.in-call.typing .dock #unlock, body.in-call.typing .dock .leave-confirm{ display:none }
+  body.in-call.typing .dock .tray-pane.on{ margin-top:0 }
+  body.in-call.typing .dock{ padding-top:10px }
+  /* 最下段の切り替え（通話中だけ）。主タブと同じ「選んだものは文字色・下線」 */
+  .tray-tabs{ display:none; gap:4px; margin-top:8px; padding-top:6px; border-top:1px solid var(--border) }
+  body.in-call .tray-tabs{ display:flex }
+  .tray-tab{ flex:1; width:auto; margin:0; padding:5px 0 3px; background:transparent; color:var(--sub); font-size:16px; font-weight:700;
+    line-height:1.1; border-radius:8px; display:flex; flex-direction:column; align-items:center; gap:2px; position:relative }
+  .tray-tab small{ font-size:10px; font-weight:600; letter-spacing:.02em }
+  .tray-tab svg{ width:22px; height:22px; flex:none }
+  .tray-tab[aria-selected="true"]{ color:var(--text); background:var(--tab-on) }
+  @media (max-width:560px){
+    body.in-call .dock{ max-width:none; border-radius:0; padding-left:max(14px, env(safe-area-inset-left)); padding-right:max(14px, env(safe-area-inset-right)) }
+    /* スマホ用の body{padding:0 0 env(...)} より後ろに置く＝下余白はこちらが勝つ */
+    body.in-call{ padding-bottom:calc(var(--dock-h, 120px) + env(safe-area-inset-bottom)) }
+  }
   /* 入口の案内（お休み中／いま開いています）。注意の枠と同じ温度で */
   .entry-note{ margin-top:12px; padding:10px 12px; border-radius:10px; font-size:13px; line-height:1.6;
     background:var(--warn-bg); border:1px solid var(--warn-border); color:var(--text) }
@@ -1174,8 +1231,7 @@
         <!-- アイコンは**動画プレイヤーで広く使われている PiP の形**（枠の右下に小さい四角）。
              「ピクチャインピクチャ」という語は表記も揺れていて一般語とは言えないので、
              **記号だけ借りて、言葉は「小窓」**にしてある（2026-09-13・利用者と検討） -->
-        <button id="pip" class="retry-btn" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="8" height="6" rx="1" fill="currentColor" stroke="none"/></svg><span class="pip-lbl">小窓</span></button>
-        <button id="retry" class="retry-btn" type="button" hidden>🔄 つなぎ直す</button>
+        <!-- 小窓・つなぎ直すは v0.16.25 試作で操作盤の「機能」の段へ（下の #dock .tray） -->
       </div>
     </div>
     <div style="margin-top:8px">いま一緒にいる人：<span class="peers" id="count">0</span> 人</div>
@@ -1201,6 +1257,7 @@
     <!-- 通話中のタブ。**要素はどれもDOMから消さず、表示/非表示だけをここが握る**
          （消すと吹き出し・VAD・リアクションの座標など、行に紐づいた仕掛けが全部作り直しになる）。
          既定は「メンバー」。参加していない間はタブごと出さない。 -->
+    <div id="tabsTop" aria-hidden="true"></div><!-- 貼り付きの判定用（高さ 0） -->
     <div id="tabs" class="tabs" role="tablist" aria-label="通話中の表示" hidden>
       <button id="tabMembers" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panMembers"><span class="t-em">👥</span><span class="t-label">メンバー</span></button>
       <button id="tabChat" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panChat"><span class="t-em">💬</span><span class="t-label">ひとこと</span><span class="t-dot" aria-hidden="true"></span></button>
@@ -1210,8 +1267,6 @@
     </div>
     <div id="panMembers" class="panel" role="tabpanel" aria-labelledby="tabMembers" hidden>
       <div id="members" class="members"></div>
-      <!-- リアクション。中身は JS が REACTIONS から作る（一覧の定義を1か所に保つ） -->
-      <div id="reactions" class="reactions" hidden></div>
       <!-- 経路アイコンの凡例。参加した直後だけ開いて出し、数秒で畳んで1行のボタンに戻る。
            中身は JS が入れる（行内アイコンと同じSVG定数を使い、見た目を必ず一致させるため） -->
       <details id="connLegend" class="conn-legend" hidden>
@@ -1224,17 +1279,7 @@
            後から来た人には送らない（＝その場だけのものという性質は変えない）。
            入力欄の真上に置くのは「読む→打つ」で視線が繋がるため。1件も無いうちは出さない。 -->
       <div id="chatLog" class="chat-log" hidden></div>
-      <!-- ひとこと。履歴は持たない（後から来た人には出ない）＝その場だけのもの -->
-      <div id="chatRow" class="chat-row" hidden>
-        <!-- ★入力の候補に「カード番号」等が出ないようにする属性一式（Android で報告あり）。
-             name を message と明示するのは、名前が無いと自動入力側が位置や形から
-             推測して支払い欄と誤判定することがあるため。inputmode/enterkeyhint は
-             キーボードを文章向きにする。 -->
-        <input id="chatText" name="message" type="text" placeholder="ひとこと…" maxlength="60"
-               inputmode="text" enterkeyhint="send" autocomplete="off" autocorrect="off"
-               autocapitalize="sentences" spellcheck="false">
-        <button id="chatSend" type="button">送信</button>
-      </div>
+      <!-- 入力欄（#chatRow）は v0.16.25 試作で操作盤の「ひとこと」の段へ -->
     </div>
     <!-- おたより（配信部屋のみ）。**枠主とリスナーで中身が入れ替わる**：
          枠主＝募集を立てる欄＋集まった投稿＋公開ボタン／リスナー＝募集の見出し＋投稿欄。
@@ -1303,6 +1348,10 @@
          **スピーカーへ直接ではなく、この要素に流す**（iPhone で音量が確保でき、背面でも中断されない） -->
     <audio id="appAudio" playsinline aria-hidden="true"></audio>
     <video id="pipVideo" class="pip-video" playsinline muted aria-hidden="true"></video>
+    <!-- 操作盤（v0.16.25 試作・利用者の指定 2026-11-05）：イコライザー・音の解錠・退出の確認・ミュート／退出を 1 つの箱に
+         まとめ、**通話中は画面の下に固定**する（body.in-call）。スマホで参加者リストを見ている間もミュートと退出が
+         親指の届く所にある。箱の高さは JS が --dock-h に入れ、body の下余白で中身が隠れないようにする。 -->
+    <div id="dock" class="dock">
     <div id="eq" class="eq" hidden aria-hidden="true"></div>
     <!-- ミュート／退出は**イコライザーと招待リンクの間**（2026-09-18・利用者の指定）。
          カードの上に置くと、スマホでは参加者リストを見ている間に画面の外へ出て目に入らない。
@@ -1327,6 +1376,38 @@
       <button id="mute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/><line class="mic-slash" x1="4" y1="3" x2="20" y2="21"/></svg><span class="lbl">ミュート</span></button>
       <button id="leave"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8"/><path d="M14 3v18"/><path d="M18 12h4"/><path d="m19 9 3 3-3 3"/></svg><span>退出</span></button>
     </div>
+    <!-- 段（tray）：ミュート／退出の下の 1 段を 4 つの中身で切り替える（利用者の案・2026-11-05）。
+         1 リアクション／2 機能（小窓・つなぎ直す）／3 ひとこと（入力欄）／4 シェア（招待リンク・QR）。
+         切り替えは最下段の 4 つのボタン（.tray-tabs・通話中だけ出る）。参加前はシェアの段だけが普通に流れて出る。 -->
+    <div class="tray">
+      <div class="tray-pane on" data-pane="react">
+        <!-- リアクション。中身は JS が REACTIONS から作る（一覧の定義を1か所に保つ）。どのタブを見ていても押せる -->
+        <div id="reactions" class="reactions" hidden></div>
+      </div>
+      <div class="tray-pane" data-pane="fn">
+        <div class="fn-row">
+          <!-- アイコンは**動画プレイヤーで広く使われている PiP の形**（枠の右下に小さい四角）。
+               「ピクチャインピクチャ」という語は表記も揺れていて一般語とは言えないので、
+               **記号だけ借りて、言葉は「小窓」**にしてある（2026-09-13・利用者と検討） -->
+          <button id="pip" class="retry-btn" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="8" height="6" rx="1" fill="currentColor" stroke="none"/></svg><span class="pip-lbl">小窓</span></button>
+          <!-- 矢印の輪は泡版（pop_demo/icons.js の refresh）と同じ線（2026-11-06） -->
+          <button id="retry" class="retry-btn" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.6-4.6L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.6 4.6L20 16"/><path d="M20 21v-5h-5"/></svg> つなぎ直す</button>
+        </div>
+      </div>
+      <div class="tray-pane" data-pane="chat">
+      <!-- ひとこと。履歴は持たない（後から来た人には出ない）＝その場だけのもの -->
+      <div id="chatRow" class="chat-row" hidden>
+        <!-- ★入力の候補に「カード番号」等が出ないようにする属性一式（Android で報告あり）。
+             name を message と明示するのは、名前が無いと自動入力側が位置や形から
+             推測して支払い欄と誤判定することがあるため。inputmode/enterkeyhint は
+             キーボードを文章向きにする。 -->
+        <input id="chatText" name="message" type="text" placeholder="ひとこと…" maxlength="60"
+               inputmode="text" enterkeyhint="send" autocomplete="off" autocorrect="off"
+               autocapitalize="sentences" spellcheck="false">
+        <button id="chatSend" type="button">送信</button>
+      </div>
+      </div>
+      <div class="tray-pane" data-pane="share">
     <div style="margin-top:10px" id="shareWrap" hidden>
       <div id="qrBox" class="qr-inline" hidden>
         <div id="qrImg" class="qr-img">生成中…</div>
@@ -1337,6 +1418,17 @@
         <button id="copy">🔗 招待リンクをコピー</button>
         <button id="qr" aria-expanded="false">📱 QRコード</button>
       </div>
+      </div>
+    </div>
+    <!-- 印は泡版（pop_demo/icons.js）の線のアイコン：24×24・currentColor・線幅 2・端は丸め（参加・マイク・退出と同じ流儀）。
+         リアクション＝reactplus・ひとこと＝chat・シェア＝link は泡版そのまま。機能のレンチは泡版に無いので同じ流儀で描いた（2026-11-06） -->
+    <div class="tray-tabs" role="tablist" aria-label="下の段の切り替え">
+      <button type="button" class="tray-tab" data-pane="react" aria-selected="true" aria-label="リアクション"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="13" r="7.5"/><path d="M7.5 15a4 4 0 0 0 6 0"/><path d="M8 10.5h.01M13 10.5h.01"/><path d="M19.5 2.5v5M17 5h5"/></svg><small>リアクション</small></button>
+      <button type="button" class="tray-tab" data-pane="fn" aria-selected="false" aria-label="機能"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 6.5a5 5 0 0 1-6.6 4.7l-8.3 8.3a2 2 0 0 1-2.8-2.8l8.3-8.3A5 5 0 0 1 17.3 2l-2.8 2.8 .7 2.8 2.8.7z"/></svg><small>機能</small></button>
+      <button type="button" class="tray-tab" data-pane="chat" aria-selected="false" aria-label="ひとこと"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4c4.7 0 8.5 3.1 8.5 7s-3.8 7-8.5 7c-1 0-2-.1-2.9-.4L5 20l1.2-3.5C4.5 15.2 3.5 13.2 3.5 11c0-3.9 3.8-7 8.5-7z"/></svg><small>ひとこと</small></button>
+      <button type="button" class="tray-tab" data-pane="share" aria-selected="false" aria-label="シェア"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13.5a4.5 4.5 0 0 0 6.8.5l2.7-2.7a4.5 4.5 0 0 0-6.4-6.4l-1.5 1.5"/><path d="M14 10.5a4.5 4.5 0 0 0-6.8-.5l-2.7 2.7a4.5 4.5 0 0 0 6.4 6.4l1.5-1.5"/></svg><small>シェア</small></button>
+    </div>
+    </div>
     </div>
   </div>
   <!-- 版の表示。不具合の報告で「どの版か」が分かるように。中身は APP_VERSION から入れる。
@@ -1749,6 +1841,55 @@ const vis = (id, on) => { const el = $(id); if (el) el.style.display = on ? 'fle
 // ─ frame スケジュールの共通化 ─ requestAnimationFrame の直書きを束ねる（2 段はスタイル確定待ち）
 const raf = fn => requestAnimationFrame(fn)
 const raf2 = fn => requestAnimationFrame(() => requestAnimationFrame(fn))
+// 操作盤（#dock）の高さを body の下余白に伝える（固定した盤の裏に一覧の末尾が隠れないように）。
+// ResizeObserver が無い古いブラウザは CSS の既定値（120px）で動く
+try { new ResizeObserver(([e]) => document.documentElement.style.setProperty('--dock-h', Math.ceil(e.contentRect.height + 26) + 'px')).observe($('dock')) } catch {}
+// 段（tray）の切り替え。ひとことの段を選んだら主タブもひとことにする（打つ→読む の視線が繋がる）。
+// 退出で resetJoinedUI がリアクションに戻す
+// 逆（主タブのひとこと→段）は selectTab が呼ぶ。そのときは入力欄にフォーカスしない（読むだけの人のキーボードを出さない）
+const trayShow = (n, focus = true) => {
+  document.querySelectorAll('.tray-pane').forEach(p => p.classList.toggle('on', p.dataset.pane === n))
+  document.querySelectorAll('.tray-tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.pane === n)))
+  if (n === 'chat' && call.joinedId) { selectTab('chat'); if (focus) { try { $('chatText').focus({ preventScroll: true }) } catch {} } }
+}
+document.querySelectorAll('.tray-tab').forEach(t => { t.onclick = () => trayShow(t.dataset.pane) })
+// iPhone の Safari では、キーボードが出ても position:fixed の盤は持ち上がらず、キーボードの裏に隠れる
+// （固定の基準はレイアウトの viewport で、縮むのは見えている viewport のほう）。見えている画面の下端を
+// visualViewport から求め、盤の bottom をそこへ合わせる。キーボードが消えれば 0 に戻る。
+// Android の Chrome はキーボードでレイアウトごと縮むので差は 0 のまま＝何もしないのと同じ
+const fitDock = () => {
+  const vv = window.visualViewport; if (!vv) return
+  const off = document.body.classList.contains('in-call') ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0
+  $('dock').style.bottom = off ? off + 'px' : ''
+}
+window.visualViewport?.addEventListener('resize', fitDock)
+window.visualViewport?.addEventListener('scroll', fitDock)
+// PC（2 列）：盤の左右を**左の通話カードにぴったり**合わせる（利用者 2026-11-06）。カードの位置は中央寄せの
+// 計算（スクロールバー・折り返し）に依るので CSS で出さず、実測した left/width を盤に写す。スマホ（560 以下）は
+// CSS の全幅のまま＝ここでは触らない。退出でも外す
+const fitDockX = () => {
+  const d = $('dock'), c = document.querySelector('.wrap > .card')
+  if (!document.body.classList.contains('in-call') || window.innerWidth <= 560 || !c) { d.style.left = d.style.width = d.style.margin = ''; return }
+  const r = c.getBoundingClientRect()
+  d.style.left = Math.round(r.left) + 'px'; d.style.width = Math.round(r.width) + 'px'; d.style.margin = '0'
+}
+addEventListener('resize', fitDockX)
+try { new ResizeObserver(fitDockX).observe(document.querySelector('.wrap')) } catch {}
+// タブの行が上に貼り付いているか（CSS の .stuck）。sticky は自分では状態を持たないので、直前の
+// 高さ 0 の #tabsTop との距離が margin-top より開いたら貼り付いている、と見る
+const tabsStuck = () => {
+  const t = $('tabs'); if (t.hidden || !document.body.classList.contains('in-call')) { t.classList.remove('stuck'); return }
+  const gap = t.getBoundingClientRect().top - $('tabsTop').getBoundingClientRect().top
+  t.classList.toggle('stuck', gap > parseFloat(getComputedStyle(t).marginTop) + 1)
+}
+addEventListener('scroll', tabsStuck, { passive: true })
+window.visualViewport?.addEventListener('resize', tabsStuck)
+// 入力欄に入っている間（＝キーボードが出ている間）は、盤を入力欄だけにする（イコライザー・ミュート／退出・
+// 段の切り替えを畳む）。キーボードで狭くなった画面に盤が丸ごと乗ると、ひとことの記録が見えない（利用者 2026-11-05）
+$('chatText').addEventListener('focus', () => document.body.classList.add('typing'))
+// 盤を元の形に戻すのは**少し待ってから**：送信を押すと、click より先に入力欄の blur が来る。すぐ戻すと
+// 送信ボタンが動いて click が空振りする（iPhone で「送信を押すとキーボードが引っ込むだけ」になった・2026-11-05）
+$('chatText').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('chatText')) { document.body.classList.remove('typing'); $('panChat').style.height = '' } }, 450))
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
 // getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
 const lsGet = (k, d = null) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
@@ -3958,6 +4099,8 @@ const selectTab = key => {
   }
   call.tab = key
   if (key === 'chat') $('tabChat').classList.remove('unread')   // 見たら既読
+  // 主タブでひとことを開いたら、盤もひとことの段（入力欄）にする（段から来たときは既に on＝二重に呼ばない）
+  if (key === 'chat' && document.body.classList.contains('in-call') && !document.querySelector('.tray-pane[data-pane="chat"].on')) trayShow('chat', false)
   renderTabs()
 }
 TAB_PANELS.forEach(([key, tabId]) => { $(tabId).onclick = () => selectTab(key) })
@@ -6333,6 +6476,10 @@ const sendChat = () => {
   showBubble('self', text)                 // 送信は自分に返らないので自分の分は自分で出す
   speakChat('self', text)                  // 配信者の読み上げがオンなら自分のひとことも読む（全員に届く・v0.14.45）
   chatText.value = ''
+  // ★送信後に入力欄へ留まらせない（キーボードは閉じる）。iPhone の日本語入力は、変換中のまま送って
+  // 入力欄を空にすると IME の側に文が残り、次が打てなくなる（2026-11-05 実機・blur→focus で戻す案も
+  // 「入力できない」になった）。入力欄から出れば変換が終わる＝元からの動き
+  chatText.blur()
 }
 chatSend.onclick = sendChat
 // スマホでキーボードが出ると、ブラウザが入力欄を見える位置へ持ち上げる。その結果
@@ -6361,6 +6508,44 @@ chatText.addEventListener('focus', () => setTimeout(keepTopVisible, 350))
 window.visualViewport?.addEventListener('resize', () => {
   if (document.activeElement === chatText) setTimeout(keepTopVisible, 120)
 })
+// 入力欄が操作盤にある形（v0.16.25 試作）：キーボードが出ている間は、**ひとことの最後の行が入力欄の真上に
+// 来る位置**までページを送る。キーボードの出し入れでページの位置が流され、最後のコメントが見えなくなる
+// （2026-11-05 実機）。盤は visualViewport に合わせて持ち上げてあるので、盤の上端を基準にすればよい。
+// 新しい行が届いたときも同じ位置に保つ
+// ★欄の高さは固定（--panel-min ≒ 330px）なので、キーボードで見える範囲がそれより狭いと、最後の行を合わせた
+//   ときにタブが見える範囲の上へ押し出される。しかも iOS の sticky はページの上端が基準で、キーボードで見える
+//   範囲（visualViewport）がずれている間は効かない（2026-11-06 実機）。
+//   → 入力中だけ欄の高さを「見える範囲 − タブ − 入力欄」に縮め、タブが見える範囲の上端に来る位置へ送る。
+//   行は下寄せなので最後の行は見えたまま。縮めても 120px に満たない（横向きなど）ときは元の「最後の行を合わせる」
+const keepLogVisible = () => {
+  const pan = $('panChat'), tabs = $('tabs')
+  if (!document.body.classList.contains('typing')) { pan.style.height = ''; return }
+  // ★ひとことがまだ無いとき chatLog は hidden。欄（panChat）が見えていれば合わせる（2026-11-06 実機：空だと何もしていなかった）
+  const log = chatLogEl
+  if (!pan.offsetParent) return
+  const vv = window.visualViewport, want = $('dock').getBoundingClientRect().top - 8
+  if (vv && !tabs.hidden) {
+    const inset = parseFloat(getComputedStyle(tabs).top) || 0, topWant = vv.offsetTop + inset
+    const gap = pan.getBoundingClientRect().top - tabs.getBoundingClientRect().bottom
+    const h = Math.floor(want - topWant - tabs.offsetHeight - gap)
+    if (h >= 120) {
+      pan.style.height = ''; const nat = pan.offsetHeight
+      pan.style.height = Math.min(h, nat) + 'px'
+      // 貼り付いている最中は tabs の位置が本当の位置でないので、直前の #tabsTop から求める
+      const natTop = $('tabsTop').getBoundingClientRect().top + (parseFloat(getComputedStyle(tabs).marginTop) || 0)
+      const d = natTop - topWant
+      if (Math.abs(d) > 4) window.scrollBy({ top: d, behavior: 'auto' })
+      return
+    }
+  }
+  pan.style.height = ''
+  const last = (!log.hidden && log.lastElementChild) || pan
+  const d = last.getBoundingClientRect().bottom - want
+  if (Math.abs(d) > 4) window.scrollBy({ top: d, behavior: 'auto' })
+}
+chatText.addEventListener('focus', () => { setTimeout(keepLogVisible, 350); setTimeout(keepLogVisible, 700) })
+window.visualViewport?.addEventListener('resize', () => { if (document.activeElement === chatText) setTimeout(keepLogVisible, 120) })
+try { new MutationObserver(() => keepLogVisible()).observe(chatLogEl, { childList: true }) } catch {}
 chatText.addEventListener('keydown', e => {
   // 変換中の Enter で送らない（日本語入力では確定にも Enter を使う）
   if (e.key === 'Enter' && !imeEnter(e)) { e.preventDefault(); sendChat() }
@@ -7445,7 +7630,7 @@ const armJoined = (roomId, name, bcast) => {
     //   🌷／🌻 の分かれ目は平均通話時間なので、長く話すと通話の途中で変わる
     if (stageOf() !== before) { sendTo(call.profileAction, myProfilePayload()); sendHeartbeat() }
   }, 30000)
-  vis('join', false); vis('leave', true)
+  vis('join', false); vis('leave', true); document.body.classList.add('in-call'); fitDockX()   // 操作盤を下に固定（.dock）・PC は左のカードに揃える
   renderSpeak()   // ミュート／「マイクを使う」のどちらを出すかは、マイクを持っているかで決まる
   // 前の通話で出た「音声を有効化」を必ず消す。隠すのは resetJoinedUI だけだったが、あれは
   // つなぎ直しの途中では呼ばれない。＝一度出たボタンが居座り、押しても再生するものが無い、
@@ -7634,7 +7819,7 @@ $('mute').onclick = toggleMute
 
 // 参加中の見た目を「未参加」に戻す一式。退出時と、つなぎ直しに失敗して参加できなかった時に使う。
 const resetJoinedUI = () => {
-  vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false)
+  vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false); document.body.classList.remove('in-call'); fitDockX(); trayShow('react')
   vis('speak', false); $('speak').disabled = false
   vis('sndPeerRow', false)
   vis('sndReactRow', false)
