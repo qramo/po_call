@@ -1907,7 +1907,8 @@ addEventListener('scroll', tabsStuck, { passive: true })
 window.visualViewport?.addEventListener('resize', tabsStuck)
 // 入力欄に入っている間（＝キーボードが出ている間）は、盤を入力欄だけにする（イコライザー・ミュート／退出・
 // 段の切り替えを畳む）。キーボードで狭くなった画面に盤が丸ごと乗ると、ひとことの記録が見えない（利用者 2026-11-05）
-$('chatText').addEventListener('focus', () => document.body.classList.add('typing'))
+// PC（561 以上）では畳まない：キーボードが無いので狭くならず、盤はカードの底板（sticky）で動かない（利用者 2026-11-07）
+$('chatText').addEventListener('focus', () => { if (window.innerWidth <= 560) document.body.classList.add('typing') })
 // 盤を元の形に戻すのは**少し待ってから**：送信を押すと、click より先に入力欄の blur が来る。すぐ戻すと
 // 送信ボタンが動いて click が空振りする（iPhone で「送信を押すとキーボードが引っ込むだけ」になった・2026-11-05）
 $('chatText').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('chatText')) { document.body.classList.remove('typing'); $('panChat').style.height = '' } }, 450))
