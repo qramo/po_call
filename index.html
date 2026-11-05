@@ -6546,6 +6546,18 @@ const keepLogVisible = () => {
 chatText.addEventListener('focus', () => { setTimeout(keepLogVisible, 350); setTimeout(keepLogVisible, 700) })
 window.visualViewport?.addEventListener('resize', () => { if (document.activeElement === chatText) setTimeout(keepLogVisible, 120) })
 try { new MutationObserver(() => keepLogVisible()).observe(chatLogEl, { childList: true }) } catch {}
+// 話題タグの入力欄（#tagForm・状態カードの中）も同じ：キーボードが出ると、持ち上がった盤の裏に隠れる
+// （2026-11-06 β 実機）。入力中は欄の下端が盤の上に来る位置へ送る。上にはみ出していれば見える範囲の上端へ
+const keepTagVisible = () => {
+  const f = $('tagForm'); if (document.activeElement !== $('tagInput') || f.hidden || !f.offsetParent) return
+  const vv = window.visualViewport, r = f.getBoundingClientRect()
+  const top = (vv ? vv.offsetTop : 0) + (parseFloat(getComputedStyle($('tabs')).top) || 0) + 8
+  const bottom = (document.body.classList.contains('in-call') ? $('dock').getBoundingClientRect().top : (vv ? vv.offsetTop + vv.height : innerHeight)) - 8
+  const d = r.bottom > bottom ? r.bottom - bottom : r.top < top ? r.top - top : 0
+  if (Math.abs(d) > 4) window.scrollBy({ top: d, behavior: 'auto' })
+}
+$('tagInput').addEventListener('focus', () => { setTimeout(keepTagVisible, 350); setTimeout(keepTagVisible, 700) })
+window.visualViewport?.addEventListener('resize', () => { if (document.activeElement === $('tagInput')) setTimeout(keepTagVisible, 120) })
 chatText.addEventListener('keydown', e => {
   // 変換中の Enter で送らない（日本語入力では確定にも Enter を使う）
   if (e.key === 'Enter' && !imeEnter(e)) { e.preventDefault(); sendChat() }
