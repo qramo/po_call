@@ -394,10 +394,10 @@
   body.in-call{ padding-bottom:calc(var(--dock-h, 120px) + 8px) }
   /* PC（561 以上）：画面の下に固定せず、**カードの底板**として流す（2026-11-06・利用者の選択）。カードの中身のすぐ下に
      来るので縦長の窓でも間が空かない。状態カードが窓より高いときだけ下端に貼り付く（sticky）。状態カードの余白 14px を
-     打ち消して端から端まで・角は状態カードに合わせる（盤は #statusCard の中にあるので、その底板になる。版の行は従来どおりその下） */
+     打ち消し、さらに外のカードの余白 28px も越えて**カードの端から端まで**（固定していたときと同じ幅・利用者 2026-11-06）。盤は #statusCard の中にあるのでその底に来る。版の行は従来どおりその下 */
   @media (min-width:561px){
-    body.in-call .dock{ position:sticky; left:auto; right:auto; max-width:none; width:calc(100% + 28px); margin:14px -14px -14px;
-      border-radius:0 0 10px 10px; box-shadow:0 -6px 24px rgba(0,0,0,.08) }
+    body.in-call .dock{ position:sticky; left:auto; right:auto; max-width:none; width:calc(100% + 84px); margin:14px -42px -14px;
+      border-radius:12px; box-shadow:0 -6px 24px rgba(0,0,0,.08) }
     body.in-call{ padding-bottom:0 }
   }
   body.in-call .dock .eq{ margin-top:0; font-size:18px }
