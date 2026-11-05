@@ -65,7 +65,7 @@ class CH:
     def __init__(self, port):
         p = tempfile.mkdtemp(prefix='potff-'); profs.append(p)
         self.proc = subprocess.Popen([CHROME, '--headless=new', '--remote-debugging-port=%d' % port, '--user-data-dir=' + p, '--no-first-run',
-            '--use-fake-device-for-media-capture', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--mute-audio', 'about:blank'],
+            '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--mute-audio', 'about:blank'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); procs.append(self.proc)
         cdp.wait_for_devtools(port); self.port = port
     def open(self, url, name, emoji):

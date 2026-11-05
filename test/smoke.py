@@ -220,7 +220,7 @@ class Runner:
             '--remote-debugging-port=%d' % self.args.port,
             '--user-data-dir=' + self.profile,
             '--no-first-run', '--no-default-browser-check',
-            '--use-fake-device-for-media-capture',   # 偽マイク（許可ダイアログも出ない）
+            '--use-fake-device-for-media-stream',   # 偽マイク（許可ダイアログも出ない）
             '--use-fake-ui-for-media-stream',
             # 既定では自動再生を許してテストを安定させる。--real-autoplay を付けると本物の
             # ブラウザと同じ制限になり、「音声を有効化」ボタンが出る条件を再現できる。
@@ -2761,6 +2761,38 @@ def T87(r):
             '起動=%s / 移った=%s / 旧い置き場から消えた=%s / 同じリンク=%s' % (booted, listed, ls_gone, same))
 
 
+def T88(r, room):
+    """主タブで「ひとこと」を開くと、最新の行が見える位置へ送る（2026-11-07 β 実機）。
+    ひとことの欄は下詰めでスクロールしないので、最新の行は欄の下端にある。スマホで縦が狭いと
+    （上段の話題が 2 行・下にアドレスバー）欄の下端が盤の裏に隠れ、開いても空に見えていた。
+    判定：最後の行（無ければ欄）の下端が「貼り付いたタブの下〜盤の上」に入ること。ページの上端から・下端からの両方。
+    """
+    a = r.open_tab()
+    a.call('Emulation.setDeviceMetricsOverride', width=390, height=640, deviceScaleFactor=2, mobile=True)
+    # 初回に自動で開く助言（モーダル）が開いているとページが動かない＝閉じておく
+    a.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    r.join(a, room + 'LOG')
+    joined = a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
+    a.eval("(() => { const t = document.getElementById('chatText'); t.value = '最新の行'; document.getElementById('chatSend').click() })()")
+    posted = a.wait_for("document.getElementById('chatLog').children.length > 0", timeout=SHORT)
+    a.eval("document.activeElement && document.activeElement.blur()"); time.sleep(0.5)
+    seen = []
+    for start in ('window.scrollTo(0, 0)', 'window.scrollTo(0, document.body.scrollHeight)'):
+        a.eval("document.getElementById('tabMembers').click()"); time.sleep(0.3)
+        a.eval(start); time.sleep(0.4)
+        a.eval("document.getElementById('tabChat').click()")
+        seen.append(bool(a.wait_for("""(() => {
+          const log = document.getElementById('chatLog'), tabs = document.getElementById('tabs')
+          const last = (!log.hidden && log.lastElementChild) || document.getElementById('panChat')
+          const b = last.getBoundingClientRect().bottom
+          return b <= document.getElementById('dock').getBoundingClientRect().top && b >= tabs.getBoundingClientRect().bottom + 20
+        })()""", timeout=3)))
+    a.call('Emulation.clearDeviceMetricsOverride')
+    ok = joined and posted and all(seen)
+    r.check('T88', '主タブで「ひとこと」を開くと最新の行が見える（スマホの狭い縦・盤の裏に隠れない）', ok, 'pass',
+            '参加=%s / 送れた=%s / 上端から=%s / 下端から=%s' % (joined, posted, seen[0], seen[1]))
+
+
 def T86(r, room):
     """通話中の部屋の並び順（v0.16.15）：評価の関数と、自分の部屋が先頭に固定されること
 
@@ -4003,6 +4035,8 @@ def main():
             T87(r)
         if run('T86'):
             T86(r, room)
+        if run('T88'):
+            T88(r, room)
         if run('T27i'):
             T27i(r, room)
         if run('T27j'):

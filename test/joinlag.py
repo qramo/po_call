@@ -20,7 +20,7 @@ MEM = "document.querySelectorAll('#members .member').length"
 def chrome(port):
     p = tempfile.mkdtemp(prefix='potlag-'); profs.append(p)
     procs.append(subprocess.Popen([CHROME, '--headless=new', '--remote-debugging-port=%d' % port, '--user-data-dir=' + p, '--no-first-run',
-        '--use-fake-device-for-media-capture', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--mute-audio', 'about:blank'],
+        '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--mute-audio', 'about:blank'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     cdp.wait_for_devtools(port); return procs[-1]
 def tab(port, url):
