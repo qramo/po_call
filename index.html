@@ -1863,6 +1863,17 @@ const fitDock = () => {
 }
 window.visualViewport?.addEventListener('resize', fitDock)
 window.visualViewport?.addEventListener('scroll', fitDock)
+// PC（2 列）：盤の左右を**左の通話カードにぴったり**合わせる（利用者 2026-11-06）。カードの位置は中央寄せの
+// 計算（スクロールバー・折り返し）に依るので CSS で出さず、実測した left/width を盤に写す。スマホ（560 以下）は
+// CSS の全幅のまま＝ここでは触らない。退出でも外す
+const fitDockX = () => {
+  const d = $('dock'), c = document.querySelector('.wrap > .card')
+  if (!document.body.classList.contains('in-call') || window.innerWidth <= 560 || !c) { d.style.left = d.style.width = d.style.margin = ''; return }
+  const r = c.getBoundingClientRect()
+  d.style.left = Math.round(r.left) + 'px'; d.style.width = Math.round(r.width) + 'px'; d.style.margin = '0'
+}
+addEventListener('resize', fitDockX)
+try { new ResizeObserver(fitDockX).observe(document.querySelector('.wrap')) } catch {}
 // タブの行が上に貼り付いているか（CSS の .stuck）。sticky は自分では状態を持たないので、直前の
 // 高さ 0 の #tabsTop との距離が margin-top より開いたら貼り付いている、と見る
 const tabsStuck = () => {
@@ -7616,7 +7627,7 @@ const armJoined = (roomId, name, bcast) => {
     //   🌷／🌻 の分かれ目は平均通話時間なので、長く話すと通話の途中で変わる
     if (stageOf() !== before) { sendTo(call.profileAction, myProfilePayload()); sendHeartbeat() }
   }, 30000)
-  vis('join', false); vis('leave', true); document.body.classList.add('in-call')   // 操作盤を下に固定（.dock）
+  vis('join', false); vis('leave', true); document.body.classList.add('in-call'); fitDockX()   // 操作盤を下に固定（.dock）・PC は左のカードに揃える
   renderSpeak()   // ミュート／「マイクを使う」のどちらを出すかは、マイクを持っているかで決まる
   // 前の通話で出た「音声を有効化」を必ず消す。隠すのは resetJoinedUI だけだったが、あれは
   // つなぎ直しの途中では呼ばれない。＝一度出たボタンが居座り、押しても再生するものが無い、
@@ -7805,7 +7816,7 @@ $('mute').onclick = toggleMute
 
 // 参加中の見た目を「未参加」に戻す一式。退出時と、つなぎ直しに失敗して参加できなかった時に使う。
 const resetJoinedUI = () => {
-  vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false); document.body.classList.remove('in-call'); trayShow('react')
+  vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false); document.body.classList.remove('in-call'); fitDockX(); trayShow('react')
   vis('speak', false); $('speak').disabled = false
   vis('sndPeerRow', false)
   vis('sndReactRow', false)
