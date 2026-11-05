@@ -4136,6 +4136,8 @@ const selectTab = key => {
   // 主タブでひとことを開いたら、盤もひとことの段（入力欄）にする（段から来たときは既に on＝二重に呼ばない）
   if (key === 'chat' && document.body.classList.contains('in-call') && !document.querySelector('.tray-pane[data-pane="chat"].on')) trayShow('chat', false)
   renderTabs()
+  // 最新の行が見える位置へ送る。盤の段が切り替わって高さが決まってから測る（2 フレーム後）
+  if (key === 'chat') requestAnimationFrame(() => requestAnimationFrame(showChatLatest))
 }
 TAB_PANELS.forEach(([key, tabId]) => { $(tabId).onclick = () => selectTab(key) })
 $('tabs').addEventListener('keydown', e => {
@@ -6583,6 +6585,19 @@ const keepLogVisible = () => {
 chatText.addEventListener('focus', () => { setTimeout(keepLogVisible, 350); setTimeout(keepLogVisible, 700) })
 window.visualViewport?.addEventListener('resize', () => { if (document.activeElement === chatText) setTimeout(keepLogVisible, 120) })
 try { new MutationObserver(() => keepLogVisible()).observe(chatLogEl, { childList: true }) } catch {}
+// 主タブで「ひとこと」を開いたときも、最新の行が見える位置へ送る（2026-11-07 β 実機：スマホで上段が 2 行に
+// なると、欄の下端＝下詰めの最新の行が盤の裏に隠れて、開いても空に見えた）。最後の行が「貼り付いたタブの下〜
+// 盤の上」に入っていれば動かさない。外れていれば盤のすぐ上に合わせる（下へも上へも）。入力中は keepLogVisible の担当
+const showChatLatest = () => {
+  const pan = $('panChat'), tabs = $('tabs'), body = document.body
+  if (!body.classList.contains('in-call') || body.classList.contains('typing') || !pan.offsetParent) return
+  const last = (!chatLogEl.hidden && chatLogEl.lastElementChild) || pan
+  const vv = window.visualViewport
+  const want = Math.min($('dock').getBoundingClientRect().top, vv ? vv.offsetTop + vv.height : innerHeight) - 8
+  const top = (vv ? vv.offsetTop : 0) + (parseFloat(getComputedStyle(tabs).top) || 0) + tabs.offsetHeight + 8
+  const b = last.getBoundingClientRect().bottom
+  if (b > want + 4 || b < top) window.scrollBy({ top: b - want, behavior: 'smooth' })
+}
 // 話題タグの入力欄（#tagForm・状態カードの中）も同じ：キーボードが出ると、持ち上がった盤の裏に隠れる
 // （2026-11-06 β 実機）。入力中は欄の下端が盤の上に来る位置へ送る。上にはみ出していれば見える範囲の上端へ
 const keepTagVisible = () => {
