@@ -1877,7 +1877,7 @@ window.visualViewport?.addEventListener('resize', tabsStuck)
 $('chatText').addEventListener('focus', () => document.body.classList.add('typing'))
 // 盤を元の形に戻すのは**少し待ってから**：送信を押すと、click より先に入力欄の blur が来る。すぐ戻すと
 // 送信ボタンが動いて click が空振りする（iPhone で「送信を押すとキーボードが引っ込むだけ」になった・2026-11-05）
-$('chatText').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('chatText')) document.body.classList.remove('typing') }, 450))
+$('chatText').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('chatText')) { document.body.classList.remove('typing'); $('panChat').style.height = '' } }, 450))
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
 // getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
 const lsGet = (k, d = null) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
@@ -6498,11 +6498,34 @@ window.visualViewport?.addEventListener('resize', () => {
 // 来る位置**までページを送る。キーボードの出し入れでページの位置が流され、最後のコメントが見えなくなる
 // （2026-11-05 実機）。盤は visualViewport に合わせて持ち上げてあるので、盤の上端を基準にすればよい。
 // 新しい行が届いたときも同じ位置に保つ
+// ★欄の高さは固定（--panel-min ≒ 330px）なので、キーボードで見える範囲がそれより狭いと、最後の行を合わせた
+//   ときにタブが見える範囲の上へ押し出される。しかも iOS の sticky はページの上端が基準で、キーボードで見える
+//   範囲（visualViewport）がずれている間は効かない（2026-11-06 実機）。
+//   → 入力中だけ欄の高さを「見える範囲 − タブ − 入力欄」に縮め、タブが見える範囲の上端に来る位置へ送る。
+//   行は下寄せなので最後の行は見えたまま。縮めても 120px に満たない（横向きなど）ときは元の「最後の行を合わせる」
 const keepLogVisible = () => {
-  if (!document.body.classList.contains('typing')) return
-  const log = chatLogEl, last = log.lastElementChild || log
-  if (log.hidden || !log.offsetParent) return
-  const want = $('dock').getBoundingClientRect().top - 8
+  const pan = $('panChat'), tabs = $('tabs')
+  if (!document.body.classList.contains('typing')) { pan.style.height = ''; return }
+  // ★ひとことがまだ無いとき chatLog は hidden。欄（panChat）が見えていれば合わせる（2026-11-06 実機：空だと何もしていなかった）
+  const log = chatLogEl
+  if (!pan.offsetParent) return
+  const vv = window.visualViewport, want = $('dock').getBoundingClientRect().top - 8
+  if (vv && !tabs.hidden) {
+    const inset = parseFloat(getComputedStyle(tabs).top) || 0, topWant = vv.offsetTop + inset
+    const gap = pan.getBoundingClientRect().top - tabs.getBoundingClientRect().bottom
+    const h = Math.floor(want - topWant - tabs.offsetHeight - gap)
+    if (h >= 120) {
+      pan.style.height = ''; const nat = pan.offsetHeight
+      pan.style.height = Math.min(h, nat) + 'px'
+      // 貼り付いている最中は tabs の位置が本当の位置でないので、直前の #tabsTop から求める
+      const natTop = $('tabsTop').getBoundingClientRect().top + (parseFloat(getComputedStyle(tabs).marginTop) || 0)
+      const d = natTop - topWant
+      if (Math.abs(d) > 4) window.scrollBy({ top: d, behavior: 'auto' })
+      return
+    }
+  }
+  pan.style.height = ''
+  const last = (!log.hidden && log.lastElementChild) || pan
   const d = last.getBoundingClientRect().bottom - want
   if (Math.abs(d) > 4) window.scrollBy({ top: d, behavior: 'auto' })
 }
