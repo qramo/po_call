@@ -2782,10 +2782,15 @@ def T89(r, room):
             phone(t, 400)
             res.append(bool(t.wait_for("""(() => {
               const f = document.getElementById('mailForm').getBoundingClientRect()
+              // 入力中は盤ごと畳む（typing-field）ので、下の境目は見えている画面の下端
+              const vv = window.visualViewport, dock = document.getElementById('dock')
               return !document.getElementById('mailForm').hidden && f.top >= document.getElementById('tabs').getBoundingClientRect().bottom
-                && f.bottom <= document.getElementById('dock').getBoundingClientRect().top
+                && document.body.classList.contains('typing-field') && !dock.getClientRects().length
+                && f.bottom <= vv.offsetTop + vv.height
             })()""", timeout=4)))
         t.eval("document.activeElement && document.activeElement.blur()")
+        # 入力欄から出たら盤が戻る
+        res[-1] = res[-1] and bool(t.wait_for("!document.body.classList.contains('typing-field') && document.getElementById('dock').getClientRects().length > 0", timeout=3))
         phone(t, 700)
         return res
 
@@ -2807,7 +2812,7 @@ def T89(r, room):
     for t in (a, b):
         t.call('Emulation.clearDeviceMetricsOverride')
     ok = made and joined and heard and all(owner) and all(listener)
-    r.check('T89', '配信部屋のおたよりの入力欄が、キーボードが出ても盤やタブの裏に隠れない（配信者・リスナー）', ok, 'pass',
+    r.check('T89', '配信部屋のおたよりの入力欄が、キーボードが出ても盤やタブの裏に隠れない・入力中は盤を畳む（配信者・リスナー）', ok, 'pass',
             '配信部屋=%s / 参加=%s / 配信者:上端から=%s・下端から=%s / 募集が届いた=%s / リスナー:上端から=%s・下端から=%s'
             % (made, joined, owner[0], owner[1], heard, listener[0], listener[1]))
 

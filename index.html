@@ -432,6 +432,9 @@
   body.in-call.typing .dock #unlock, body.in-call.typing .dock .leave-confirm{ display:none }
   body.in-call.typing .dock .tray-pane.on{ margin-top:0 }
   body.in-call.typing .dock{ padding-top:10px }
+  /* 話題タグ・おたよりの欄に入っている間（body.typing-field・スマホ）は盤ごと畳む。盤に入力欄が無いので残す物が無い
+     （利用者 2026-11-07）。下の余白（--dock-h）は ResizeObserver が高さ 0 を無視して前の値のまま */
+  body.in-call.typing-field .dock{ display:none }
   /* 最下段の切り替え（通話中だけ）。主タブと同じ「選んだものは文字色・下線」 */
   .tray-tabs{ display:none; gap:4px; margin-top:8px; padding-top:6px; border-top:1px solid var(--border) }
   body.in-call .tray-tabs{ display:flex }
@@ -1877,7 +1880,7 @@ const raf = fn => requestAnimationFrame(fn)
 const raf2 = fn => requestAnimationFrame(() => requestAnimationFrame(fn))
 // 操作盤（#dock）の高さを body の下余白に伝える（固定した盤の裏に一覧の末尾が隠れないように）。
 // ResizeObserver が無い古いブラウザは CSS の既定値（120px）で動く
-try { new ResizeObserver(([e]) => document.documentElement.style.setProperty('--dock-h', Math.ceil(e.contentRect.height + 26) + 'px')).observe($('dock')) } catch {}
+try { new ResizeObserver(([e]) => { if (e.contentRect.height > 0) document.documentElement.style.setProperty('--dock-h', Math.ceil(e.contentRect.height + 26) + 'px') }).observe($('dock')) } catch {}
 // 段（tray）の切り替え。ひとことの段を選んだら主タブもひとことにする（打つ→読む の視線が繋がる）。
 // 退出で resetJoinedUI がリアクションに戻す
 // 逆（主タブのひとこと→段）は selectTab が呼ぶ。そのときは入力欄にフォーカスしない（読むだけの人のキーボードを出さない）
@@ -6606,14 +6609,32 @@ const keepFieldVisible = (formId, inputId, belowTabs) => {
   const f = $(formId); if (document.activeElement !== $(inputId) || f.hidden || !f.offsetParent) return
   const vv = window.visualViewport, r = f.getBoundingClientRect(), tabs = $('tabs')
   const top = (vv ? vv.offsetTop : 0) + (parseFloat(getComputedStyle(tabs).top) || 0) + (belowTabs && !tabs.hidden ? tabs.offsetHeight : 0) + 8
-  const bottom = (document.body.classList.contains('in-call') ? $('dock').getBoundingClientRect().top : (vv ? vv.offsetTop + vv.height : innerHeight)) - 8
+  const vb = vv ? vv.offsetTop + vv.height : innerHeight, dock = $('dock')
+  const bottom = (document.body.classList.contains('in-call') && dock.getClientRects().length ? Math.min(dock.getBoundingClientRect().top, vb) : vb) - 8
   const d = r.bottom > bottom ? r.bottom - bottom : r.top < top ? r.top - top : 0
   if (Math.abs(d) > 4) window.scrollBy({ top: d, behavior: 'auto' })
 }
+// ★iPhone の Safari は、フォーカスのあと**自分でも**欄をキーボードのすぐ上へ送る（＝盤の裏）。それが 700ms より
+//   遅れて来ると、こちらの調整が上書きされて欄が盤の裏に残った（2026-11-07 実機・配信者のお題の欄）。
+//   → フォーカスとキーボードの出入りから 1.6 秒は「落ち着くまで」として、見える範囲が動くたび（resize・scroll・
+//   ページの scroll）に合わせ直す。その後は利用者のスクロールを邪魔しない
 ;[['tagForm', 'tagInput', false], ['mailForm', 'mailText', true]].forEach(([formId, inputId, belowTabs]) => {
+  let until = 0, raf = 0
   const keep = () => keepFieldVisible(formId, inputId, belowTabs)
-  $(inputId).addEventListener('focus', () => { setTimeout(keep, 350); setTimeout(keep, 700) })
-  window.visualViewport?.addEventListener('resize', () => { if (document.activeElement === $(inputId)) setTimeout(keep, 120) })
+  const settle = () => { until = Date.now() + 1600; [120, 350, 700, 1100, 1600].forEach(ms => setTimeout(keep, ms)) }
+  const moved = () => {
+    if (document.activeElement !== $(inputId) || Date.now() > until || raf) return
+    raf = requestAnimationFrame(() => { raf = 0; keep() })
+  }
+  // 盤を畳む（スマホだけ）。戻すのは少し待ってから：募集する・追加を押すと click より先に blur が来るので、
+  // すぐ戻すとページが動いて click が空振りしうる（ひとことの欄と同じ・2026-11-05）
+  $(inputId).addEventListener('focus', () => { if (window.innerWidth <= 560) document.body.classList.add('typing-field'); settle() })
+  $(inputId).addEventListener('blur', () => setTimeout(() => {
+    if (document.activeElement !== $('tagInput') && document.activeElement !== $('mailText')) document.body.classList.remove('typing-field')
+  }, 450))
+  window.visualViewport?.addEventListener('resize', () => { if (document.activeElement === $(inputId)) settle() })
+  window.visualViewport?.addEventListener('scroll', moved)
+  addEventListener('scroll', moved, { passive: true })
 })
 chatText.addEventListener('keydown', e => {
   // 変換中の Enter で送らない（日本語入力では確定にも Enter を使う）
