@@ -6600,16 +6600,21 @@ const showChatLatest = () => {
 }
 // 話題タグの入力欄（#tagForm・状態カードの中）も同じ：キーボードが出ると、持ち上がった盤の裏に隠れる
 // （2026-11-06 β 実機）。入力中は欄の下端が盤の上に来る位置へ送る。上にはみ出していれば見える範囲の上端へ
-const keepTagVisible = () => {
-  const f = $('tagForm'); if (document.activeElement !== $('tagInput') || f.hidden || !f.offsetParent) return
-  const vv = window.visualViewport, r = f.getBoundingClientRect()
-  const top = (vv ? vv.offsetTop : 0) + (parseFloat(getComputedStyle($('tabs')).top) || 0) + 8
+// 配信部屋のおたよりの入力欄（#mailForm・おたよりタブの下端）も同じ（2026-11-07 β 実機）。こちらはタブの下に
+// あるので、上の境目は**貼り付いたタブの下端**（belowTabs）。状態カードの中の話題タグはタブより上なので含めない
+const keepFieldVisible = (formId, inputId, belowTabs) => {
+  const f = $(formId); if (document.activeElement !== $(inputId) || f.hidden || !f.offsetParent) return
+  const vv = window.visualViewport, r = f.getBoundingClientRect(), tabs = $('tabs')
+  const top = (vv ? vv.offsetTop : 0) + (parseFloat(getComputedStyle(tabs).top) || 0) + (belowTabs && !tabs.hidden ? tabs.offsetHeight : 0) + 8
   const bottom = (document.body.classList.contains('in-call') ? $('dock').getBoundingClientRect().top : (vv ? vv.offsetTop + vv.height : innerHeight)) - 8
   const d = r.bottom > bottom ? r.bottom - bottom : r.top < top ? r.top - top : 0
   if (Math.abs(d) > 4) window.scrollBy({ top: d, behavior: 'auto' })
 }
-$('tagInput').addEventListener('focus', () => { setTimeout(keepTagVisible, 350); setTimeout(keepTagVisible, 700) })
-window.visualViewport?.addEventListener('resize', () => { if (document.activeElement === $('tagInput')) setTimeout(keepTagVisible, 120) })
+;[['tagForm', 'tagInput', false], ['mailForm', 'mailText', true]].forEach(([formId, inputId, belowTabs]) => {
+  const keep = () => keepFieldVisible(formId, inputId, belowTabs)
+  $(inputId).addEventListener('focus', () => { setTimeout(keep, 350); setTimeout(keep, 700) })
+  window.visualViewport?.addEventListener('resize', () => { if (document.activeElement === $(inputId)) setTimeout(keep, 120) })
+})
 chatText.addEventListener('keydown', e => {
   // 変換中の Enter で送らない（日本語入力では確定にも Enter を使う）
   if (e.key === 'Enter' && !imeEnter(e)) { e.preventDefault(); sendChat() }

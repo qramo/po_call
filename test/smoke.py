@@ -2761,6 +2761,57 @@ def T87(r):
             '起動=%s / 移った=%s / 旧い置き場から消えた=%s / 同じリンク=%s' % (booted, listed, ls_gone, same))
 
 
+def T89(r, room):
+    """配信部屋のおたよりの入力欄が、キーボードが出ても盤やタブの裏に隠れない（2026-11-07 β 実機）。
+    話題タグの欄と同じ位置合わせ（keepFieldVisible）。おたよりの欄はタブの下にあるので、上の境目は貼り付いたタブの下端。
+    キーボードは画面の高さを縮めて代用する（700 → 400）。ページの上端から・下端からの両方。
+    """
+    phone = lambda t, h: t.call('Emulation.setDeviceMetricsOverride', width=390, height=h, deviceScaleFactor=2, mobile=True)
+    hide_help = "localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())"
+
+    def field_seen(t):
+        """おたよりタブを開き、ページの上端から・下端からの 2 通りで欄にフォーカス→キーボード相当に縮める"""
+        res = []
+        for start in ('window.scrollTo(0, 0)', 'window.scrollTo(0, document.body.scrollHeight)'):
+            phone(t, 700); time.sleep(0.4)
+            t.eval("document.activeElement && document.activeElement.blur()"); time.sleep(0.3)
+            t.eval("document.getElementById('tabMail').click()"); time.sleep(0.5)
+            t.eval(start); time.sleep(0.4)
+            t.call('Page.bringToFront')
+            t.eval("document.getElementById('mailText').focus()")
+            phone(t, 400)
+            res.append(bool(t.wait_for("""(() => {
+              const f = document.getElementById('mailForm').getBoundingClientRect()
+              return !document.getElementById('mailForm').hidden && f.top >= document.getElementById('tabs').getBoundingClientRect().bottom
+                && f.bottom <= document.getElementById('dock').getBoundingClientRect().top
+            })()""", timeout=4)))
+        t.eval("document.activeElement && document.activeElement.blur()")
+        phone(t, 700)
+        return res
+
+    # 配信者：お題を書く欄
+    a = r.open_tab(); phone(a, 700)
+    a.eval(hide_help); a.eval("document.getElementById('createBox').open = true")
+    made = make_bcast(r, a, room + 'MKB')
+    joined = a.wait_for("location.hash.includes('~pk~') && !document.getElementById('tabMail').hidden", timeout=DISCOVER)
+    owner = field_seen(a) if joined else [False, False]
+    # リスナー：配信者が募集を始めたあと、投稿を書く欄
+    a.eval("document.getElementById('tabMail').click()")
+    a.eval("(() => { const t = document.getElementById('mailText'); t.value = '最近の楽しみ'; document.getElementById('mailSend').click() })()")
+    b = r.open_tab(hash_=a.eval('location.hash')); phone(b, 700)
+    b.eval(hide_help); b.eval("window.__potBcErase(true)")   # ★同じブラウザなので鍵を消して聞き役にする
+    click_join(b)
+    heard = (b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+             and b.wait_for("document.getElementById('mailHead').textContent.includes('最近の楽しみ')", timeout=SHORT))
+    listener = field_seen(b) if heard else [False, False]
+    for t in (a, b):
+        t.call('Emulation.clearDeviceMetricsOverride')
+    ok = made and joined and heard and all(owner) and all(listener)
+    r.check('T89', '配信部屋のおたよりの入力欄が、キーボードが出ても盤やタブの裏に隠れない（配信者・リスナー）', ok, 'pass',
+            '配信部屋=%s / 参加=%s / 配信者:上端から=%s・下端から=%s / 募集が届いた=%s / リスナー:上端から=%s・下端から=%s'
+            % (made, joined, owner[0], owner[1], heard, listener[0], listener[1]))
+
+
 def T88(r, room):
     """主タブで「ひとこと」を開くと、最新の行が見える位置へ送る（2026-11-07 β 実機）。
     ひとことの欄は下詰めでスクロールしないので、最新の行は欄の下端にある。スマホで縦が狭いと
@@ -4037,6 +4088,8 @@ def main():
             T86(r, room)
         if run('T88'):
             T88(r, room)
+        if run('T89'):
+            T89(r, room)
         if run('T27i'):
             T27i(r, room)
         if run('T27j'):
