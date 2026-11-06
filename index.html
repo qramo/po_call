@@ -432,6 +432,9 @@
   body.in-call.typing .dock #unlock, body.in-call.typing .dock .leave-confirm{ display:none }
   body.in-call.typing .dock .tray-pane.on{ margin-top:0 }
   body.in-call.typing .dock{ padding-top:10px }
+  /* 話題タグ・おたよりの欄に入っている間（body.typing-field・スマホ）は盤ごと畳む。盤に入力欄が無いので残す物が無い
+     （利用者 2026-11-07）。下の余白（--dock-h）は ResizeObserver が高さ 0 を無視して前の値のまま */
+  body.in-call.typing-field .dock{ display:none }
   /* 最下段の切り替え（通話中だけ）。主タブと同じ「選んだものは文字色・下線」 */
   .tray-tabs{ display:none; gap:4px; margin-top:8px; padding-top:6px; border-top:1px solid var(--border) }
   body.in-call .tray-tabs{ display:flex }
@@ -494,6 +497,10 @@
   .status-line{ flex:1 1 auto; min-width:0; overflow-wrap:anywhere }
   /* 通話中は部屋名が見出し（17px）。「通話中：」は読み上げ用に残し画面には出さない（.sr） */
   .status-line.heading{ font-size:17px; font-weight:800; line-height:1.35 }
+  /* 変えられる人には部屋名がボタン（v0.16.26 試作）。見た目は見出しの文字のまま、鉛筆を小さく添える */
+  .rn-edit{ font:inherit; color:inherit; background:none; border:0; padding:0; margin:0; text-align:left; cursor:pointer;
+    overflow-wrap:anywhere }
+  .rn-edit .pen{ width:14px; height:14px; margin-left:5px; vertical-align:-1px; color:var(--sub) }
   .sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap }
   .head-actions{ flex-basis:100%; display:flex; gap:8px; justify-content:flex-end }
   .peers-line{ flex:none; max-width:46%; margin-left:auto; display:inline-flex; align-items:center; gap:4px;
@@ -1267,6 +1274,12 @@
       <!-- v0.16.25 試作：人数は見出しの右に小さく。ひとりのあいだは「相手を探しています…」（参加前は行ごと出さない） -->
       <div id="countRow" class="peers-line" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5A5 5 0 0 1 21 19.5"/></svg><span class="peers"><span id="count">0</span> 人</span><span id="countAlone" hidden>相手を探しています…</span></div>
     </div>
+    <!-- 部屋名を変える欄（v0.16.26 試作）。見出しの部屋名（.rn-edit）を押すと開く。話題タグの欄と同じ形 -->
+    <div id="nameForm" class="chat-row" hidden>
+      <input id="nameInput" name="roomname" type="text" maxlength="30" placeholder="新しい部屋名"
+             inputmode="text" enterkeyhint="done" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="false">
+      <button id="nameSend" type="button">変える</button>
+    </div>
     <!-- 人数が多くなってきたときだけ出る注意（上限に達したら言い方が変わる） -->
     <!-- 話題タグ（v0.13.1）。話題が変わった部屋に「今の話題」を後付けする。誰でも上書き（最新1つ・履歴なし）。
          抑止として付けた人の名前を全員に出す。 -->
@@ -1877,7 +1890,7 @@ const raf = fn => requestAnimationFrame(fn)
 const raf2 = fn => requestAnimationFrame(() => requestAnimationFrame(fn))
 // 操作盤（#dock）の高さを body の下余白に伝える（固定した盤の裏に一覧の末尾が隠れないように）。
 // ResizeObserver が無い古いブラウザは CSS の既定値（120px）で動く
-try { new ResizeObserver(([e]) => document.documentElement.style.setProperty('--dock-h', Math.ceil(e.contentRect.height + 26) + 'px')).observe($('dock')) } catch {}
+try { new ResizeObserver(([e]) => { if (e.contentRect.height > 0) document.documentElement.style.setProperty('--dock-h', Math.ceil(e.contentRect.height + 26) + 'px') }).observe($('dock')) } catch {}
 // 段（tray）の切り替え。ひとことの段を選んだら主タブもひとことにする（打つ→読む の視線が繋がる）。
 // 退出で resetJoinedUI がリアクションに戻す
 // 逆（主タブのひとこと→段）は selectTab が呼ぶ。そのときは入力欄にフォーカスしない（読むだけの人のキーボードを出さない）
@@ -1955,7 +1968,8 @@ const CALL_INIT = () => ({
   stream: null,         // 自分のマイク
   muted: false,         // 自分がミュート中か（トラックの enabled と対で持つ）
   joinedId: null,       // 参加中の部屋ID（null＝未参加）。v0.13 からハッシュ（旧クライアントの部屋なら名前）
-  meta: { name: '', tag: '', tagBy: '', tagAt: 0 },   // 部屋のメタデータ（名前は作った人が固定。タグは誰でも・新しいほうが勝つ）
+  meta: { name: '', nameAt: 0, nameBy: '', tag: '', tagBy: '', tagAt: 0 },   // 部屋のメタデータ（名前もタグも新しいほうが勝つ。名前は v0.16.26 試作から変えられる）
+  nameEarly: null,      // 配信部屋：本人確認の前に届いた配信者の改名（確認できたら採用する）
   joinedAt: 0,          // 参加した時刻。継続時間は「入ってから何秒」の差分で交換するので、
                         // 端末ごとの時計ズレの影響を受けない。巻き戻らない performance.now() を使う
   usingRelay: false,    // この通話がTURN中継経由か（!!ice）＝相手にIPが見えるかの自己申告
@@ -2481,14 +2495,19 @@ const hashName = () => { const q = parseHash(); return q.room ? q.name : roomBas
 // ハッシュがまだ無ければここで作る（先に配ってから入れる）。
 const pendingRoom = () => call.joinedId || roomIdOf(pendingHash ||= newHash(), pendingPk)
 const pendingRoomName = () => call.joinedId ? (call.meta.name || roomBase(call.joinedId)) : capRoom(roomInput.value.trim() || defaultRoom())
-const shareUrl = () => { const n = pendingRoom(); return n ? roomUrl(n, pendingRoomName()) : location.href }
+// ★入室後の招待リンク・QR には部屋名を載せない（v0.16.26 試作・利用者の提案）。日本語の名前は 1 文字 9 文字に
+//   膨らみ、QR のマスが増える。いま開いている部屋なので、開いた人はロビーから名前を引ける（entryAdopt）し、
+//   入れば中の人から meta で届く。後から名前を変えても古い名前がリンクに焼き付かない。
+//   **入室前は載せたまま**：先に配ってから入る使い方では、開いた時点で部屋がまだ無く、名前の無いリンクだと
+//   「この部屋は終わったみたいです」になってしまう。自分のアドレスバー（location.hash）は名前つきのまま＝ブックマーク用
+const shareUrl = () => { const n = pendingRoom(); return n ? roomUrl(n, call.joinedId ? '' : pendingRoomName()) : location.href }
 // 共有欄（リンク・コピー・QR）の表示を今の部屋名に合わせる。部屋名が無ければ隠す。
 const syncShare = () => {
   const n = pendingRoom(), nm = pendingRoomName()
   $('shareWrap').hidden = !nm
   try { syncIdleChrome() } catch {}   // 作る前／通話前は畳んだままにする（上書きされるため後から揃える）
   if (!nm) return
-  const url = roomUrl(n, nm)
+  const url = shareUrl()
   $('share').textContent = url; $('share').href = url
   $('shareLabel').textContent = '招待リンク' + (call.joinedId ? '' : '（まだ参加していません）') + '（タップで URL だけコピー）：'
   if (qrShown) drawQr()   // QRを開いたまま部屋名を変えたら描き直す
@@ -3908,8 +3927,16 @@ const setCount = () => { $('count').textContent = call.joinedId ? call.peers.siz
 const setRoomState = (prefix, label, kind) => {
   setState(prefix + label, kind)
   const sr = document.createElement('span'); sr.className = 'sr'; sr.textContent = prefix
-  $('state').replaceChildren(sr, label); $('state').parentElement.classList.add('heading')
+  // 部屋名を変えられる人には、名前そのものを押せるようにする（鉛筆つき・話題タグの札と同じ形の合図）
+  let body = label
+  if (canRenameRoom()) {
+    body = document.createElement('button'); body.type = 'button'; body.className = 'rn-edit'
+    body.setAttribute('aria-label', '部屋名：' + label + '。押すと変える')
+    body.append(label); body.insertAdjacentHTML('beforeend', PEN_SVG)
+  }
+  $('state').replaceChildren(sr, body); $('state').parentElement.classList.add('heading')
 }
+const PEN_SVG = '<svg class="pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>'
 
 // ミュート印のマイク斜線SVG。参加者リストとロビーのチップで共用する（ボタンのミュート表示とも同じ形）。
 const MIC_OFF_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/><line x1="4" y1="3" x2="20" y2="21"/></svg>'
@@ -3922,7 +3949,7 @@ const ARROWS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 const SHARE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>'
 const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>'
 const copyRoomUrl = async (el, id, name, people = []) => {
-  const url = roomUrl(id, name)
+  const url = roomUrl(id)   // ロビーに出ている＝開いている部屋なので名前は載せない（入室後の招待リンクと同じ・v0.16.26 試作）
   // 招待リンクのコピー（shareText）と同じ形＝**「部屋名 - 名前」＋改行＋URL**（v0.15.29・利用者の要望）。
   // SNS に貼ったとき何の部屋か・誰の部屋かが見える。名前の欄は在室情報から（v0.15.30）：配信部屋は 📣 と
   // **配信者の名前**（配信者印 bo の人）、雑談部屋は 🫖 と**在室者の名前の羅列**。取れなければコピーする本人の名前
@@ -5926,6 +5953,38 @@ const aloneLong = () => call.joinedAt && performance.now() - call.joinedAt > JOI
 
 // 表示は「実際に繋がっている人数」から導く。
 // 繋がってさえいれば、幽霊ピアのハンドシェイク失敗などは表に出さない。
+// 部屋名を取り込む（相手から届いた／自分で変えた）。最初の名前は黙って、変わったときだけひとことに残す
+// （誰が変えたかを全員に見せる＝話題タグの「付けた人」と同じ抑止）。小窓の絵は名前を描いているので録り直す
+const takeRoomName = (name, at, by) => {
+  const m = call.meta, prev = m.name
+  m.name = name; m.nameAt = at; m.nameBy = by || ''
+  if (prev && at > 0) logSystem('✏️ ' + (by || 'だれか') + ' が部屋名を「' + name + '」に変えました')
+  try { startPipFeed() } catch {}
+  return true
+}
+// 描画・アドレスバー（ブックマーク用に名前つき）・ロビーへの告知。相手ごとに間引いて呼ぶ（タグの奪い合い連打への自衛）
+const metaFlushNow = () => {
+  if (!call.joinedId) return
+  render(); syncShare(); location.hash = 'room=' + call.joinedId + '&name=' + encodeURIComponent(call.meta.name); sendHeartbeat()
+}
+// 部屋名を後から変える（v0.16.26 試作・利用者の提案）。部屋の実体は ID なので、変えても同じ部屋のまま。
+// 雑談部屋は誰でも（話題タグと同じ・変えた人の名前がひとことに残る）。配信部屋は配信者だけ（受け手も ownerOk で確かめる）。
+// 名前が ID そのものの部屋（常設の席・旧形式）は名前で入る入口なので変えさせない
+const canRenameRoom = () => !!call.joinedId && !!call.metaAction && isHashRoom(call.joinedId) && (!call.bcast || !!call.ownerKey)
+const renameRoom = text => {
+  const name = capRoom(text.trim())
+  if (!canRenameRoom() || !name || name === call.meta.name) return
+  takeRoomName(name, Math.max(Date.now(), (call.meta.nameAt || 0) + 1), profile.name || 'ゲスト')
+  sendTo(call.metaAction, call.meta)   // 全員へ（nameAt が新しいので採用される）
+  metaFlushNow()
+}
+$('state').addEventListener('click', e => {
+  if (!e.target.closest('.rn-edit') || !canRenameRoom()) return
+  const f = $('nameForm'); f.hidden = !f.hidden
+  if (!f.hidden) { $('nameInput').value = call.meta.name || ''; $('nameInput').focus(); $('nameInput').select() }
+})
+$('nameSend').onclick = () => { renameRoom($('nameInput').value); $('nameForm').hidden = true }
+$('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter' && !imeEnter(e)) { e.preventDefault(); $('nameSend').onclick() } })
 // 話題タグの行。タグは call.meta（部屋のメタデータ）。付けると全員へ meta を送り、在室にも載る
 const renderTag = () => {
   const row = $('tagRow'), txt = $('tagText')
@@ -6600,16 +6659,39 @@ const showChatLatest = () => {
 }
 // 話題タグの入力欄（#tagForm・状態カードの中）も同じ：キーボードが出ると、持ち上がった盤の裏に隠れる
 // （2026-11-06 β 実機）。入力中は欄の下端が盤の上に来る位置へ送る。上にはみ出していれば見える範囲の上端へ
-const keepTagVisible = () => {
-  const f = $('tagForm'); if (document.activeElement !== $('tagInput') || f.hidden || !f.offsetParent) return
-  const vv = window.visualViewport, r = f.getBoundingClientRect()
-  const top = (vv ? vv.offsetTop : 0) + (parseFloat(getComputedStyle($('tabs')).top) || 0) + 8
-  const bottom = (document.body.classList.contains('in-call') ? $('dock').getBoundingClientRect().top : (vv ? vv.offsetTop + vv.height : innerHeight)) - 8
+// 配信部屋のおたよりの入力欄（#mailForm・おたよりタブの下端）も同じ（2026-11-07 β 実機）。こちらはタブの下に
+// あるので、上の境目は**貼り付いたタブの下端**（belowTabs）。状態カードの中の話題タグはタブより上なので含めない
+const keepFieldVisible = (formId, inputId, belowTabs) => {
+  const f = $(formId); if (document.activeElement !== $(inputId) || f.hidden || !f.offsetParent) return
+  const vv = window.visualViewport, r = f.getBoundingClientRect(), tabs = $('tabs')
+  const top = (vv ? vv.offsetTop : 0) + (parseFloat(getComputedStyle(tabs).top) || 0) + (belowTabs && !tabs.hidden ? tabs.offsetHeight : 0) + 8
+  const vb = vv ? vv.offsetTop + vv.height : innerHeight, dock = $('dock')
+  const bottom = (document.body.classList.contains('in-call') && dock.getClientRects().length ? Math.min(dock.getBoundingClientRect().top, vb) : vb) - 8
   const d = r.bottom > bottom ? r.bottom - bottom : r.top < top ? r.top - top : 0
   if (Math.abs(d) > 4) window.scrollBy({ top: d, behavior: 'auto' })
 }
-$('tagInput').addEventListener('focus', () => { setTimeout(keepTagVisible, 350); setTimeout(keepTagVisible, 700) })
-window.visualViewport?.addEventListener('resize', () => { if (document.activeElement === $('tagInput')) setTimeout(keepTagVisible, 120) })
+// ★iPhone の Safari は、フォーカスのあと**自分でも**欄をキーボードのすぐ上へ送る（＝盤の裏）。それが 700ms より
+//   遅れて来ると、こちらの調整が上書きされて欄が盤の裏に残った（2026-11-07 実機・配信者のお題の欄）。
+//   → フォーカスとキーボードの出入りから 1.6 秒は「落ち着くまで」として、見える範囲が動くたび（resize・scroll・
+//   ページの scroll）に合わせ直す。その後は利用者のスクロールを邪魔しない
+;[['nameForm', 'nameInput', false], ['tagForm', 'tagInput', false], ['mailForm', 'mailText', true]].forEach(([formId, inputId, belowTabs]) => {
+  let until = 0, raf = 0
+  const keep = () => keepFieldVisible(formId, inputId, belowTabs)
+  const settle = () => { until = Date.now() + 1600; [120, 350, 700, 1100, 1600].forEach(ms => setTimeout(keep, ms)) }
+  const moved = () => {
+    if (document.activeElement !== $(inputId) || Date.now() > until || raf) return
+    raf = requestAnimationFrame(() => { raf = 0; keep() })
+  }
+  // 盤を畳む（スマホだけ）。戻すのは少し待ってから：募集する・追加を押すと click より先に blur が来るので、
+  // すぐ戻すとページが動いて click が空振りしうる（ひとことの欄と同じ・2026-11-05）
+  $(inputId).addEventListener('focus', () => { if (window.innerWidth <= 560) document.body.classList.add('typing-field'); settle() })
+  $(inputId).addEventListener('blur', () => setTimeout(() => {
+    if (!['nameInput', 'tagInput', 'mailText'].includes(document.activeElement?.id)) document.body.classList.remove('typing-field')
+  }, 450))
+  window.visualViewport?.addEventListener('resize', () => { if (document.activeElement === $(inputId)) settle() })
+  window.visualViewport?.addEventListener('scroll', moved)
+  addEventListener('scroll', moved, { passive: true })
+})
 chatText.addEventListener('keydown', e => {
   // 変換中の Enter で送らない（日本語入力では確定にも Enter を使う）
   if (e.key === 'Enter' && !imeEnter(e)) { e.preventDefault(); sendChat() }
@@ -6736,6 +6818,10 @@ const challengeOwner = (force = false) => {
 }
 // 本人確認が取れた瞬間に、配信者の分として取り置いていた合図を当て、確認前に捨てた音を取り直す。
 const onOwnerAuthed = own => {
+  if (call.nameEarly) {   // 確認前に届いていた配信者の改名（上の meta の注）
+    const e = call.nameEarly; call.nameEarly = null
+    if (e.peerId === own && e.at > (call.meta.nameAt || 0) && e.name !== call.meta.name) { takeRoomName(e.name, e.at, e.by); metaFlushNow() }
+  }
   if (call.ttsAnnEarly) { const e = call.ttsAnnEarly.get(own); if (e) { call.ttsAnn = e; call.ttsAnnEarly.delete(own) } }
   if (call.reqOpenEarly && call.reqOpenEarly.peerId === own) {
     const e = call.reqOpenEarly; call.reqOpenEarly = null
@@ -7206,25 +7292,28 @@ const wireRoom = () => {
     })
   }
   const sendProfile = id => sendTo(call.profileAction, myProfilePayload(), id)
-  // 部屋のメタデータ（名前・タグ）。入室時に互いに送り合う。名前は**先にいた人のもの**を採用
-  // （自分が持って来た名前より相手の meta が優先＝作った人が付けた名前が固定される）。
+  // 部屋のメタデータ（名前・タグ）。入室時に互いに送り合う。
+  // 名前は nameAt が新しいほうが勝つ（v0.16.26 試作で後から変えられるようにした）。持って来た名前は 0、
+  // 名前の無いリンクで来た人が補った名前は -1（中の人の名前に必ず負ける）、変えた名前は変えた時刻。
+  // 同じ値どうしは持っているほうのまま。nameAt を持たない古い版の meta は 0 扱い＝改名を上書きしない。
+  // **配信部屋の改名は配信者だけ**：本人確認（ownerOk）が済んだ相手からしか採らない。確認前に届いたものは
+  // nameEarly に取り置き、確認できたら onOwnerAuthed で採る（入った直後の meta は確認より先に届く）。
   // タグは tagAt が新しいほうが勝つ（誰でも上書き・履歴なし・付けた人の名前を添える）。
   call.metaAction = call.room.makeAction('meta')
   call.metaAction.onMessage = (d, { peerId }) => {
     if (!d || typeof d !== 'object') return
     const m = call.meta, name = capRoom(String(d.name ?? ''))
+    const nat = Math.max(-1, Math.min(Number(d.nameAt) || 0, Date.now() + 60000))
     let changed = false
-    if (name && !m.name) {   // 名前が無いときだけ受け取る（持って来た名前は変えない）
-      m.name = name; changed = true
-      try { startPipFeed() } catch {}   // 小窓の絵は参加時に録ってあるので、名前が届いたら録り直す（ハッシュのまま残さない）
-    }
+    if (name && name !== m.name && (!m.name || nat > (m.nameAt || 0))) {
+      if (call.bcast && nat > 0 && !ownerOk(peerId)) {
+        if (!call.nameEarly || nat > call.nameEarly.at) call.nameEarly = { peerId, name, at: nat, by: capText(d.nameBy, 20) }
+      } else changed = takeRoomName(name, nat, capText(d.nameBy, 20)) || changed
+    } else if (name && name === m.name && nat > (m.nameAt || 0)) { m.nameAt = nat; m.nameBy = capText(d.nameBy, 20) }
     const at = Math.min(Number(d.tagAt) || 0, Date.now() + 60000)
     if (at > (m.tagAt || 0)) { m.tag = capText(d.tag, ROOM_MAX); m.tagBy = capText(d.tagBy, 20); m.tagAt = at; changed = true }
     // 後処理（描画・hash 書き換え・ロビーへの heartbeat）は発信者ごとに間引く。タグの奪い合い連打への自衛
-    if (changed) throttleBy(call.metaSeen, peerId, META_ACCEPT_MS, call.metaFlush, () => {
-      if (!call.joinedId) return
-      render(); syncShare(); location.hash = 'room=' + call.joinedId + '&name=' + encodeURIComponent(call.meta.name); sendHeartbeat()
-    })
+    if (changed) throttleBy(call.metaSeen, peerId, META_ACCEPT_MS, call.metaFlush, metaFlushNow)
   }
   const sendMeta = id => sendTo(call.metaAction, call.meta, id)
 
@@ -7645,7 +7734,14 @@ const armJoined = (roomId, name, bcast) => {
   call.wantWake = true; wake()
   bgmTouched = false   // 部屋ごとに「まだ BGM を触っていない」から始める（場の BGM をもらえるように・v0.15.16）
   call.joinedId = roomId; call.joinedAt = performance.now(); call.warn = ''
-  call.meta = { name, tag: '', tagBy: '', tagAt: 0 }   // 名前は自分が持って来たもの。相手のほうが先なら meta で上書きされる
+  // 名前は自分が持って来たもの（nameAt 0）。つなぎ直しは改名の時刻も引き継ぐ（でないと 0 に戻って、古いリンクで
+  // 来た人の旧名と並んでしまう）。名前の無いリンク（入室後の招待リンク）で来た＝欄の名前は補ったもの → -1
+  { const q = parseHash(), re = rejoin && rejoin.room === roomId && rejoin.name === name ? rejoin : null
+    const weak = !re && !!q.room && roomBase(q.room) === roomBase(roomId) && !q.name
+    call.meta = { name, nameAt: re ? (Number(re.nameAt) || 0) : weak ? -1 : 0, nameBy: re ? capText(re.nameBy, 20) : '', tag: '', tagBy: '', tagAt: 0 }
+    // ★補った名前のまま誰からも名前が届かない＝自分しかいない（空の部屋を開き直した）。しばらくしたら 0 に上げて、
+    //   後から同じく名前なしのリンクで来た人（-1）にこちらの名前を渡せるようにする
+    if (weak) setTimeout(() => { if (call.joinedId === roomId && call.meta.nameAt === -1) call.meta.nameAt = 0 }, 15000) }
   render(); renderMembers(); renderBcNote()
   if (bcast && !call.ownerKey) startBcEndWatch()   // 聞き役：配信者が居なくなったら 60 秒待って終わる
   // 配信部屋のオーナー：自分を載せた名簿をまず配る。以後は grant/revoke のたびと、
@@ -7892,6 +7988,7 @@ const resetJoinedUI = () => {
   $('retry').hidden = true
   $('pip').hidden = true
   $('tagRow').hidden = true; $('tagForm').hidden = true   // 話題タグの行（join/leave の対称）
+  $('nameForm').hidden = true                             // 部屋名を変える欄も
   $('tabChat').classList.remove('unread')                // ひとことの未読の点も持ち越さない
   clearTimeout(leaveConfirmTimer); $('leaveConfirm').hidden = true   // 退出の確認も畳む
   try { $('cardDlg').close(); $('cardEditDlg').close(); $('cardWarnDlg').close(); $('cardAuthDlg').close(); $('cropDlg').close() } catch {}
@@ -7921,7 +8018,7 @@ const doReconnect = async ({ auto = false } = {}) => {
   $('retry').disabled = true
   setState(auto ? 'つながりが切れたので、つなぎ直しています…' : 'つなぎ直しています…', 'busy')
   saveOwnerGrants()
-  try { sessionStorage.setItem(REJOIN_KEY, JSON.stringify({ room: call.joinedId, name: call.meta.name, muted: call.muted, tts: sndTts, at: Date.now() })) } catch {}   // tts＝読み上げのオンを引き継ぐ（v0.14.54）
+  try { sessionStorage.setItem(REJOIN_KEY, JSON.stringify({ room: call.joinedId, name: call.meta.name, nameAt: call.meta.nameAt, nameBy: call.meta.nameBy, muted: call.muted, tts: sndTts, at: Date.now() })) } catch {}   // tts＝読み上げのオンを引き継ぐ（v0.14.54）
   // 先に退出を伝えてからリロードする。相手がこちらの離脱を早く知るほど、戻ったときに
   // すんなり繋ぎ直してもらえる。ただし完了を待ち続けない（届かなくてもリロードは進める）。
   leaveCall()

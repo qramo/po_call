@@ -2761,6 +2761,112 @@ def T87(r):
             '起動=%s / 移った=%s / 旧い置き場から消えた=%s / 同じリンク=%s' % (booted, listed, ls_gone, same))
 
 
+def T90(r, room):
+    """入室後の招待リンク・QR は部屋名を載せない（短くする）／部屋名を後から変えられる（v0.16.26 試作・利用者の提案）。
+    ・雑談部屋：A が入ると招待リンクから &name= が消え、アドレスバーには残る。B は名前なしのリンクで来て、名前はロビーから引く。
+      A が名前を変える → B の見出し・アドレスバー・ひとこと（「部屋名を…に変えました」）に届く。
+      C は**旧名つきの古いリンク**で来る → 入ると新しい名前になる（nameAt が新しいほうが勝つ）
+    ・配信部屋：聞き役には変えるボタンが無い。配信者が変えると聞き役に届く
+    """
+    hide_help = "localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())"
+    head_has = lambda n: "document.getElementById('state').textContent.includes(%s)" % js_str(n)
+    rename = lambda t, n: t.eval("(() => { const b = document.querySelector('#state .rn-edit'); if (!b) return false; b.click();"
+                                 " document.getElementById('nameInput').value = %s; document.getElementById('nameSend').click(); return true })()" % js_str(n))
+    name0, name1 = room + 'RN', room + '改'
+    a = r.open_tab(); a.eval(hide_help)
+    r.join(a, name0)
+    joined = bool(a.wait_for("!!document.querySelector('#state .rn-edit')", timeout=DISCOVER))
+    share = a.eval("document.getElementById('share').textContent") or ''
+    old = a.eval('location.hash') or ''
+    short = '#room=' in share and '&name=' not in share and '&name=' in old
+    b = r.open_tab(hash_=share[share.find('#'):] if '#' in share else '')
+    b.eval(hide_help)
+    from_lobby = bool(b.wait_for("document.getElementById('room').value === %s" % js_str(name0), timeout=DISCOVER))
+    click_join(b)
+    both = bool(a.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER) and b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER))
+    did = bool(rename(a, name1))
+    a_ok = bool(a.wait_for(head_has(name1) + " && decodeURIComponent(location.hash).includes(%s)" % js_str('&name=' + name1), timeout=SHORT))
+    b_ok = bool(b.wait_for(head_has(name1) + " && decodeURIComponent(location.hash).includes(%s)" % js_str('&name=' + name1)
+                           + " && document.getElementById('chatLog').textContent.includes(%s)" % js_str('部屋名を「' + name1 + '」に変えました'), timeout=SHORT))
+    c = r.open_tab(hash_=old); c.eval(hide_help)
+    c.wait_for("document.getElementById('room').value === %s" % js_str(name0), timeout=SHORT)
+    click_join(c)
+    c_ok = bool(c.wait_for('%s === 3' % MEMBERS, timeout=DISCOVER) and c.wait_for(head_has(name1), timeout=SHORT))
+    for t in (a, b, c):
+        click_leave(t)
+    # 配信部屋
+    o = r.open_tab(); o.eval(hide_help); o.eval("document.getElementById('createBox').open = true")
+    made = make_bcast(r, o, room + 'RB')
+    o_in = bool(o.wait_for("location.hash.includes('~pk~') && !!document.querySelector('#state .rn-edit')", timeout=DISCOVER))
+    l = r.open_tab(hash_=o.eval('location.hash')); l.eval(hide_help); l.eval("window.__potBcErase(true)")
+    click_join(l)
+    l_in = bool(l.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER))
+    l_cant = l_in and not l.eval("!!document.querySelector('#state .rn-edit')")
+    o_did = bool(rename(o, room + '配信改'))
+    l_ok = bool(l.wait_for(head_has(room + '配信改'), timeout=SHORT))
+    ok = joined and short and from_lobby and both and did and a_ok and b_ok and c_ok and made and o_in and l_cant and o_did and l_ok
+    r.check('T90', '入室後の招待リンクは部屋名なし／部屋名を後から変えられる（雑談は誰でも・配信は配信者だけ）', ok, 'pass',
+            '参加=%s / リンクに名前なし=%s / 名前はロビーから=%s / 2人=%s / 変えた=%s / A=%s / B=%s / 古いリンクの C=%s / '
+            '配信部屋=%s・%s / 聞き役は変えられない=%s / 配信者が変えた=%s / 聞き役に届く=%s'
+            % (joined, short, from_lobby, both, did, a_ok, b_ok, c_ok, made, o_in, l_cant, o_did, l_ok))
+
+
+def T89(r, room):
+    """配信部屋のおたよりの入力欄が、キーボードが出ても盤やタブの裏に隠れない（2026-11-07 β 実機）。
+    話題タグの欄と同じ位置合わせ（keepFieldVisible）。おたよりの欄はタブの下にあるので、上の境目は貼り付いたタブの下端。
+    キーボードは画面の高さを縮めて代用する（700 → 400）。ページの上端から・下端からの両方。
+    """
+    phone = lambda t, h: t.call('Emulation.setDeviceMetricsOverride', width=390, height=h, deviceScaleFactor=2, mobile=True)
+    hide_help = "localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())"
+
+    def field_seen(t):
+        """おたよりタブを開き、ページの上端から・下端からの 2 通りで欄にフォーカス→キーボード相当に縮める"""
+        res = []
+        for start in ('window.scrollTo(0, 0)', 'window.scrollTo(0, document.body.scrollHeight)'):
+            phone(t, 700); time.sleep(0.4)
+            t.eval("document.activeElement && document.activeElement.blur()"); time.sleep(0.3)
+            t.eval("document.getElementById('tabMail').click()"); time.sleep(0.5)
+            t.eval(start); time.sleep(0.4)
+            t.call('Page.bringToFront')
+            t.eval("document.getElementById('mailText').focus()")
+            phone(t, 400)
+            res.append(bool(t.wait_for("""(() => {
+              const f = document.getElementById('mailForm').getBoundingClientRect()
+              // 入力中は盤ごと畳む（typing-field）ので、下の境目は見えている画面の下端
+              const vv = window.visualViewport, dock = document.getElementById('dock')
+              return !document.getElementById('mailForm').hidden && f.top >= document.getElementById('tabs').getBoundingClientRect().bottom
+                && document.body.classList.contains('typing-field') && !dock.getClientRects().length
+                && f.bottom <= vv.offsetTop + vv.height
+            })()""", timeout=4)))
+        t.eval("document.activeElement && document.activeElement.blur()")
+        # 入力欄から出たら盤が戻る
+        res[-1] = res[-1] and bool(t.wait_for("!document.body.classList.contains('typing-field') && document.getElementById('dock').getClientRects().length > 0", timeout=3))
+        phone(t, 700)
+        return res
+
+    # 配信者：お題を書く欄
+    a = r.open_tab(); phone(a, 700)
+    a.eval(hide_help); a.eval("document.getElementById('createBox').open = true")
+    made = make_bcast(r, a, room + 'MKB')
+    joined = a.wait_for("location.hash.includes('~pk~') && !document.getElementById('tabMail').hidden", timeout=DISCOVER)
+    owner = field_seen(a) if joined else [False, False]
+    # リスナー：配信者が募集を始めたあと、投稿を書く欄
+    a.eval("document.getElementById('tabMail').click()")
+    a.eval("(() => { const t = document.getElementById('mailText'); t.value = '最近の楽しみ'; document.getElementById('mailSend').click() })()")
+    b = r.open_tab(hash_=a.eval('location.hash')); phone(b, 700)
+    b.eval(hide_help); b.eval("window.__potBcErase(true)")   # ★同じブラウザなので鍵を消して聞き役にする
+    click_join(b)
+    heard = (b.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER)
+             and b.wait_for("document.getElementById('mailHead').textContent.includes('最近の楽しみ')", timeout=SHORT))
+    listener = field_seen(b) if heard else [False, False]
+    for t in (a, b):
+        t.call('Emulation.clearDeviceMetricsOverride')
+    ok = made and joined and heard and all(owner) and all(listener)
+    r.check('T89', '配信部屋のおたよりの入力欄が、キーボードが出ても盤やタブの裏に隠れない・入力中は盤を畳む（配信者・リスナー）', ok, 'pass',
+            '配信部屋=%s / 参加=%s / 配信者:上端から=%s・下端から=%s / 募集が届いた=%s / リスナー:上端から=%s・下端から=%s'
+            % (made, joined, owner[0], owner[1], heard, listener[0], listener[1]))
+
+
 def T88(r, room):
     """主タブで「ひとこと」を開くと、最新の行が見える位置へ送る（2026-11-07 β 実機）。
     ひとことの欄は下詰めでスクロールしないので、最新の行は欄の下端にある。スマホで縦が狭いと
@@ -4037,6 +4143,10 @@ def main():
             T86(r, room)
         if run('T88'):
             T88(r, room)
+        if run('T89'):
+            T89(r, room)
+        if run('T90'):
+            T90(r, room)
         if run('T27i'):
             T27i(r, room)
         if run('T27j'):
