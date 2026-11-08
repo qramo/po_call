@@ -50,6 +50,9 @@ const R = [
   ['__VERSION__', w.APP_VERSION + '・potalk.app/ptt', 2],
   ['<meta name="viewport"', CSP + '\n  <meta name="viewport"', 1],
   ["try { savedName = localStorage.getItem('pochitalk_ptt_name'); } catch (_) {}", NAME_SEED, 1],
+  // ぽっと通話へ戻る道：ホーム（部屋を出たあとの画面）の先頭に置く。通話中の画面には置かない（押し間違いで通話が切れないように）
+  ['<div class="home" id="homeView">', '<div class="home" id="homeView">\n    <a class="potalk-back" id="potalkBack" href="../">← ぽっと通話に戻る</a>', 1],
+  ['  </style>\n</head>', '    .potalk-back { align-self: flex-start; color: #93c5fd; font-size: 0.85rem; text-decoration: none; padding: 4px 2px; }\n  </style>\n</head>', 1],
   // プライバシーの説明を、この置き場所に合わせる（配信元が違う・TURN の資格情報の出どころが違う）
   ['ただし、ページを配信している Cloudflare には、一般的なアクセス情報（IPアドレスなど）が、同社の方針に沿って記録されることがあります。',
    'ただし、ページを配信している GitHub Pages には、一般的なアクセス情報（IPアドレスなど）が、同社の方針に沿って記録されることがあります。', 1],
