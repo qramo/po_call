@@ -8195,6 +8195,11 @@ const lobbyRenderSeen = new Map()   // 発信者peerId → 最後に一覧を描
 const lobbyRenderFlush = { t: null }   // 間引いた分をまとめて描き直すタイマー（取りこぼさない）
 const renderLobbyThrottled = peerId => throttleBy(lobbyRenderSeen, peerId, LOBBY_RENDER_MS, lobbyRenderFlush, renderLobby)
 const presences = new Map()  // 発信者peerId → {room, name, emoji, muted, stage, ts}
+// ぽちっと通話（/ptt/・リョータさんの pochittalk と同じ網）の在室。送り主の公開鍵 → {ch, name, talking, tag, by, ts}。
+// 向こうは在室を Nostr の公開リレーへ直接流している（kind 29334・#x タグ・6 秒ごと・20 秒で失効）ので、ロビーはそれを読むだけ。
+// こちらからは何も送らない。部屋はタップで /ptt/?r=<部屋> に移る（同じ部屋に入る＝向こうの人とも話せる）
+const pttRooms = new Map()
+const PTT_KIND = 29334, PTT_TOPIC = 'pochitalk-presence-v1', PTT_EXPIRE_MS = 20000
 
 // 読み上げがオンか＝**配信部屋のオーナーのときだけ**真。ロビーに出す印（tt）と自分ぶんの在室で共用する
 const ttsOwnerOn = () => !!(call.bcast && call.ownerKey && sndTts)
@@ -8509,6 +8514,92 @@ window.__potLobbyRank = { score: lobbyScore, base: lobbyRankBase, apply: lobbyRa
 const lobbyTouched = () => { lobbyTouchAt = Date.now() }
 ;['pointerdown', 'touchstart', 'wheel', 'scroll'].forEach(ev => $('lobbyList').addEventListener(ev, lobbyTouched, { passive: true }))
 
+// ─ ぽちっと通話の部屋（上の pttRooms）─ 部屋 → {people:[{name, talking}], tag}。失効したものは数えない
+const pttLive = () => {
+  const out = new Map(), cut = Date.now() - PTT_EXPIRE_MS
+  pttRooms.forEach((v, k) => {
+    if (v.ts < cut) { pttRooms.delete(k); return }
+    let r = out.get(v.ch)
+    if (!r) out.set(v.ch, r = { people: [], tag: '' })
+    r.people.push({ name: v.name, talking: v.talking })
+    if (v.tag && !r.tag) { r.tag = v.tag; r.by = v.by }
+  })
+  return out
+}
+let pttAsk = null, pttAskTimer = null
+const pttAskClear = () => { clearTimeout(pttAskTimer); if (pttAsk) { pttAsk = null; renderLobby() } }
+const pttFmt = ch => ch.slice(0, 4).toUpperCase() + '·' + ch.slice(4).toUpperCase()   // 向こうの fmt() と同じ
+const pttGo = ch => {
+  pttAskClear()
+  const was = !!call.joinedId
+  if (was) leaveCall()   // 退出の知らせ（room: null）が出る間だけ待ってから移る
+  setTimeout(() => { location.href = 'ptt/?r=' + ch }, was ? 300 : 0)
+}
+// 一覧の末尾に、ぽちっと通話の部屋を 🔘 で出す（向こうと同じ印）。タップで確認の 2 択 → /ptt/ へ移る
+const renderPttRooms = (list, ptt) => {
+  [...ptt.keys()].sort().slice(0, LOBBY_MAX_ROOMS).forEach(ch => {
+    const r = ptt.get(ch), talking = r.people.some(p => p.talking)
+    const btn = document.createElement('button')
+    btn.className = 'room ptt-room' + (talking ? ' act2' : '')
+    btn.dataset.ptt = ch
+    const top = document.createElement('div'); top.className = 'room-top'
+    const nm = document.createElement('span'); nm.className = 'room-name'
+    // 部屋の呼び名は向こうの画面と同じ書き方（ぽちっと通話の一覧・招待と見比べられるように）。話題タグがあれば見出しはタグ
+    const label = 'ぽちっと通話 #' + pttFmt(ch)
+    nm.textContent = '🔘 ' + (r.tag || label)
+    const ct = document.createElement('span'); ct.className = 'room-count'; ct.textContent = r.people.length + '人'
+    top.append(nm, ct)
+    const sub = document.createElement('div'); sub.className = 'room-sub'
+    // タグ付きは、ぽっと通話の部屋と同じく元の呼び名と付けた人を添える（説明はタップの確認で出る）
+    sub.textContent = r.tag ? label + (r.by ? '　' + r.by + 'が付けた' : '') : 'ボタンを押している間だけ話せます'
+    const ppl = document.createElement('div'); ppl.className = 'room-people'
+    r.people.forEach(p => {
+      const rp = document.createElement('span'); rp.className = 'rp'
+      const n = document.createElement('span'); n.textContent = (p.talking ? '🗣 ' : '') + (p.name || '?')
+      rp.append(n); ppl.append(rp)
+    })
+    btn.append(top, sub, ppl)
+    btn.onclick = () => {
+      if (pttAsk === ch) { pttAskClear(); return }
+      pttAsk = ch; clearTimeout(pttAskTimer); pttAskTimer = setTimeout(pttAskClear, 8000)
+      renderLobby()
+    }
+    list.append(btn)
+    if (pttAsk === ch) {
+      const ask = document.createElement('div'); ask.className = 'leave-confirm room-ask'; ask.id = 'pttAsk'
+      const txt = document.createElement('span')
+      txt.textContent = (call.joinedId ? '「' + roomLabel(call.joinedId) + '」を退出して、' : '') + '「ぽちっと通話 #' + pttFmt(ch) + '」に移りますか？ ボタンを押している間だけ話せる部屋です（別のページが開きます）'
+      const yes = document.createElement('button'); yes.type = 'button'; yes.id = 'pttAskYes'; yes.textContent = '移る'
+      const no = document.createElement('button'); no.type = 'button'; no.textContent = 'やめる'
+      yes.onclick = () => pttGo(ch)
+      no.onclick = pttAskClear
+      ask.append(txt, yes, no); list.append(ask)
+    }
+  })
+}
+// 購読はロビーを開いたら 1 回だけ張る（SimplePool が落ちたリレーにつなぎ直す）。署名は SimplePool が確かめる。
+// 宛先は NOSTR_RELAYS ではなく Trystero と同じ一覧から取る：読むだけで何も流さないので、test/serve.py が
+// NOSTR_RELAYS を空にする（テストの在室を公開リレーへ流さない）書き換えの対象にしなくてよい
+let pttWatching = false
+const startPttWatch = async () => {
+  if (pttWatching) return
+  pttWatching = true
+  try {
+    const nt = await loadNostr()
+    nostrPool ??= new nt.SimplePool()
+    nostrPool.subscribeMany(TRYSTERO_BASE.relayConfig.urls, [{ kinds: [PTT_KIND], '#x': [PTT_TOPIC], since: Math.floor(Date.now() / 1000) - 10 }], {
+      onevent: ev => {
+        if (ev.created_at < Date.now() / 1000 - 120) return
+        let d; try { d = JSON.parse(ev.content) } catch { return }
+        if (!d || typeof d.ch !== 'string') return
+        if (d.ch === '' || !/^[0-9a-f]{8}$/.test(d.ch)) { if (pttRooms.delete(ev.pubkey)) renderLobby(); return }
+        const isNew = !pttRooms.has(ev.pubkey)
+        pttRooms.set(ev.pubkey, { ch: d.ch, talking: !!d.talking, name: capText(String(d.name || ''), 12), tag: capText(String(d.tag || ''), ROOM_MAX), by: capText(String(d.by || ''), 12), ts: Date.now() })
+        if (isNew) renderLobby(); else renderLobbyThrottled('ptt:' + ev.pubkey)
+      }
+    })
+  } catch { pttWatching = false }
+}
 const renderLobby = () => {
   const list = $('lobbyList'), status = $('lobbyStatus')
   if (!lobbyRoom) return  // 接続前は初期メッセージのまま
@@ -8541,7 +8632,8 @@ const renderLobby = () => {
   const names = lobbyRankApply(lobbyOrder, call.joinedId, viewerSprout ? Object.values(MOVED_ROOMS) : [])
   // ロビーに入った直後はまだ誰も見つけていないだけなので「ありません」と断定しない。
   // 相手の発見（Nostrでの合流＋WebRTCの確立）に数秒かかるため、その間は探索中と出す。
-  status.textContent = names.length ? ''
+  const ptt = pttLive()
+  status.textContent = names.length || ptt.size ? ''
     : (Date.now() - lobbySince < DISCOVER_MS ? '🛰 通話中の部屋を探しています…' : 'いま通話中の部屋はありません')
   roomFloor.forEach((_, r) => { if (!byRoom.has(r)) roomFloor.delete(r) })   // 消えた部屋の記憶を捨てる
   // 新しい部屋の音：探索期間（DISCOVER_MS）は既存部屋を黙って覚えるだけ。以降に初めて現れた部屋だけ鳴らす。
@@ -8691,6 +8783,7 @@ const renderLobby = () => {
       ask.append(yes, no); list.append(ask)
     }
   })
+  renderPttRooms(list, ptt)
   // 省略したぶんは黙って消さずに件数だけ知らせる（「全部出ている」と誤解させないため）
   if (names.length > LOBBY_MAX_ROOMS) {
     const more = document.createElement('div')
@@ -8838,10 +8931,12 @@ const openLobby = async (again, status, soft = false) => {
     lobbySweep = setInterval(() => {
       const cut = Date.now() - STALE_MS; let changed = false
       presences.forEach((v, k) => { if (v.ts < cut) { presences.delete(k); changed = true } })
+      pttRooms.forEach(v => { if (v.ts < Date.now() - PTT_EXPIRE_MS) changed = true })   // 消すのは pttLive（描くとき）
       if (changed) renderLobby()
       renderViewers()   // 出入りが無いまま grace が明けても人数が古いまま残らないように
     }, HEARTBEAT_MS)
     if (call.joinedId) sendHeartbeat()   // 通話中に入り直したら、自分の在室をすぐ出し直す
+    startPttWatch()
     renderLobby(); renderViewers()
     setTimeout(() => { renderLobby(); renderViewers() }, DISCOVER_MS + 200)   // 探索中の表示を切り替えるため
   } catch {

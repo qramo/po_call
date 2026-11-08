@@ -1,6 +1,7 @@
 ca32abcf15d147e2ff94b494035900dfdb0b53a532152d85cc4b0a43cbfd772f  trystero-0.25.4.mjs
 c11523de1c2f3c4974225033d382d9af52cc8d1427494fa784df090d73f4a8a1  nostr-tools-2.10.4.mjs
 91a6c84244b9ef58961097e765e787a86c8999ecee51f84fd9c9d0251f0a2665  qrcode-generator-1.4.4.mjs
+fc31670bb1820f751411833e44b6c3d93c611a5be22d6e1780e5776d9813b302  noble-curves-1.4.0-secp256k1.mjs
 e13f7f94fc51b4ca72b12faeb1ee95f4ace6dfbc8939bc718aabdc0a27c4299b  onnxruntime-web-1.30.0/dist/ort-wasm-simd-threaded.mjs
 3398c10d07d229bd91b364548e130e0e51a8e5704b88c7c083ebbeb78842dee2  onnxruntime-web-1.30.0/dist/ort-wasm-simd-threaded.wasm
 219e6a1fc8a9938268d18efca3c91d310bd2f4a59bbd13744df5b2b7fc6cee3b  onnxruntime-web-1.30.0/dist/ort.wasm.min.mjs

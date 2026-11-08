@@ -1,0 +1,3037 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'self' 'unsafe-inline';
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data: blob:;
+  media-src 'self' blob:;
+  connect-src 'self' https://pot-turn.itsuma-kuramoto.workers.dev wss://relay.primal.net wss://purplerelay.com wss://bucket.coracle.social wss://yabu.me/v2 wss://x.kojira.io wss://relay.notoshi.win wss://relay.ditto.pub;
+  base-uri 'self';
+  form-action 'none';
+  object-src 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon.png" type="image/png" sizes="96x96">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="theme-color" content="#1a1e24">
+  <meta name="description" content="ボタンを押している間だけ話せる、トランシーバー風のグループ通話アプリ（α版）">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="ぽちっと通話">
+  <meta property="og:title" content="ぽちっと通話 α版">
+  <meta property="og:description" content="ボタンを押している間だけ話せる、トランシーバー風のグループ通話アプリ">
+  <meta property="og:url" content="https://potalk.app/ptt/">
+  <meta property="og:image" content="https://potalk.app/ptt/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ぽちっと通話 α版">
+  <meta name="twitter:description" content="ボタンを押している間だけ話せる、トランシーバー風のグループ通話アプリ">
+  <meta name="twitter:image" content="https://potalk.app/ptt/og.png">
+  <title>ぽちっと通話 α版 - ボタンを押して話すトランシーバー</title>
+  <style>
+    :root {
+      --bg-color: #1a1e24;
+      --card-bg: #252b36;
+      --panel-bg: #14181d;
+      --accent-color: #3b82f6;
+      --tx-color: #ef4444;
+      --rx-color: #10b981;
+      --text-color: #f3f4f6;
+      --muted-color: #9ca3af;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    .walkie-talkie {
+      width: 100%;
+      max-width: 400px;
+      background: var(--card-bg);
+      border-radius: 28px;
+      padding: 24px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+      border: 2px solid #374151;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      position: relative;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #374151;
+      padding-bottom: 12px;
+    }
+    .brand {
+      font-weight: 800;
+      letter-spacing: 1px;
+      font-size: 1.1rem;
+      color: #93c5fd;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .room-badge {
+      font-size: 0.8rem;
+      background: #1e293b;
+      padding: 4px 10px;
+      border-radius: 12px;
+      color: var(--muted-color);
+      border: 1px solid #334155;
+          }
+    .display {
+      background: var(--panel-bg);
+      border-radius: 16px;
+      padding: 16px;
+      border: 2px solid #22272e;
+      box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .status-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 1.6rem; }
+    .status-row .indicators { flex: none; }
+    .indicators { display: flex; gap: 12px; }
+    .led-wrapper { display: flex; align-items: center; gap: 4px; }
+    .led {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #374151;
+      transition: all 0.15s ease;
+    }
+    .led-label { font-size: 0.7rem; font-weight: 800; color: var(--muted-color); }
+    .led.tx.active { background: var(--tx-color); box-shadow: 0 0 12px var(--tx-color); }
+    .led.rx.active { background: var(--rx-color); box-shadow: 0 0 12px var(--rx-color); }
+    .status-text { font-family: monospace; font-size: 1rem; font-weight: bold; color: #38bdf8; line-height: 1.6rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .peers-list {
+      min-height: 24px;
+      max-height: 110px;
+      overflow-y: auto;
+      font-size: 0.85rem;
+      color: var(--muted-color);
+      border-top: 1px dashed #2d3748;
+      padding-top: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      gap: 4px;
+    }
+    .peers-empty { opacity: 0.5; }
+    .peer-tag {
+      background: #1e293b;
+      padding: 0 8px;
+      line-height: 1.5;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.78rem;
+    }
+    .peer-tag.talking {
+      background: #064e3b;
+      color: #34d399;
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+    }
+    .peer-tag.me { background: #172554; color: #bfdbfe; }
+    .peer-tag.me.sending { background: #7f1d1d; color: #fecaca; box-shadow: 0 0 8px rgba(239, 68, 68, 0.35); }
+    .ptt-container { display: flex; flex-direction: column; align-items: center; gap: 14px; margin: 6px 0; }
+    .ptt-btn {
+      width: 170px;
+      height: 170px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #3b82f6 0%, #1d4ed8 100%);
+      border: 6px solid #1e3a8a;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4), inset 0 4px 6px rgba(255, 255, 255, 0.3);
+      color: white;
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: 1px;
+      cursor: pointer;
+      outline: none;
+      transition: all 0.1s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      touch-action: none;
+    }
+    .ptt-btn:active, .ptt-btn.transmitting {
+      transform: scale(0.96);
+      background: radial-gradient(circle, #ef4444 0%, #b91c1c 100%);
+      border-color: #7f1d1d;
+      box-shadow: 0 0 25px rgba(239, 68, 68, 0.6), inset 0 2px 4px rgba(0, 0, 0, 0.4);
+    }
+    .ptt-main { font-size: 1.3rem; font-weight: 900; }
+    .ptt-sub { font-size: 0.75rem; letter-spacing: 2px; opacity: 0.85; }
+    .controls-info { text-align: center; font-size: 0.85rem; color: var(--muted-color); line-height: 1.5; }
+    .key-badge {
+      background: #374151;
+      color: #f3f4f6;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.8rem;
+      border-bottom: 2px solid #1f2937;
+    }
+
+    @media (hover: none) and (pointer: coarse), (max-width: 480px) {
+      .pc-only { display: none; }
+    }
+    .alpha-badge { font-size: 0.65rem; font-weight: 800; color: #fbbf24; border: 1px solid #fbbf24; border-radius: 6px; padding: 1px 6px; letter-spacing: 1px; }
+    .sticky-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 10; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 16px; background: rgba(20,24,29,0.95); border-bottom: 1px solid #374151; }
+    .sticky-hash { font-family: "Courier New", monospace; font-weight: 800; color: #38bdf8; letter-spacing: 1px; }
+    dialog { margin: auto; width: calc(100% - 32px); max-width: 460px; max-height: 85vh; padding: 0; border: 2px solid #374151; border-radius: 20px; background: var(--card-bg); color: var(--text-color); overflow: hidden; }
+    dialog[open] { display: flex; flex-direction: column; }
+    dialog::backdrop { background: rgba(0,0,0,0.65); }
+    .about { display: flex; flex-direction: column; min-height: 0; max-height: 85vh; font-size: 0.85rem; line-height: 1.6; user-select: text; -webkit-user-select: text; }
+    .about * { user-select: text; -webkit-user-select: text; }
+    .about-head { flex: none; display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; border-bottom: 1px solid #374151; background: var(--card-bg); }
+    .about-body { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 18px 20px; }
+    .about a { color: #93c5fd; text-decoration: underline; }
+    .about h3 { margin: 16px 0 6px; color: #93c5fd; font-size: 1rem; border-bottom: 1px solid #374151; padding-bottom: 4px; }
+    .about h4 { margin: 12px 0 4px; color: #fbbf24; font-size: 0.88rem; }
+    .about ul { padding-left: 1.2em; display: flex; flex-direction: column; gap: 4px; }
+    .about p { color: var(--text-color); }
+    .about b { color: #fff; }
+    .vox-panel { display: flex; flex-direction: column; gap: 8px; }
+    .vox-meter { position: relative; height: 10px; background: #111827; border-radius: 5px; overflow: hidden; border: 1px solid #374151; }
+    .vox-fill { height: 100%; width: 0; background: var(--rx-color); transition: width .05s linear; }
+    .vox-fill.over { background: var(--tx-color); }
+    .vox-thr { position: absolute; top: 0; bottom: 0; width: 2px; background: #fbbf24; }
+    .vox-sens { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--muted-color); }
+    .vox-sens input { flex: 1; min-width: 0; height: 32px; margin: 0; touch-action: pan-y; }
+    .vox-hint { font-size: 0.7rem; opacity: .8; white-space: nowrap; }
+    .level-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-family: monospace; font-size: 0.65rem; color: var(--muted-color); }
+    .level { flex: 1; height: 14px; min-width: 0; }
+    .gain-val { min-width: 62px; text-align: right; font-family: monospace; }
+    .level-label { min-width: 2.8em; }
+    .level-db { width: 52px; text-align: right; }
+    .ptt-wrap { position: relative; width: 100%; display: flex; justify-content: center; margin-bottom: 14px; } /* VOX が下にはみ出す分の余白 */
+    /* VOX: 丸いボタン。話すボタンの左下に置く（左手用は右下） */
+    .vox-btn {
+      position: absolute; bottom: -14px; left: max(0px, calc(50% - 150px));
+      width: 62px; height: 62px; border-radius: 50%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+      background: #1f2937; color: var(--muted-color); border: 3px solid #374151;
+      font-weight: 800; letter-spacing: 1px; cursor: pointer; outline: none; touch-action: manipulation;
+      transition: all .15s ease;
+    }
+    .seg { display: flex; gap: 6px; }
+    .seg-btn { flex: 1; padding: 8px 0; border-radius: 8px; border: 1px solid #374151; background: #1f2937; color: var(--muted-color); font-weight: 700; cursor: pointer; }
+    .seg-btn.on { background: #1d4ed8; border-color: #3b82f6; color: #fff; }
+    .ptt-wrap.pos-left { justify-content: flex-start; }
+    .ptt-wrap.pos-right { justify-content: flex-end; }
+    .ptt-wrap.pos-left .vox-btn { left: 173px; right: auto; }
+    .ptt-wrap.pos-right .vox-btn { left: auto; right: 173px; }
+    .ptt-wrap.lefty .vox-btn { left: auto; right: max(0px, calc(50% - 150px)); }
+    .vox-btn-main { font-size: 0.85rem; line-height: 1; }
+    .vox-btn-state { font-size: 0.62rem; line-height: 1; opacity: .85; }
+    .vox-btn:active { transform: scale(0.95); }
+    .vox-btn.on {
+      background: radial-gradient(circle, #34d399 0%, #059669 100%);
+      color: #052e1c; border-color: #065f46;
+      box-shadow: 0 0 14px rgba(16, 185, 129, 0.65);
+    }
+    .invite-card { background: linear-gradient(180deg, #2a3243 0%, #232a36 100%); border: 2px solid #fbbf24; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; box-shadow: 0 0 16px rgba(251,191,36,0.25); }
+    .invite-title { color: #fbbf24; font-weight: 800; letter-spacing: 1px; font-size: 0.9rem; }
+    .invite-hash { font-family: "Courier New", monospace; font-weight: 900; font-size: 2rem; color: #38bdf8; letter-spacing: 2px; text-shadow: 0 0 12px rgba(56,189,248,0.45); }
+    .invite-info { font-size: 0.82rem; color: var(--muted-color); text-align: center; overflow-wrap: anywhere; min-height: 1.2em; }
+    button.btn-sub.invite-join { width: 100%; background: #2563eb; padding: 12px 0; font-size: 1rem; }
+    button.btn-sub.invite-join:hover { background: #1d4ed8; }
+    .invite-links { display: flex; gap: 18px; }
+    .linklike { background: none; border: none; color: #93c5fd; text-decoration: underline; font-size: 0.78rem; cursor: pointer; padding: 2px 4px; }
+    .app-version { width: 100%; max-width: 400px; text-align: center; font-size: 0.7rem; color: var(--muted-color); opacity: .6; margin: 12px 0 4px; user-select: text; -webkit-user-select: text; }
+    .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #111827; color: #fff; border: 1px solid #fbbf24; border-radius: 12px; padding: 10px 16px; font-size: 0.85rem; z-index: 50; max-width: 90%; text-align: center; box-shadow: 0 6px 18px rgba(0,0,0,0.5); }
+    /* 部屋を探すダイヤル（ラジオのチューニング風）。3部屋ぶんが見えて、上下に回し、赤い線に合わせた部屋をタップすると入る */
+    .rdial-wrap { --rdial-row: 84px; position: relative; height: calc(var(--rdial-row) * 3); border-radius: 14px; background: #0f1419; border: 1px solid #2d3748; overflow: hidden; box-shadow: inset 0 2px 10px rgba(0,0,0,0.6); }
+    .rdial { position: relative; z-index: 1; height: 100%; overflow-y: auto; padding: var(--rdial-row) 0; box-sizing: border-box; scroll-snap-type: y mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; outline: none; }
+    .rdial::-webkit-scrollbar { display: none; }
+    .rdial:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-color); border-radius: 14px; }
+    .rdial-item { height: var(--rdial-row); box-sizing: border-box; padding: 9px 16px 0; scroll-snap-align: center; scroll-snap-stop: always; display: flex; flex-direction: column; justify-content: flex-start; gap: 1px; cursor: pointer; color: var(--text-color); border-left: 3px solid transparent; will-change: transform, opacity; user-select: none; -webkit-user-select: none; }
+    .rdial-item > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    /* 赤い線は、1行目（部屋の番号）と、2行目（タグや名前）の、すきまを通る */
+    .rdial-item > div:nth-child(2) { margin-top: 12px; }
+    .rdial-item .chip-tag, .rdial-item .chip-who { margin-top: 0; max-width: 100%; font-size: 0.74rem; }
+    .rdial-item.on-line { background: rgba(59,130,246,0.10); }
+    /* 円柱の両端の、目盛りの溝。回すと流れ、上下に行くほど、間隔が詰まる */
+    .rdial-rail { position: absolute; top: 0; bottom: 0; width: 13px; pointer-events: none; z-index: 3; }
+    .rdial-rail.left { left: 0; background: linear-gradient(90deg, rgba(255,255,255,0.07), rgba(255,255,255,0)); }
+    .rdial-rail.right { right: 0; background: linear-gradient(270deg, rgba(255,255,255,0.07), rgba(255,255,255,0)); }
+    .rdial-ridges { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+    .rdial-ridge { position: absolute; left: 0; right: 0; top: 50%; height: 1px; margin-top: -0.5px; background: rgba(148,163,184,0.16); will-change: transform, opacity; }
+    .rdial-tick { position: absolute; left: 2px; right: 2px; top: 50%; height: 2px; margin-top: -1px; border-radius: 1px; background: rgba(203,213,225,0.6); will-change: transform, opacity; }
+    .rdial-item.me { background: rgba(23,37,84,0.55); }
+    .rdial-item.bot { border-left-color: #34d399; }
+    .rdial-item.invited { border-left-color: #fbbf24; }
+    .rdial-item.air { border-left-color: var(--tx-color); }
+    .rdial-item.full { filter: grayscale(0.7); }
+    .rdial-empty { height: var(--rdial-row); display: flex; align-items: center; justify-content: center; color: var(--muted-color); font-size: 0.82rem; text-align: center; padding: 0 16px; scroll-snap-align: center; }
+    .rdial-line { position: absolute; left: 6px; right: 6px; top: 50%; height: 2px; transform: translateY(-1px); background: #ef4444; box-shadow: 0 0 8px #ef4444; pointer-events: none; border-radius: 1px; z-index: 0; }
+    .rdial-line::before, .rdial-line::after { content: ''; position: absolute; top: -4px; border: 5px solid transparent; }
+    .rdial-line::before { left: -2px; border-left-color: #ef4444; }
+    .rdial-line::after { right: -2px; border-right-color: #ef4444; }
+    .rdial-fade { position: absolute; left: 0; right: 0; height: 34%; pointer-events: none; z-index: 2; }
+    .rdial-fade.top { top: 0; background: linear-gradient(180deg, #0f1419 0%, rgba(15,20,25,0) 100%); }
+    .rdial-fade.bottom { bottom: 0; background: linear-gradient(0deg, #0f1419 0%, rgba(15,20,25,0) 100%); }
+    .chan-chip.bot { border-color: #34d399; box-shadow: 0 0 8px rgba(52,211,153,0.35); }
+    .chan-chip.full { opacity: .55; }
+    .chan-chip.invited { border-color: #fbbf24; box-shadow: 0 0 8px rgba(251,191,36,0.35); }
+    .tune-actions #qrBtn { flex: none; width: 64px; padding: 6px 0; line-height: 1; display: flex; align-items: center; justify-content: center; }
+    .back-face {
+      display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 4px 0 8px;
+      background: linear-gradient(180deg, #232a36 0%, #1b212b 100%); border-radius: 18px; position: relative;
+    }
+    .back-face::before, .back-face::after {
+      content: ''; position: absolute; top: 10px; width: 9px; height: 9px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #9ca3af, #4b5563 70%); box-shadow: 0 0 0 1px #111827;
+    }
+    .back-face::before { left: 6px; } .back-face::after { right: 6px; }
+    .back-head { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0 22px 8px; border-bottom: 2px solid #374151; color: #93c5fd; }
+    .qr-sticker { background: #fff; border-radius: 14px; padding: 14px; width: 250px; max-width: 100%; box-shadow: 0 6px 16px rgba(0,0,0,0.45); transform: rotate(-1deg); }
+    .qr-box { color: #374151; font-size: 0.8rem; text-align: center; min-height: 100px; display: flex; align-items: center; justify-content: center; }
+    .qr-box svg { width: 100%; height: auto; display: block; }
+    .back-room { font-family: "Courier New", monospace; font-weight: 800; font-size: 1.4rem; color: #38bdf8; letter-spacing: 2px; }
+    .back-note { font-size: 0.8rem; color: var(--muted-color); text-align: center; }
+    .back-url { font-size: 0.65rem; color: var(--muted-color); opacity: .75; word-break: break-all; text-align: center; padding: 0 20px; user-select: text; -webkit-user-select: text; }
+    .tag-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.82rem; color: var(--muted-color); }
+    .tag-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tag-row .btn-sub { flex: none; white-space: nowrap; }
+    .tag-text b { color: var(--text-color); }
+    .tag-by { font-size: 0.72rem; margin-left: 4px; opacity: .8; }
+    .tag-count { text-align: right; font-size: 0.72rem; color: var(--muted-color); margin-top: 4px; font-family: monospace; }
+    .tag-count.full { color: #fbbf24; }
+    .chip-tag { font-family: -apple-system, 'Segoe UI', sans-serif; font-size: 0.78rem; color: #93c5fd; margin-top: 2px; overflow-wrap: anywhere; max-width: 260px; }
+    .tune-actions #speakerBtn { flex: none; width: 64px; font-size: 1.15rem; padding: 6px 0; line-height: 1; white-space: nowrap; }
+    #speakerBtn.muted { background: #7f1d1d; color: #fecaca; }
+    .hidden { display: none !important; }
+    .home { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 16px; }
+    .lcd { text-align: center; padding: 4px 0 2px; }
+    .lcd-ch { font-family: monospace; font-size: 0.8rem; color: var(--muted-color); letter-spacing: 3px; }
+    .lcd-freq { font-family: "Courier New", monospace; font-size: 2.3rem; font-weight: 900; color: #38bdf8; text-shadow: 0 0 14px rgba(56,189,248,0.55); letter-spacing: 2px; line-height: 1.1; transition: opacity .1s; }
+    .lcd-freq small { font-size: 0.9rem; letter-spacing: 1px; margin-left: 6px; opacity: .8; }
+    .lcd-freq.tuning { opacity: .45; animation: blink .35s steps(2) infinite; }
+    @keyframes blink { 50% { opacity: .9; } }
+    .lcd-sub { font-size: 0.72rem; color: var(--muted-color); min-height: 1em; white-space: nowrap; overflow: hidden; }
+    .fax-paper { width: 100%; image-rendering: pixelated; background: #f8f8f2; border-radius: 4px; display: block; margin-top: 6px; }
+    .tuner { display: flex; flex-direction: column; gap: 10px; }
+    .dial-row { display: flex; align-items: center; gap: 8px; }
+    .step-btn { width: 40px; height: 40px; border-radius: 10px; border: none; background: #374151; color: #fff; font-size: 1rem; cursor: pointer; flex: none; }
+    .step-btn:active { background: #4b5563; transform: scale(.94); }
+    .dial { flex: 1; position: relative; height: 40px; border-radius: 8px; background: #0f1419; border: 1px solid #2d3748;
+      background-image: repeating-linear-gradient(90deg, #4b5563 0 1px, transparent 1px 10px), repeating-linear-gradient(90deg, #9ca3af 0 2px, transparent 2px 50px);
+      background-size: 100% 40%, 100% 70%; background-repeat: no-repeat; background-position: 0 100%, 0 100%; }
+    .dial input[type=range] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; touch-action: pan-y; cursor: ew-resize; }
+    .dial input[type=range]::-webkit-slider-runnable-track { background: transparent; height: 40px; }
+    .dial input[type=range]::-moz-range-track { background: transparent; height: 40px; }
+    .dial input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 6px; height: 40px; background: #ef4444; border-radius: 3px; box-shadow: 0 0 8px #ef4444; }
+    .dial input[type=range]::-moz-range-thumb { width: 6px; height: 40px; background: #ef4444; border: none; border-radius: 3px; box-shadow: 0 0 8px #ef4444; }
+    .tune-actions { display: flex; gap: 8px; }
+    .tune-actions button { flex: 1; font-size: 0.8rem; padding: 8px 6px; }
+    .scan-title { font-size: 0.72rem; color: var(--muted-color); letter-spacing: 1px; display: flex; justify-content: space-between; }
+    .scan-list { display: flex; flex-wrap: wrap; gap: 6px; min-height: 30px; }
+    .chan-chip { background: #1e293b; border: 1px solid #334155; color: var(--text-color); border-radius: 8px; padding: 4px 8px; font-size: 0.78rem; cursor: pointer; font-family: monospace; }
+    .chan-chip.me { border-color: var(--accent-color); background: #172554; }
+    .chan-chip.air { border-color: var(--tx-color); box-shadow: 0 0 8px rgba(239,68,68,.5); }
+    .room-panel { width: 100%; max-width: 400px; margin-top: 16px; background: var(--card-bg); border: 2px solid #374151; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .chan-chip { text-align: left; }
+    .chip-who { font-family: -apple-system, 'Segoe UI', sans-serif; font-size: 0.72rem; color: var(--muted-color); margin-top: 2px; max-width: 220px; }
+    .chip-name { display: inline-block; } /* 名前の途中では改行しない（区切りの「、」の後でのみ折る） */
+    .scan-list { flex-direction: column; }
+    .chan-chip:active { transform: scale(.96); }
+    .config-panel { display: flex; flex-direction: column; gap: 10px; font-size: 0.85rem; }
+    .input-row { display: flex; gap: 8px; }
+    input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      background: #111827;
+      border: 1px solid #374151;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      outline: none;
+      font-size: 16px;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    input[type="text"]:focus { border-color: var(--accent-color); }
+    button.btn-sub {
+      background: #374151;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button.btn-sub:hover { background: #4b5563; }
+    .sound-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--muted-color); font-size: 0.8rem; }
+    .potalk-back { align-self: flex-start; color: #93c5fd; font-size: 0.85rem; text-decoration: none; padding: 4px 2px; }
+  </style>
+</head>
+<body>
+  <div class="home" id="homeView">
+    <a class="potalk-back" id="potalkBack" href="../">← ぽっと通話に戻る</a>
+    <section class="invite-card hidden" id="inviteCard">
+      <div class="invite-title">招待された部屋</div>
+      <div class="invite-hash" id="inviteHash">----·----</div>
+      <div class="invite-info" id="inviteInfo"></div>
+      <button class="btn-sub invite-join" id="inviteJoin" type="button">この部屋に入る</button>
+      <div class="invite-links">
+        <button class="linklike" id="inviteLater" type="button">あとで</button>
+        <button class="linklike" id="inviteAbout" type="button">使い方・プライバシー</button>
+      </div>
+    </section>
+    <section class="room-panel">
+      <div class="brand"><span>🔘</span><span>ぽちっと通話</span><span class="alpha-badge">α版</span></div>
+      <input type="text" id="nameInput" placeholder="ハンドルネーム" maxlength="12" autocomplete="off">
+      <button class="btn-sub" id="emptyBtn" type="button">新しい部屋を作る</button>
+      <button class="btn-sub" id="settingsBtn" type="button" style="background:#1e293b">⚙ 設定（マイク・このアプリについて）</button>
+    </section>
+  </div>
+
+  <div class="sticky-bar hidden" id="stickyBar">
+    <span class="sticky-hash" id="roomDisplay">----·----</span>
+    <button class="btn-sub" id="leaveBtn2" type="button" style="padding:4px 10px">退出</button>
+  </div>
+
+  <main class="walkie-talkie hidden" id="radioView">
+    <div id="frontFace">
+    <header class="header">
+      <div class="brand"><span>🔘</span><span>ぽちっと通話</span><span class="alpha-badge">α版</span></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="btn-sub" id="reconnectBtn" type="button" style="padding:4px 10px">再接続</button>
+        <button class="btn-sub" id="leaveBtn" type="button" style="padding:4px 10px">退出</button>
+      </div>
+    </header>
+    <section class="display">
+      <div class="lcd">
+        <div class="lcd-ch" id="chDisplay">ROOM HASH</div>
+        <div class="lcd-freq" id="freqDisplay">----·----</div>
+        <div class="lcd-sub" id="lcdSub"></div>
+        <div class="level-row"><span class="level-label" id="levelLabel">LEVEL</span><canvas class="level" id="levelCanvas" width="280" height="14"></canvas><span class="level-db" id="levelDb">-∞ dB</span></div>
+      </div>
+      <canvas id="faxCanvas" width="240" height="15" class="fax-paper hidden"></canvas>
+      <div class="tag-row">
+        <span class="tag-text" id="tagText"></span>
+        <button class="btn-sub" id="tagEdit" type="button" style="padding:4px 10px;font-size:0.75rem">つける</button>
+      </div>
+      <div class="hidden" id="tagForm">
+        <div class="input-row">
+          <input type="text" id="tagInput" maxlength="30" placeholder="いまの話題（例：ゲームの話）" autocomplete="off">
+          <button class="btn-sub" id="tagSend" type="button">確定</button>
+        </div>
+        <div class="tag-count"><span id="tagCount">0</span> / 30 文字</div>
+      </div>
+      <div class="status-row">
+        <div class="indicators">
+          <div class="led-wrapper"><span class="led tx" id="ledTx"></span><span class="led-label">TX</span></div>
+          <div class="led-wrapper"><span class="led rx" id="ledRx"></span><span class="led-label">RX</span></div>
+        </div>
+        <div class="status-text" id="statusLabel">STANDBY</div>
+      </div>
+      <div class="peers-list" id="peersList"><span class="peers-empty">待機中（参加者なし）</span></div>
+    </section>
+    <section class="ptt-container">
+      <div class="ptt-wrap">
+        <button class="ptt-btn" id="pttBtn" type="button">
+          <span class="ptt-main">PUSH</span>
+          <span class="ptt-sub">TO TALK</span>
+        </button>
+        <button class="vox-btn" id="voxBtn" type="button" aria-pressed="false" title="VOX（声を拾って自動で送信）">
+          <span class="vox-btn-main">VOX</span>
+          <span class="vox-btn-state" id="voxState">OFF</span>
+        </button>
+      </div>
+      <div class="controls-info">
+        <span class="pc-only"><kbd class="key-badge">Space</kbd> キーでも話せます</span>
+        <br><span class="pc-only">文字キーを打つと、その文字のモールス符号を送信します（受信したモールスは文字に直して液晶下に表示します）</span>
+      </div>
+    </section>
+    <footer class="config-panel">
+      <div class="tune-actions">
+        <button class="btn-sub" id="shareBtn" type="button">招待URLをコピー</button>
+        <button class="btn-sub" id="qrBtn" type="button" title="QRコードで招待" aria-label="QRコードで招待"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM19 14h2v2h-2zM14 19h2v2h-2zM18 18h3v3h-3z" fill="currentColor" stroke="none"/></svg></button>
+        <button class="btn-sub" id="speakerBtn" type="button" title="スピーカーのミュート切り替え" aria-label="スピーカーのミュート切り替え">🔈</button>
+      </div>
+      <div class="vox-panel hidden" id="voxPanel">
+        <div class="vox-meter"><div class="vox-fill" id="voxFill"></div><div class="vox-thr" id="voxThr"></div></div>
+        <label class="vox-sens"><span>しきい値</span><input type="range" id="voxSens" min="1" max="10" step="1" value="6"></label>
+      </div>
+    </footer>
+    </div>
+    <div class="back-face hidden" id="backFace">
+      <div class="back-head">
+        <strong>招待 QR</strong>
+        <button class="btn-sub" id="qrBack" type="button" style="padding:4px 12px">もどる</button>
+      </div>
+      <div class="qr-sticker"><div class="qr-box" id="qrBox">読み込み中…</div></div>
+      <div class="back-room" id="qrRoom">----·----</div>
+      <p class="back-note">このコードを読み取ると、同じ部屋に入れます。</p>
+      <div class="back-url" id="qrUrl"></div>
+    </div>
+  </main>
+
+  <section class="room-panel" style="margin-top:16px">
+      <div class="scan-title"><span>いまある部屋（赤い線でタップ）</span><span id="onlineCount" style="white-space:nowrap"></span></div>
+      <input type="text" id="searchInput" placeholder="🔍 URL・ハッシュ・名前・話題で絞り込み" autocomplete="off" style="width:100%;flex:none">
+      <div class="rdial-wrap" id="dialWrap">
+        <div class="rdial-ridges" id="ridges" aria-hidden="true"></div>
+        <div class="rdial-line" aria-hidden="true"></div>
+        <div class="rdial" id="scanList" tabindex="0" role="listbox" aria-label="部屋を選ぶダイヤル。上下に回して、赤い線に合わせた部屋をタップすると入ります"><div class="rdial-empty">スキャン中...</div></div>
+        <div class="rdial-rail left" id="railL"></div><div class="rdial-rail right" id="railR"></div>
+        <div class="rdial-fade top"></div><div class="rdial-fade bottom"></div>
+      </div>
+  </section>
+
+
+  <div class="app-version" id="appVersion">版 2026-11-08-g（Trystero 0.25.4）・potalk.app/ptt</div>
+
+  <div class="toast hidden" id="toast" role="status"></div>
+
+  <dialog id="settingsDialog">
+    <div class="about">
+      <div class="about-head">
+        <strong>設定</strong>
+        <button class="btn-sub" id="settingsClose" type="button" style="padding:4px 12px">閉じる</button>
+      </div>
+      <div class="about-body">
+        <h3>マイク</h3>
+        <p>「マイクテスト開始」を押して声を出し、メーターが振れることを確認してください。小さく聞こえる場合は、入力レベルを上げます（上げすぎると音が割れます）。</p>
+        <label class="vox-sens" style="margin:10px 0"><span>入力レベル</span><input type="range" id="homeGain" min="0" max="30" step="1" value="0"><span class="gain-val" id="homeGainVal">そのまま</span></label>
+        <div class="level-row"><span class="level-label">MIC</span><canvas class="level" id="homeLevelCanvas" width="280" height="14"></canvas><span class="level-db" id="homeLevelDb">-∞ dB</span></div>
+        <button class="btn-sub" id="micTestBtn" type="button" style="width:100%;margin-top:10px">マイクテスト開始</button>
+        <h3>操作</h3>
+        <p style="margin:8px 0 6px">話すボタンの位置</p>
+        <div class="seg" id="pttPosSeg">
+          <button type="button" class="seg-btn" data-pos="left">左</button>
+          <button type="button" class="seg-btn on" data-pos="center">中央</button>
+          <button type="button" class="seg-btn" data-pos="right">右</button>
+        </div>
+        <p style="opacity:.8;font-size:0.75rem;margin:6px 0 10px">片手で持つときに、親指が届く側に寄せられます。VOX の丸ボタンは、空いている側に付きます。</p>
+        <label class="sound-toggle"><input type="checkbox" id="leftyCheck"> 左手用（話すボタンが中央のとき、VOX ボタンを右側に置く）</label>
+        <h3>通話テスト</h3>
+        <p style="font-size:0.8rem;opacity:.85;margin-bottom:6px">おうむ返しボットが動いているときだけ使えます。話すと、あなたの声が返ってきます。</p>
+        <button class="btn-sub" id="testRoomBtn" type="button" style="width:100%">おうむ返しの部屋に入る</button>
+        <h3>効果音</h3>
+        <label class="vox-sens" style="margin:10px 0"><span>音量</span><input type="range" id="sfxVol" min="0" max="150" step="5" value="100"><span class="gain-val" id="sfxVolVal">100%</span></label>
+        <p style="opacity:.8;font-size:0.75rem">スライダーを離すと、試しに「ガッ」と鳴ります。効果音を消したいときは、音量を 0% にしてください。</p>
+        <h3>初回案内</h3>
+        <label class="sound-toggle"><input type="checkbox" id="welcomeAgain2"> 開いたときに初回案内を表示する</label>
+        <h3>ソース・ライセンス</h3>
+        <p>このアプリは、qramo さんの「ぽっと通話」をもとに、ボタンを押している間だけ話せるようにしたものです。</p>
+        <p><a href="https://potalk.app/" target="_blank" rel="noopener noreferrer">potalk.app</a><br><a href="https://github.com/qramo/po_call" target="_blank" rel="noopener noreferrer">github.com/qramo/po_call</a></p>
+        <p>このアプリのソースコードは GitHub で公開しています。<br><a href="https://github.com/riryo3/pochittalk" target="_blank" rel="noopener noreferrer">github.com/riryo3/pochittalk</a></p>
+        <p>MIT License<br>Copyright (c) 2026 qramo<br>Copyright (c) 2026 リョータ</p>
+        <p style="opacity:.8;font-size:0.75rem">使用ライブラリ: <a href="https://github.com/dmotz/trystero" target="_blank" rel="noopener noreferrer">Trystero</a>（MIT License）</p>
+        <h3>このアプリについて</h3>
+        <button class="btn-sub" id="aboutBtn" type="button" style="width:100%">使い方・プライバシーを見る</button>
+        <p style="opacity:.55;font-size:0.7rem;margin-top:10px">版: 2026-11-08-g（Trystero 0.25.4）・potalk.app/ptt</p>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="welcomeDialog">
+    <div class="about">
+      <div class="about-head">
+        <strong>ようこそ <span class="alpha-badge">α版</span></strong>
+      </div>
+      <div class="about-body">
+        <p style="margin-top:8px">はじめにご確認ください。</p>
+        <h3>1. マイクを設定する</h3>
+        <p>声が相手に十分な大きさで届くよう、入力レベルを調整できます。</p>
+        <button class="btn-sub" id="welcomeMicBtn" type="button" style="width:100%;margin-top:6px">マイクを設定する</button>
+        <h3>2. このアプリについて読む</h3>
+        <p>使い方と、プライバシー（見える情報、保存されるもの）を説明しています。</p>
+        <button class="btn-sub" id="welcomeAboutBtn" type="button" style="width:100%;margin-top:6px">このアプリについて</button>
+        <label class="sound-toggle" style="margin-top:16px"><input type="checkbox" id="welcomeAgain" checked> 次回も表示する</label>
+        <button class="btn-sub" id="welcomeClose" type="button" style="width:100%;margin-top:12px;background:#2563eb">はじめる</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="aboutDialog">
+    <div class="about">
+      <div class="about-head">
+        <strong>ぽちっと通話 <span class="alpha-badge">α版</span></strong>
+        <button class="btn-sub" id="aboutClose" type="button" style="padding:4px 12px">閉じる</button>
+      </div>
+      <div class="about-body">
+
+      <h3>このアプリは？</h3>
+      <p>ボタンを押している間だけ話せる、トランシーバー風の音声通話アプリです。アカウント登録やログインは要りません。同じ部屋に入った人どうしで話せます。α版のため、予告なく仕様が変わったり、動作が不安定だったりすることがあります。</p>
+
+      <h3>使い方</h3>
+      <ul>
+        <li>ハンドルネームを決めて、「新しい部屋を作る」か、一覧の部屋をタップして入ります。</li>
+        <li>入室後は、大きなボタンを押している間だけ話せます（PCではスペースキーも使えます）。</li>
+        <li>「招待URLをコピー」で友達にURLを送ると、同じ部屋に入れます。</li>
+        <li>誰かが話している間は話せません（話中）。同時に押すと混線して、どちらも送信が切れます。</li>
+        <li>部屋の中のQRボタンを押すと、無線機が裏返って、招待URLのQRコードが出ます。友達がスマホで読み取ると、同じ部屋に入れます。「もどる」で表に戻ります。</li>
+        <li>部屋の中では、「話題タグ」をつけられます（30文字まで）。誰でも変えられ、付けた人の名前が添えられます。部屋の一覧にも表示されます。</li>
+        <li>相手が見つからない、声が届かなくなったときは、「再接続」を押すと、部屋に入ったまま接続をやり直します。回線が戻ったときや、画面を離れて（バックグラウンドに回って）戻ったときは、自動でやり直します。iPhone は、画面を消したりほかのアプリに切り替えたりすると通話が止まるので、アプリに戻ってください。</li>
+        <li>部屋の一覧の人数と、実際につながっている人数が、10秒以上合わないときは、画面に知らせが出ます。25秒たっても合わないときは、自動でつなぎ直します。相手が、ブラウザを突然閉じたときは、一覧の表示が、20秒ほど残ります。それでも合わないときは、「再接続」を押してください。</li>
+        <li>1つの部屋は、8人までです。満員の部屋には、入れません。同時に入って超えたときは、あとから入った人が、自動で退出します。</li>
+      </ul>
+
+      <h3>プライバシー</h3>
+      <h4>誰に何が見えるか</h4>
+      <ul>
+        <li><b>ハンドルネーム・今いる部屋・話し中かどうか</b>は、このアプリを同時に開いている全員に見えます（部屋一覧のため）。本名や個人が特定できる名前は使わないでください。</li>
+        <li><b>話題タグ</b>と、付けた人のハンドルネームも、一覧で全員に見えます。個人情報は書かないでください。</li>
+        <li><b>部屋は公開です。</b>部屋のハッシュ値は一覧に出るので、誰でもタップして入れます。秘密の話をする用途には向いていません。</li>
+        <li><b>同じ部屋の人には、あなたのIPアドレスが見える</b>ことがあります。通話が端末どうしの直接通信（P2P）で行われるためです。</li>
+        <li>同じ部屋の誰かが、自分の端末で通話を録音する可能性はあります。このアプリには防ぐ仕組みはありません。</li>
+      </ul>
+
+      <h4>音声について</h4>
+      <ul>
+        <li>音声は、通常、端末どうしで直接送られます。直接つながれない場合だけ、CloudflareのTURNサーバーを中継して送られます。通信はWebRTCの標準の暗号化がかかるため、中継サーバーが内容を聞くことはできません。TURNが使えないときは、端末どうしの直接通信に切り替わります。</li>
+        <li>このアプリの運営側は、音声を受け取らず、録音も保存もしません（そもそも運営側のサーバーに届きません）。</li>
+        <li>VOX（声で自動送信）をオンにすると、声を検出するために端末の中でマイクの音量を監視します。この監視用の音は送信も保存もされず、声を検出したときだけ送信が始まります。同じ理由で、マイクが使える状態の間は、画面のレベル表示のためにも端末の中で音量を測っています。ホーム画面の「マイクテスト」は、入力レベルとメーターの確認のためにマイクを使いますが、音声は送信も保存もされません。VOX自体は、ページを開き直すとオフに戻ります（しきい値の設定だけ、端末に保存されます）。</li>
+        <li>マイクは、部屋に入るときに許可を求めます（許可しなかった場合は、話すボタンを押したときにもう一度確認します）。許可後は、部屋に入っている間マイクを確保しますが、ボタンを押していない間は音声を送りません（ブラウザのマイク使用中の表示は出たままになります）。部屋を退出すると、マイクを解放します。</li>
+      </ul>
+
+      <h4>あなたの端末に保存されるもの</h4>
+      <ul>
+        <li><b>ハンドルネーム</b>: ブラウザの localStorage（キー名 pochitalk_ptt_name）に保存されます。次回開いたときに入力済みになります。この端末のブラウザの中だけにあり、運営側には送られません。ブラウザのサイトデータを消すと削除されます。</li>
+        <li><b>URLの「?r=…」</b>: 今いる部屋のハッシュ値がアドレスに入ります。ブラウザの履歴に残ることがあります。</li>
+        <li><b>初回案内の表示設定</b>: 初回の案内で「次回も表示する」をオフにしたときだけ、その旨を localStorage（キー名 pochitalk_welcome）に保存します。この端末のブラウザの中だけにあり、運営側には送られません。</li>
+        <li><b>話すボタンの位置</b>: 左または右にしたときだけ、その旨を localStorage（キー名 pochitalk_ptt_pos）に保存します。この端末のブラウザの中だけにあり、運営側には送られません。</li>
+        <li><b>左手用の設定</b>: ONにしたときだけ、その旨を localStorage（キー名 pochitalk_lefty）に保存します。この端末のブラウザの中だけにあり、運営側には送られません。</li>
+        <li><b>効果音の音量</b>: 0〜150%の数字を、同じく localStorage（キー名 pochitalk_sfx_vol）に保存します。この端末のブラウザの中だけにあり、運営側には送られません。</li>
+        <li><b>入力レベル</b>: マイクの増幅（0〜30dB）の数字を、同じく localStorage（キー名 pochitalk_input_db）に保存します。この端末のブラウザの中だけにあり、運営側には送られません。</li>
+        <li><b>VOXのしきい値</b>: 1〜10の数字を、同じく localStorage（キー名 pochitalk_vox_thr）に保存します。この端末のブラウザの中だけにあり、運営側には送られません。</li>
+        <li>Cookie、ログイン情報、メールアドレス、位置情報、連絡先などは、保存も取得もしません。</li>
+        <li>アクセス解析や広告の仕組みは入れていません。</li>
+      </ul>
+
+      <h4>サーバー側に保存されるもの</h4>
+      <ul>
+        <li>このアプリの運営側には、データベースや保存領域がなく、ユーザーの名前・部屋・音声・通話履歴を保存していません。</li>
+        <li>ただし、ページを配信している GitHub Pages には、一般的なアクセス情報（IPアドレスなど）が、同社の方針に沿って記録されることがあります。</li>
+      </ul>
+
+      <h4>外部のサービスについて</h4>
+      <ul>
+        <li><b>ライブラリ</b>: 通話用のライブラリ（Trystero）・QRコードを作るライブラリ・在室の知らせに署名するライブラリは、このページと同じ potalk.app から配信します（外部の配信元は使いません）。QRは端末の中で作られ、招待URLは外に送られません。</li>
+        <li><b>TURN の資格情報</b>: ぽっと通話（potalk.app）と同じ Cloudflare Worker から、短い期限の資格情報を受け取ります。この Worker は資格情報を渡すだけで、音声・接続情報・在室の知らせは通りません。</li>
+        <li><b>Nostr の公開リレー</b>: 通話相手を見つけるための接続情報のやり取りと、部屋の一覧のための在室の知らせ（部屋のハッシュ、ハンドルネーム、話題タグ、話しているか）の送受信に使います。内容は暗号化されますが、接続元IPなどのアクセス情報はリレーの運営者に見える可能性があります。</li>
+        <li><b>STUN / TURNサーバー（Cloudflare・Google）</b>: 端末どうしが直接つながるための、公開されたアドレスの確認に使います。IPアドレスがこれらに送られます。</li>
+        <li>これらは運営側が管理していない外部のサービスです。</li>
+      </ul>
+
+      <h3>ご注意</h3>
+      <ul>
+        <li>個人が作ったα版です。動作や安全性は保証できません。重要な連絡や緊急時の連絡には使わないでください。</li>
+        <li>回線やNATの種類によっては、相手とつながらないことがあります。</li>
+        <li>他人への迷惑行為や、他人の会話の録音・公開はしないでください。</li>
+      </ul>
+      </div>
+    </div>
+  </dialog>
+
+  <script type="module">
+    import { joinRoom } from '../vendor/trystero-0.25.4.mjs';
+
+    const pttBtn = document.getElementById('pttBtn');
+    const ledTx = document.getElementById('ledTx');
+    const ledRx = document.getElementById('ledRx');
+    const statusLabel = document.getElementById('statusLabel');
+    const roomDisplay = document.getElementById('roomDisplay');
+    const chDisplay = document.getElementById('chDisplay');
+    const freqDisplay = document.getElementById('freqDisplay');
+    const lcdSub = document.getElementById('lcdSub');
+    const scanList = document.getElementById('scanList');
+    const onlineCount = document.getElementById('onlineCount');
+    const peersList = document.getElementById('peersList');
+    const nameInput = document.getElementById('nameInput');
+    const soundEffectCheck = { checked: true }; // 効果音のオン・オフは廃止（音量 0% で消せる）
+
+    const rxAnalysers = new Map(); // peerId -> AnalyserNode
+    let sendJoinAge = null, roomEnterTime = 0;
+    let sendTag = null, roomMeta = { tag: '', by: '', at: 0 }; // 話題タグ（誰でも上書き・新しいものが勝つ）
+    let txAnalyser = null;
+    let sendStream = null, micGain = null, micSrc = null, micTest = false, inputDb = 0;
+    let micSendGain = null, morseOsc = null, morseGain = null; // モールス送信用
+    let faxOsc = null, faxGain = null, faxSideGain = null; // FAX送信用
+    let audioCtx = null, userMediaStream = null, localAudioTrack = null;
+    let room = null, sendPttState = null, sendNickname = null, sendFaxPage = null;
+    let isTransmitting = false, currentTalkerId = null;
+    const peerMap = new Map();
+
+    // ===== ICE / TURN（po_call の安定化方式を移植）=====
+    // ・TURN が取れている間は中継固定（relay）: キャリア回線でも経路が一本に定まって安定し、相手に IP も見えなくなる。
+    //   取れていないときだけ従来どおり STUN＋直接（relay を強制すると候補ゼロで誰も繋がらない）。
+    // ・iceServersNow は「同じ配列の中身だけ入れ替える」安定参照。Trystero は接続を作るたびに
+    //   rtcConfig.iceServers を参照で読むため、通話中に入れ替えても以降の参加者には新しい資格情報が渡る。
+    // ・資格情報は10分キャッシュ、5分ごとに取り直し。失敗しても前回の資格情報が生きていればそれを使う。
+    const GOOGLE_STUN = { urls: 'stun:stun.l.google.com:19302' };
+    const iceServersNow = [
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      GOOGLE_STUN
+    ];
+    let iceFetchedAt = 0;
+    const ICE_CACHE_MS = 10 * 60 * 1000;
+    async function refreshIceServers(force) {
+      if (!force && iceFetchedAt && Date.now() - iceFetchedAt < ICE_CACHE_MS) return;
+      try {
+        const res = await fetch('https://pot-turn.itsuma-kuramoto.workers.dev/', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && Array.isArray(data.iceServers) && data.iceServers.length) {
+          iceServersNow.splice(0, iceServersNow.length, ...data.iceServers, GOOGLE_STUN);
+          iceFetchedAt = Date.now();
+        }
+      } catch (_) {}
+    }
+    // 中継固定にすると、接続の準備が、相手の応答に間に合いにくく、つながりにくくなる（通話の部品の作り上）。通常は、直接を優先し、つながらないときだけ TURN 中継にする。固定したいときは ?relay=1 を付けて開く
+    const FORCE_RELAY = new URLSearchParams(location.search).has('relay');
+    function getRtcConfig() {
+      // Trystero 0.25.4 は、rtcConfig を RTCPeerConnection の設定として、そのまま使う（0.20.0 のような config の入れ子は不要）
+      return iceFetchedAt > 0
+        ? { iceServers: iceServersNow, iceTransportPolicy: FORCE_RELAY ? 'relay' : 'all' }
+        : { iceServers: iceServersNow };
+    }
+    // シグナリング用 Nostr リレー（po_call と同じ顔ぶれを全本使う）
+    // 通話の識別名。Trystero 0.25.x は、0.20.0 と通信の形式が違うため、識別名も新しくして、古い版とは別の世界にする
+    const APP_ID = 'pochitalk-v2';
+    const NOSTR_RELAY_URLS = ['wss://relay.primal.net', 'wss://purplerelay.com', 'wss://bucket.coracle.social', 'wss://yabu.me/v2', 'wss://x.kojira.io', 'wss://relay.notoshi.win', 'wss://relay.ditto.pub'];
+    // 使うリレーは、起動時に、動いているものを選ぶ。接続の準備の数は、リレーの数に比例して増え、落ちているリレーは再試行を繰り返すため
+    let ROOM_RELAYS = NOSTR_RELAY_URLS, aliveRelays = NOSTR_RELAY_URLS;
+    function probeRelayMain(url) {
+      return new Promise(function (resolve) {
+        let settled = false, ws = null, timer = null;
+        const done = function (ok) { if (!settled) { settled = true; clearTimeout(timer); resolve(ok); } };
+        try { ws = new WebSocket(url); } catch (_) { done(false); return; }
+        timer = setTimeout(function () { done(false); }, 6000);
+        ws.onopen = function () { done(true); try { ws.close(); } catch (_) {} };
+        ws.onerror = function () { done(false); };
+        ws.onclose = function () { done(false); };
+      });
+    }
+    (async function pickRelaysMain() {
+      try {
+        const res = await Promise.all(NOSTR_RELAY_URLS.map(function (u) { return probeRelayMain(u).then(function (ok) { return { u: u, ok: ok }; }); }));
+        const alive = res.filter(function (r) { return r.ok; }).map(function (r) { return r.u; }).sort(function () { return Math.random() - 0.5; });
+        if (alive.length >= 1) { aliveRelays = alive.slice(0, 4); ROOM_RELAYS = alive.slice(0, 3); }
+        if (pres.started) aliveRelays.forEach(presenceOpen);
+      } catch (_) {}
+    })();
+
+    const urlParams = new URLSearchParams(window.location.search);
+    function isKey(k) { return /^[0-9a-f]{8}$/.test(k); }
+    function fmt(k) { return k.slice(0, 4).toUpperCase() + '·' + k.slice(4).toUpperCase(); }
+    function toHex(bytes) { return Array.from(bytes).map(function (b) { return (b < 16 ? '0' : '') + b.toString(16); }).join(''); }
+    async function hashOf(name) {
+      const norm = name.trim().toLowerCase().normalize('NFKC');
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(norm));
+      return toHex(new Uint8Array(buf).slice(0, 4));
+    }
+    let currentKey = null;
+    let savedName = null;
+    try { savedName = localStorage.getItem('pochitalk_ptt_name'); } catch (_) {}
+    // [potalk] ぽっと通話（同じドメインの本体）で決めた名前を、初めて開いたときの初期値に使う
+    if (!savedName) { try { savedName = (JSON.parse(localStorage.getItem('pot-call-profile') || '{}').name || '').slice(0, 12) || null; } catch (_) {} }
+    let myNickname = savedName || ('無線機_' + Math.floor(Math.random() * 899 + 100));
+    nameInput.value = myNickname;
+
+    // 効果音の音量（0〜150%）。効果音はすべてこのゲインを通す。マイク（送信）には影響しない
+    let sfxVol = 1, sfxGainNode = null, speakerMuted = false;
+    function sfxOut(ctx) {
+      if (!sfxGainNode || sfxGainNode.context !== ctx) {
+        sfxGainNode = ctx.createGain();
+        sfxGainNode.connect(ctx.destination);
+      }
+      sfxGainNode.gain.value = speakerMuted ? 0 : sfxVol;
+      return sfxGainNode;
+    }
+
+    function getAudioContext() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state !== 'running') audioCtx.resume().catch(function () {}); // iOS は 'interrupted' になることもある
+      return audioCtx;
+    }
+
+    function playPttStartTone() {
+      if (!soundEffectCheck.checked) return;
+      try {
+        const ctx = getAudioContext();
+        const osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.setValueAtTime(1320, ctx.currentTime + 0.04);
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+        osc.connect(gain); gain.connect(sfxOut(ctx));
+        osc.start(); osc.stop(ctx.currentTime + 0.08);
+      } catch (_) {}
+    }
+
+    // 発話終了: ザラザラに歪んだノイズを細かく途切れさせた「ガガッ」
+    function playPttEndTone() {
+      if (!soundEffectCheck.checked) return;
+      try {
+        const ctx = getAudioContext();
+        const sr = ctx.sampleRate;
+        const dur = 0.16;
+        const buffer = ctx.createBuffer(1, Math.floor(sr * dur), sr);
+        const d = buffer.getChannelData(0);
+        let held = 0;
+        for (let i = 0; i < d.length; i++) {
+          const t = i / sr;
+          if (i % 5 === 0) held = Math.random() * 2 - 1;      // 粗いサンプルホールド = ザラつき
+          const gate = (Math.floor(t * 22) % 2 === 0) ? 1 : 0.15; // ガ・ガ・ガ と細かく途切れる
+          const decay = t < 0.09 ? 1 : Math.max(0, 1 - (t - 0.09) / 0.07); // 最後にスッと切れる
+          d[i] = held * gate * decay;
+        }
+        const src = ctx.createBufferSource(); src.buffer = buffer;
+        const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 350;
+        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 4200;
+        // 歪ませてバリバリ感を出す
+        const shaper = ctx.createWaveShaper();
+        const curve = new Float32Array(256);
+        for (let k = 0; k < 256; k++) { const x = (k / 128) - 1; curve[k] = Math.tanh(x * 5); }
+        shaper.curve = curve;
+        const g = ctx.createGain(); g.gain.value = 0.14;
+        src.connect(hp); hp.connect(lp); lp.connect(shaper); shaper.connect(g); g.connect(sfxOut(ctx));
+        src.start();
+      } catch (_) {}
+    }
+
+    // 話中ブザー（他の人が話しているときに押した）
+    function playBusyTone() {
+      if (!soundEffectCheck.checked) return;
+      try {
+        const ctx = getAudioContext();
+        [0, 0.12].forEach(function (off) {
+          const osc = ctx.createOscillator(), g = ctx.createGain();
+          osc.type = 'square'; osc.frequency.value = 330;
+          g.gain.setValueAtTime(0.06, ctx.currentTime + off);
+          g.gain.setValueAtTime(0.001, ctx.currentTime + off + 0.08);
+          osc.connect(g); g.connect(sfxOut(ctx));
+          osc.start(ctx.currentTime + off); osc.stop(ctx.currentTime + off + 0.09);
+        });
+      } catch (_) {}
+    }
+
+    // 混線ノイズ（荒く揺れる広帯域ノイズ）
+    function playCrosstalk() {
+      if (!soundEffectCheck.checked) return;
+      try {
+        const ctx = getAudioContext();
+        const sr = ctx.sampleRate, dur = 0.7;
+        const buffer = ctx.createBuffer(1, Math.floor(sr * dur), sr);
+        const d = buffer.getChannelData(0);
+        let held = 0;
+        for (let i = 0; i < d.length; i++) {
+          const t = i / sr;
+          if (i % 3 === 0) held = Math.random() * 2 - 1;
+          const wob = 0.55 + 0.45 * Math.sin(t * 2 * Math.PI * 9);
+          d[i] = held * wob * Math.max(0, 1 - t / dur);
+        }
+        const src = ctx.createBufferSource(); src.buffer = buffer;
+        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1600; bp.Q.value = 0.5;
+        const g = ctx.createGain(); g.gain.value = 0.2;
+        src.connect(bp); bp.connect(g); g.connect(sfxOut(ctx));
+        src.start();
+      } catch (_) {}
+    }
+
+    function showCrosstalk() {
+      playCrosstalk();
+      statusLabel.textContent = '混線！';
+      statusLabel.style.color = '#f59e0b';
+      clearTimeout(showCrosstalk.t);
+      showCrosstalk.t = setTimeout(function () {
+        if (!isTransmitting && !currentTalkerId) {
+          statusLabel.textContent = 'STANDBY';
+          statusLabel.style.color = '#38bdf8';
+        }
+      }, 1300);
+    }
+
+    function othersTalking() {
+      let n = 0;
+      peerMap.forEach(function (p) { if (p.isTalking) n++; });
+      return n;
+    }
+
+    // 入室音: 「ピコーン」（短い高音のあとに、伸びる高音）
+    function playEnterTone() {
+      if (!soundEffectCheck.checked) return;
+      try {
+        const ctx = getAudioContext();
+        const t0 = ctx.currentTime;
+        function note(freq, start, dur, vol) {
+          const osc = ctx.createOscillator(), g = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, t0 + start);
+          g.gain.setValueAtTime(0.001, t0 + start);
+          g.gain.exponentialRampToValueAtTime(vol, t0 + start + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.001, t0 + start + dur);
+          osc.connect(g); g.connect(sfxOut(ctx));
+          osc.start(t0 + start); osc.stop(t0 + start + dur + 0.02);
+        }
+        note(1046.5, 0.00, 0.09, 0.14);   // ピ
+        note(1568.0, 0.08, 0.60, 0.14);   // コーン
+        note(3136.0, 0.08, 0.30, 0.03);   // 響きの倍音
+      } catch (_) {}
+    }
+
+    // マイク → 入力レベル(ゲイン) → [レベル計 / 送信用ストリーム]
+    function buildMicGraph(raw) {
+      const ctx = getAudioContext();
+      micSrc = ctx.createMediaStreamSource(raw);
+      micGain = ctx.createGain();
+      micGain.gain.value = Math.pow(10, inputDb / 20);
+      txAnalyser = ctx.createAnalyser();
+      txAnalyser.fftSize = 1024;
+      txAnalyser.smoothingTimeConstant = 0.6;
+      const dest = ctx.createMediaStreamDestination();
+      micSrc.connect(micGain);
+      micGain.connect(txAnalyser);
+      micSendGain = ctx.createGain();
+      micGain.connect(micSendGain);
+      micSendGain.connect(dest);
+      // モールス送信用トーン（普段は無音。モールス送信中はマイク側を絞ってトーンだけを送る）
+      morseOsc = ctx.createOscillator();
+      morseOsc.type = 'sine';
+      morseOsc.frequency.value = 700;
+      morseGain = ctx.createGain();
+      morseGain.gain.value = 0;
+      morseOsc.connect(morseGain);
+      morseGain.connect(dest);
+      morseGain.connect(txAnalyser);
+      morseGain.connect(sfxOut(ctx));
+      morseOsc.start();
+      // FAX送信用トーン（周波数を切り替えて使う）
+      faxOsc = ctx.createOscillator();
+      faxOsc.type = 'sine';
+      faxOsc.frequency.value = 1500;
+      faxGain = ctx.createGain();
+      faxGain.gain.value = 0;
+      faxOsc.connect(faxGain);
+      faxGain.connect(dest);
+      faxGain.connect(txAnalyser);
+      faxSideGain = ctx.createGain();
+      faxSideGain.gain.value = 0.3; // 自分の耳に返す音は小さめに（つんざくので）
+      faxGain.connect(faxSideGain);
+      faxSideGain.connect(sfxOut(ctx));
+      faxOsc.start();
+      sendStream = dest.stream;
+      localAudioTrack = sendStream.getAudioTracks()[0];
+      localAudioTrack.enabled = false;
+    }
+
+    // マイクを完全に解放する（ブラウザのマイク使用中表示も消える）
+    function releaseMic() {
+      abortMorse();
+      abortFax();
+      try { if (room && sendStream) room.removeStream(sendStream); } catch (_) {}
+      try { if (micSrc) micSrc.disconnect(); if (micGain) micGain.disconnect(); } catch (_) {}
+      [userMediaStream, sendStream].forEach(function (st) {
+        if (st) st.getTracks().forEach(function (t) { t.stop(); });
+      });
+      try { if (morseOsc) { morseOsc.stop(); morseOsc.disconnect(); } if (morseGain) morseGain.disconnect(); if (micSendGain) micSendGain.disconnect(); if (faxOsc) { faxOsc.stop(); faxOsc.disconnect(); } if (faxGain) faxGain.disconnect(); if (faxSideGain) faxSideGain.disconnect(); } catch (_) {}
+      userMediaStream = null; sendStream = null; localAudioTrack = null;
+      micSrc = null; micGain = null; txAnalyser = null;
+      micSendGain = null; morseOsc = null; morseGain = null;
+    }
+
+    let micPending = null;
+    async function initMicrophone(quiet) {
+      if (userMediaStream && localAudioTrack) return true;
+      if (micPending) return micPending;
+      micPending = (async function () {
+        try {
+          const st = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+            video: false
+          });
+          if (!room && !micTest) { st.getTracks().forEach(function (t) { t.stop(); }); return false; } // 取得中に退出した
+          userMediaStream = st;
+          buildMicGraph(st);
+          if (room) room.addStream(sendStream);
+          return true;
+        } catch (err) {
+          if (!quiet) alert('マイクの許可が必要です（HTTPS接続が必要）: ' + err.message);
+          return false;
+        }
+      })();
+      const ok = await micPending;
+      micPending = null;
+      return ok;
+    }
+
+
+    // Trystero 0.25.4 の API 差を吸収する小さな部品（0.20.0 の書き方のまま、呼び出し側を動かすため）
+    //  ・makeAction は、{ send, onMessage } を返す。受信は onMessage(data, { peerId })。送信は send(data, { target })
+    //  ・onPeerJoin / onPeerLeave / onPeerStream は、関数を代入して設定する
+    function actionOf(r, id) {
+      const a = r.makeAction(id);
+      return [
+        function (data, peerId) { return a.send(data, peerId ? { target: peerId } : undefined); },
+        function (handler) { a.onMessage = function (data, info) { handler(data, info && info.peerId); }; }
+      ];
+    }
+    function setHandler(r, name, fn) { r[name] = fn; }
+
+    function connectToChannel(key) {
+      roomEnterTime = Date.now();
+      roomMeta = { tag: '', by: '', at: 0 };
+      closeTagForm(); // 部屋を移ったら、開いていた編集欄は閉じる
+      renderTagRow();
+      const roomId = 'h-' + key;
+      if (room) {
+        room.leave();
+        peerMap.clear();
+        rxAnalysers.clear();
+        rxDecoders.clear();
+        currentTalkerId = null;
+        document.querySelectorAll('audio[id^="audio-"]').forEach(function (a) { a.remove(); });
+        ledRx.classList.remove('active');
+        renderPeers();
+      }
+      room = joinRoom({
+        appId: APP_ID,
+        relayConfig: { urls: ROOM_RELAYS, warnOnRelayFailure: false },
+        rtcConfig: getRtcConfig()
+      }, roomId, { onJoinError: function (d) { try { console.warn('join error:', d && d.error); } catch (_) {} } });
+
+      // makeAction は同じ名前を1回しか登録できないので、送受信を一度に受け取る
+      const pttStateAction = actionOf(room, 'pttState');
+      const nameAction = actionOf(room, 'pttName');
+      sendPttState = pttStateAction[0];
+      sendNickname = nameAction[0];
+
+      // 話題タグ: 全員へ送る。新しい(at が大きい)ほうを採用する
+      const tagAction = actionOf(room, 'roomTag');
+      sendTag = tagAction[0];
+      tagAction[1](function (data) {
+        if (isBotRoom(currentKey)) return; // ボットの部屋のタグは、固定（ほかの人が送ってきても、受け付けない）
+        if (!data || typeof data.at !== 'number' || data.at <= roomMeta.at) return;
+        roomMeta = { tag: capTag(data.tag), by: String(data.by || '').slice(0, 12), at: data.at };
+        renderTagRow(); announce(); renderScan();
+      });
+
+      // 入室してからの経過時間を交換し、新しく来たほうを判定する（既存の人にだけ入室音を鳴らす）
+      const faxAction = actionOf(room, 'faxPage');
+      sendFaxPage = faxAction[0];
+      faxAction[1](function (data, peerId) { onFaxPage(data, peerId); });
+
+      const joinAction = actionOf(room, 'joinAge');
+      sendJoinAge = joinAction[0];
+      joinAction[1](function (data, peerId) {
+        const peer = peerMap.get(peerId);
+        if (peer && data && typeof data.age === 'number') { peer.enteredAt = Date.now() - data.age; setTimeout(checkRoomFull, 500); }
+        if (!peer || peer.joinJudged || !data || typeof data.age !== 'number') return;
+        peer.joinJudged = true;
+        const myAge = Date.now() - roomEnterTime;
+        if (data.age < myAge - 1000) playEnterTone(); // 相手のほうが新しい = 相手が今入ってきた
+      });
+
+      nameAction[1](function (name, peerId) {
+        const p = peerMap.get(peerId);
+        if (p) { p.name = name; renderPeers(); }
+      });
+
+      pttStateAction[1](function (state, peerId) {
+        const peer = peerMap.get(peerId);
+        if (peer) peer.isTalking = state.isTalking;
+        if (peer) {
+          clearTimeout(peer.talkTimer);
+          // 終わりの知らせが届かないまま、90秒続いたら、終わったことにする（話中ロックが、解除されなくなるのを防ぐ）
+          if (state.isTalking) peer.talkTimer = setTimeout(function () {
+            const p2 = peerMap.get(peerId);
+            if (!p2 || !p2.isTalking) return;
+            p2.isTalking = false;
+            if (currentTalkerId === peerId) onStopReceiving();
+            renderPeers();
+          }, 90000);
+        }
+        if (state.isTalking) {
+          resetRxDecode(peerId);
+          currentTalkerId = peerId;
+          if (isTransmitting) {
+            // 同時に話し始めた: 両方とも送信が切れて混線
+            pressed = false;
+            stopTransmissionSilently();
+            showCrosstalk();
+            flashSub('混線！ もう一度押してください');
+          } else if (othersTalking() >= 2) {
+            showCrosstalk();
+          } else {
+            onStartReceiving((peer && peer.name) || '相手');
+          }
+        } else if (currentTalkerId === peerId) {
+          setTimeout(function () { flushRxDecode(peerId); }, 600); // 音声の末尾が届き切ってから確定する
+          onStopReceiving();
+        }
+        renderPeers();
+      });
+
+      setHandler(room, 'onPeerJoin', function (peerId) {
+        peerMap.set(peerId, { name: '接続中...', isTalking: false, joinJudged: false });
+        renderPeers();
+        setTimeout(checkRoomFull, 3000);
+        sendNickname(myNickname, peerId);
+        if (sendJoinAge) sendJoinAge({ age: Date.now() - roomEnterTime }, peerId);
+        if (sendTag && roomMeta.at > 0) sendTag(roomMeta, peerId); // 後から来た人にも今のタグを伝える
+        // 相手が経過時間を送ってこない場合（別の実装など）: 自分が20秒以上いるなら、相手は新規とみなす
+        const ageAtJoin = Date.now() - roomEnterTime;
+        setTimeout(function () {
+          const p = peerMap.get(peerId);
+          if (p && !p.joinJudged) { p.joinJudged = true; if (ageAtJoin > 20000) playEnterTone(); }
+        }, 2500);
+        if (sendStream) room.addStream(sendStream, { target: peerId });
+      });
+
+      setHandler(room, 'onPeerLeave', function (peerId) {
+        peerMap.delete(peerId);
+        rxAnalysers.delete(peerId);
+        rxDecoders.delete(peerId);
+        faxDecoders.delete(peerId);
+        cancelFaxReveal(peerId);
+        if (currentTalkerId === peerId) onStopReceiving();
+        const el = document.getElementById('audio-' + peerId);
+        if (el) el.remove();
+        renderPeers();
+      });
+
+      setHandler(room, 'onPeerStream', function (stream, peerId) {
+        let el = document.getElementById('audio-' + peerId);
+        if (!el) {
+          el = document.createElement('audio');
+          el.id = 'audio-' + peerId;
+          el.autoplay = true;
+          el.playsInline = true;
+          el.muted = speakerMuted;
+          document.body.appendChild(el);
+        }
+        el.srcObject = stream;
+        try {
+          const ctx = getAudioContext();
+          const an = ctx.createAnalyser();
+          an.fftSize = 256;
+          an.smoothingTimeConstant = 0.6;
+          ctx.createMediaStreamSource(stream).connect(an);
+          rxAnalysers.set(peerId, an);
+          const dan = ctx.createAnalyser();
+          dan.fftSize = 1024;
+          dan.smoothingTimeConstant = 0.05;
+          ctx.createMediaStreamSource(stream).connect(dan);
+          rxDecoders.set(peerId, { an: dan, freq: new Uint8Array(dan.frequencyBinCount), tone: false, toneAt: 0, offAt: 0, pat: '', text: '', letterDone: false, wordDone: false });
+        } catch (_) {}
+        el.play().catch(function () {});
+      });
+
+      if (sendStream) room.addStream(sendStream);
+    }
+
+    function renderPeers() {
+      peersList.innerHTML = '';
+      // 自分（入室中のみ）。話しているときは赤で光る
+      if (currentKey) {
+        const me = document.createElement('span');
+        me.className = 'peer-tag me' + (isTransmitting ? ' sending' : '');
+        me.textContent = myNickname + '（自分）';
+        peersList.appendChild(me);
+      }
+      peerMap.forEach(function (info, id) {
+        const span = document.createElement('span');
+        span.className = 'peer-tag' + (info.isTalking ? ' talking' : '');
+        span.textContent = info.name || id.slice(0, 5);
+        peersList.appendChild(span);
+      });
+      if (mismatchNote) {
+        const warn = document.createElement('span');
+        warn.className = 'peers-empty';
+        warn.style.color = '#fbbf24';
+        warn.textContent = mismatchNote;
+        peersList.appendChild(warn);
+      }
+      if (peerMap.size === 0) {
+        const none = document.createElement('span');
+        none.className = 'peers-empty';
+        none.textContent = currentKey ? '（ほかの参加者を待っています）' : '待機中（参加者なし）';
+        peersList.appendChild(none);
+      }
+    }
+
+    function onStartReceiving(name) {
+      ledRx.classList.add('active');
+      statusLabel.textContent = 'RX: ' + name;
+      statusLabel.style.color = 'var(--rx-color)';
+    }
+
+    function onStopReceiving() {
+      ledRx.classList.remove('active');
+      currentTalkerId = null;
+      if (!isTransmitting) {
+        statusLabel.textContent = 'STANDBY';
+        statusLabel.style.color = '#38bdf8';
+        playPttEndTone();
+      }
+    }
+
+    let startPending = false;
+    async function startTransmission(quiet) {
+      if (isTransmitting || startPending) return;
+      if (!room) { flashSub('先に部屋に入ってください'); return; }
+      if (othersTalking() > 0) { if (!quiet) { playBusyTone(); flashSub('話中です'); } return; }
+      startPending = true;
+      getAudioContext();
+      const ok = await initMicrophone();
+      startPending = false;
+      if (!ok) return;
+      if (!pressed) return; // 許可ダイアログ中に指を離した場合
+      if (othersTalking() > 0) { if (!quiet) { playBusyTone(); flashSub('話中です'); } return; }
+      isTransmitting = true;
+      renderPeers();
+      localAudioTrack.enabled = true;
+      pttBtn.classList.add('transmitting');
+      ledTx.classList.add('active');
+      statusLabel.textContent = 'TX (送信中)';
+      statusLabel.style.color = 'var(--tx-color)';
+      playPttStartTone();
+      if (sendPttState) sendPttState({ isTalking: true });
+      announce();
+    }
+
+    function stopTransmissionSilently() {
+      if (faxTxActive) { abortFax(); return; }
+      if (morseTxActive) { abortMorse(); return; }
+      if (!isTransmitting) return;
+      isTransmitting = false;
+      if (localAudioTrack) localAudioTrack.enabled = false;
+      pttBtn.classList.remove('transmitting');
+      ledTx.classList.remove('active');
+      renderPeers();
+      if (sendPttState) sendPttState({ isTalking: false });
+      announce();
+    }
+
+    function stopTransmission() {
+      if (faxTxActive) { abortFax(); return; }
+      if (morseTxActive) { abortMorse(); return; }
+      if (!isTransmitting) return;
+      isTransmitting = false;
+      if (localAudioTrack) localAudioTrack.enabled = false;
+      pttBtn.classList.remove('transmitting');
+      ledTx.classList.remove('active');
+      const talker = currentTalkerId && peerMap.get(currentTalkerId);
+      if (talker) {
+        onStartReceiving(talker.name);
+      } else {
+        statusLabel.textContent = 'STANDBY';
+        statusLabel.style.color = '#38bdf8';
+      }
+      playPttEndTone();
+      renderPeers();
+      if (sendPttState) sendPttState({ isTalking: false });
+      announce();
+    }
+
+    let pressed = false;
+    function press() { pressed = true; startTransmission(); }
+    function release() { pressed = false; stopTransmission(); }
+
+    pttBtn.addEventListener('mousedown', function (e) { e.preventDefault(); press(); });
+    window.addEventListener('mouseup', function () { if (pressed) release(); });
+    // タッチ操作: スワイプ中に指がボタンに触れても、話し始めないようにする
+    //   ・押してから SWIPE_HOLD_MS のあいだ、指がほぼ動かなかったときだけ送信を始める（短いタップでは送信しない）
+    //   ・指がボタンの外（SWIPE_MARGIN_PX 余裕あり）に出たらスワイプとみなし、送信を始めない／送信中なら直ちに止める
+    //     ボタンの上での指の移動（滑り）は許容する
+    const SWIPE_HOLD_MS = 120, SWIPE_MARGIN_PX = 14;
+    let touchActive = false, touchSwiped = false, touchTimer = null, touchX = 0, touchY = 0;
+
+    function endTouch() {
+      clearTimeout(touchTimer); touchTimer = null;
+      const swiped = touchSwiped;
+      touchActive = false; touchSwiped = false;
+      if (!swiped && pressed) release();
+    }
+
+    pttBtn.addEventListener('touchstart', function (e) {
+      e.preventDefault();
+      if (touchActive) return;
+      touchActive = true; touchSwiped = false;
+      const t = e.touches[0];
+      touchX = t.clientX; touchY = t.clientY;
+      clearTimeout(touchTimer);
+      touchTimer = setTimeout(function () {
+        touchTimer = null;
+        if (touchActive && !touchSwiped) press();
+      }, SWIPE_HOLD_MS);
+    }, { passive: false });
+
+    pttBtn.addEventListener('touchmove', function (e) {
+      e.preventDefault();
+      if (!touchActive || touchSwiped) return;
+      const t = e.touches[0];
+      // ボタン（円）の上にいる間は、動いてもスワイプとみなさない
+      const r = pttBtn.getBoundingClientRect();
+      const dist = Math.hypot(t.clientX - (r.left + r.width / 2), t.clientY - (r.top + r.height / 2));
+      if (dist <= r.width / 2 + SWIPE_MARGIN_PX) return;
+      touchSwiped = true;
+      clearTimeout(touchTimer); touchTimer = null;
+      if (pressed) {
+        pressed = false;
+        const wasTx = isTransmitting;
+        stopTransmissionSilently();
+        if (wasTx) {
+          const talker = currentTalkerId && peerMap.get(currentTalkerId);
+          if (talker) onStartReceiving(talker.name);
+          else { statusLabel.textContent = 'STANDBY'; statusLabel.style.color = '#38bdf8'; }
+        }
+      }
+    }, { passive: false });
+
+    pttBtn.addEventListener('touchend', function (e) { e.preventDefault(); endTouch(); }, { passive: false });
+    pttBtn.addEventListener('touchcancel', function () { endTouch(); });
+
+    // スペースキーで話す。部屋の中では、ページのスクロールやボタンの誤作動を完全に止める
+    let spaceHeld = false;
+    function isTyping() {
+      const el = document.activeElement;
+      if (!el) return false;
+      if (el.isContentEditable || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return true;
+      return el.tagName === 'INPUT' && /^(text|search|url|email|number|password|tel)$/.test(el.type || 'text');
+    }
+    function spaceActive() {
+      return !!currentKey && !document.getElementById('radioView').classList.contains('hidden')
+        && !document.querySelector('dialog[open]') && !isTyping() && !document.getElementById('radioView').classList.contains('flipped');
+    }
+
+    window.addEventListener('keydown', function (e) {
+      if (e.code !== 'Space') return;
+      if ((morsePlaying || morseQueue.length) && currentKey && !document.querySelector('dialog[open]') && !isTyping()) {
+        e.preventDefault();
+        if (!e.repeat) morseQueue.push(' ');
+        return;
+      }
+      if (!spaceActive()) {
+        // 部屋の外（ホーム画面など）でも、スペースキーでページがスクロールしないようにする。
+        // 入力欄・ダイアログの中と、ボタンやチェックにフォーカスがあるときは、通常どおり。
+        if (isTyping() || document.querySelector('dialog[open]')) return;
+        const f = document.activeElement;
+        if (f && (f.tagName === 'BUTTON' || f.tagName === 'A' || f.tagName === 'INPUT' || f.tagName === 'SUMMARY')) return;
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault(); // 押しっぱなし（repeat）のスクロールも止める
+      const el = document.activeElement;
+      if (el && el !== document.body && el.blur) el.blur(); // フォーカス中のボタンやチェックが、スペースで動かないように
+      if (!e.repeat && !spaceHeld) { spaceHeld = true; press(); }
+    });
+
+    window.addEventListener('keyup', function (e) {
+      if (e.code !== 'Space') return;
+      // 押している間にダイアログが開いても、送信が止まらなくならないように、離したら必ず終える
+      if (spaceHeld) { e.preventDefault(); spaceHeld = false; release(); return; }
+      if (spaceActive()) e.preventDefault();
+    });
+    window.addEventListener('blur', function () { if (spaceHeld) { spaceHeld = false; release(); } });
+
+    // ---------- モールス送信（PCのみ: 文字キーを打つと、その文字の符号をトーンで送る） ----------
+    const MORSE_CODE = {
+      A: '.-', B: '-...', C: '-.-.', D: '-..', E: '.', F: '..-.', G: '--.', H: '....', I: '..', J: '.---',
+      K: '-.-', L: '.-..', M: '--', N: '-.', O: '---', P: '.--.', Q: '--.-', R: '.-.', S: '...', T: '-',
+      U: '..-', V: '...-', W: '.--', X: '-..-', Y: '-.--', Z: '--..',
+      '1': '.----', '2': '..---', '3': '...--', '4': '....-', '5': '.....', '6': '-....', '7': '--...', '8': '---..', '9': '----.', '0': '-----',
+      '.': '.-.-.-', ',': '--..--', '?': '..--..', '!': '-.-.--', '/': '-..-.', '-': '-....-', ':': '---...', "'": '.----.', '"': '.-..-.', '(': '-.--.', ')': '-.--.-', '=': '-...-', '+': '.-.-.', '@': '.--.-.'
+    };
+    const MORSE_UNIT_MS = 100;
+    const morseQueue = [];
+    let morsePlaying = false, morseTxActive = false, morseSession = 0;
+
+    function morseSleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    function morseKey(down) {
+      if (!morseGain) return;
+      const t = getAudioContext().currentTime;
+      morseGain.gain.cancelScheduledValues(t);
+      morseGain.gain.setTargetAtTime(down ? 0.35 : 0, t, 0.004);
+    }
+    function beginMorseTx() {
+      morseTxActive = true;
+      isTransmitting = true;
+      if (micSendGain) micSendGain.gain.value = 0;
+      if (localAudioTrack) localAudioTrack.enabled = true;
+      ledTx.classList.add('active');
+      statusLabel.textContent = 'TX (モールス送信中)';
+      statusLabel.style.color = 'var(--tx-color)';
+      renderPeers();
+      if (sendPttState) sendPttState({ isTalking: true });
+      announce();
+    }
+    function finishMorseTx() {
+      if (!morseTxActive) return;
+      morseTxActive = false;
+      morseKey(false);
+      if (micSendGain) micSendGain.gain.value = 1;
+      if (localAudioTrack) localAudioTrack.enabled = false;
+      isTransmitting = false;
+      ledTx.classList.remove('active');
+      const talker = currentTalkerId && peerMap.get(currentTalkerId);
+      if (talker) onStartReceiving(talker.name);
+      else { statusLabel.textContent = 'STANDBY'; statusLabel.style.color = '#38bdf8'; }
+      lcdSub.textContent = '';
+      renderPeers();
+      if (sendPttState) sendPttState({ isTalking: false });
+      announce();
+    }
+    function abortMorse() {
+      morseSession++;
+      morseQueue.length = 0;
+      morsePlaying = false;
+      finishMorseTx();
+    }
+    async function playMorseChar(ch, session, wideGap) {
+      const pat = MORSE_CODE[ch];
+      lcdSub.textContent = 'モールス: ' + ch + ' ' + pat.split('').map(function (s) { return s === '.' ? '・' : '−'; }).join('');
+      for (let i = 0; i < pat.length; i++) {
+        if (session !== morseSession) return false;
+        morseKey(true);
+        await morseSleep(pat[i] === '.' ? MORSE_UNIT_MS : MORSE_UNIT_MS * 3);
+        morseKey(false);
+        if (session !== morseSession) return false;
+        if (i < pat.length - 1) await morseSleep(MORSE_UNIT_MS * (wideGap ? 1.5 : 1)); // 先頭文字は隙間を広めに（受信側の立ち上がりで埋まらないように）
+      }
+      if (session !== morseSession) return false;
+      await morseSleep(MORSE_UNIT_MS);
+      return true;
+    }
+    async function startMorse() {
+      if (morsePlaying) return;
+      if (!room || isTransmitting) { morseQueue.length = 0; return; }
+      if (othersTalking() > 0) { playBusyTone(); flashSub('話中です'); morseQueue.length = 0; return; }
+      morsePlaying = true;
+      const ok = await initMicrophone();
+      if (!ok) { morsePlaying = false; morseQueue.length = 0; flashSub('マイクの許可が必要です'); return; }
+      if (!room || othersTalking() > 0) {
+        if (room && othersTalking() > 0) { playBusyTone(); flashSub('話中です'); }
+        morsePlaying = false; morseQueue.length = 0; return;
+      }
+      const session = ++morseSession;
+      let firstCh = true;
+      beginMorseTx();
+      await morseSleep(700); // 打ち始める前の間（受信側の復号リセットと回線の落ち着き待ち。最初の文字を拾わせるため長め）
+      while (morseQueue.length && session === morseSession) {
+        const ch = morseQueue.shift();
+        if (ch === ' ') { await morseSleep(MORSE_UNIT_MS * 6); continue; }
+        if (!await playMorseChar(ch, session, firstCh)) break;
+        firstCh = false;
+        if (morseQueue.length && session === morseSession) await morseSleep(MORSE_UNIT_MS * 2);
+      }
+      morsePlaying = false;
+      if (session === morseSession) finishMorseTx();
+    }
+    window.addEventListener('keydown', function (e) {
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (!currentKey || !room) return;
+      const rv = document.getElementById('radioView');
+      if (rv.classList.contains('hidden') || rv.classList.contains('flipped')) return;
+      if (document.querySelector('dialog[open]') || isTyping()) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (faxMode) exitFaxMode();
+        faxCanvas.classList.add('hidden'); // 紙も隠す
+        morseQueue.push('E', 'S', 'C'); // ESCを押したら、モールスでも「ESC」と送る
+        startMorse();
+        return;
+      }
+      // FAXモード（隠し）: 「fax」と打つと入る。ESCで解除
+      if (faxMode) {
+        if (faxTxActive) return;
+        if (e.key === 'Enter') { e.preventDefault(); if (faxText) startFaxTx(); return; }
+        if (e.key === 'Backspace') { e.preventDefault(); faxText = faxText.slice(0, -1); renderFaxCompose(); return; }
+        if (e.key && e.key.length === 1 && faxText.length < 24) { e.preventDefault(); faxText += e.key; renderFaxCompose(); }
+        return;
+      }
+      if (e.key && e.key.length === 1) {
+        faxProbe = (faxProbe + e.key.toLowerCase()).slice(-3);
+        if (faxProbe === 'fax') { faxProbe = ''; e.preventDefault(); enterFaxMode(); return; }
+      }
+      if (e.key === 'Backspace') {
+        if (morseQueue.length) { e.preventDefault(); morseQueue.pop(); }
+        return;
+      }
+      if (!e.key || e.key.length !== 1) return;
+      const ch = e.key.toUpperCase();
+      if (!Object.prototype.hasOwnProperty.call(MORSE_CODE, ch)) return;
+      e.preventDefault();
+      morseQueue.push(ch);
+      startMorse();
+    });
+
+    // ---------- モールス受信（700Hzトーンを検出して文字に戻す） ----------
+    const MORSE_REVERSE = {};
+    Object.keys(MORSE_CODE).forEach(function (k) { MORSE_REVERSE[MORSE_CODE[k]] = k; });
+    const rxDecoders = new Map(); // peerId -> 復号の状態
+    function resetRxDecode(peerId) {
+      const d = rxDecoders.get(peerId);
+      if (d) { d.pat = ''; d.text = ''; d.tone = false; d.hasPend = false; d.pendDur = 0; d.letterDone = false; d.wordDone = false; }
+    }
+    function morseDist1(a, b) { // 2つの符号が「1要素だけ違う」か
+      if (a === b) return false;
+      const la = a.length, lb = b.length;
+      if (Math.abs(la - lb) > 1) return false;
+      if (la === lb) {
+        let diff = 0;
+        for (let i = 0; i < la; i++) if (a[i] !== b[i]) diff++;
+        return diff === 1;
+      }
+      const s = la < lb ? a : b, l = la < lb ? b : a;
+      let i = 0, j = 0, skipped = false;
+      while (i < s.length && j < l.length) {
+        if (s[i] === l[j]) { i++; j++; }
+        else { if (skipped) return false; skipped = true; j++; }
+      }
+      return true;
+    }
+    function flushRxChar(d) {
+      if (!d.pat) return;
+      const hit = MORSE_REVERSE[d.pat];
+      if (hit) { d.text += hit; }
+      else {
+        // 完全一致が無くても、1要素違いの候補が1つだけなら推定して読む
+        let cand = null, ties = 0;
+        Object.keys(MORSE_REVERSE).forEach(function (p) {
+          if (morseDist1(d.pat, p)) { cand = MORSE_REVERSE[p]; ties++; }
+        });
+        if (ties === 1) d.text += /[A-Z]/.test(cand) ? cand.toLowerCase() : cand + '?'; // 推定は目印付き
+        else d.text += '[' + d.pat.split('').map(function (c) { return c === '.' ? '・' : '−'; }).join('') + ']'; // 読めなかった符号は測れた形のまま出す
+      }
+      d.text = d.text.slice(-60);
+      if (d.text.slice(-3) === 'ESC') faxCanvas.classList.add('hidden'); // 「ESC」を受けたら紙を隠す
+      d.pat = '';
+    }
+    function flushRxDecode(peerId) {
+      const d = rxDecoders.get(peerId);
+      if (!d || d.tone) return; // トーンの途中で確定すると末尾が欠けるので、終わってからだけ
+      finalizePend(peerId);
+      if (d.pat) { flushRxChar(d); renderRxDecode(peerId); }
+    }
+    function renderRxDecode(peerId) {
+      const d = rxDecoders.get(peerId);
+      if (!d) return;
+      let s = d.text;
+      let cur = d.pat;
+      if (d.hasPend) cur += d.pendDur < MORSE_UNIT_MS * 2 ? '.' : '-';
+      if (cur) s += (s ? ' ' : '') + cur.split('').map(function (c) { return c === '.' ? '・' : '−'; }).join('');
+      lcdSub.textContent = s.length > 38 ? s.slice(-38) : s; // 表題なし・長いときは最新だけ見せる
+    }
+    function finalizePend(peerId) {
+      const d = rxDecoders.get(peerId);
+      if (!d || !d.hasPend) return;
+      d.pat += d.pendDur < MORSE_UNIT_MS * 2 ? '.' : '-';
+      d.hasPend = false; d.pendDur = 0;
+      d.offAt = d.pendEnd;
+      renderRxDecode(peerId);
+    }
+    setInterval(function () { decodeMorseRx(); decodeFaxRx(); }, 15); // 描画と切り離して一定間隔で測る（先頭の符号を取りこぼさないため）
+    function decodeMorseRx() {
+      const now = performance.now();
+      rxDecoders.forEach(function (d, peerId) {
+        const an = d.an;
+        an.getByteFrequencyData(d.freq);
+        const binHz = an.context.sampleRate / an.fftSize;
+        const idx = Math.round(700 / binHz);
+        let peak = 0;
+        for (let i = idx - 2; i <= idx + 2; i++) { if (d.freq[i] > peak) peak = d.freq[i]; }
+        let sum = 0, cnt = 0;
+        for (let i = 2; i < d.freq.length; i++) { if (Math.abs(i - idx) > 3) { sum += d.freq[i]; cnt++; } }
+        const avg = cnt ? sum / cnt : 0;
+        // 肉声は帯域全体に散るのでモールスとして受け取らない（純音は700Hz帯に集中する）
+        function bandEnergy(fromHz, toHz) {
+          let e = 0;
+          const a = Math.max(1, Math.floor(fromHz / binHz)), b = Math.min(d.freq.length - 1, Math.ceil(toHz / binHz));
+          for (let i = a; i <= b; i++) { const db = -100 + (d.freq[i] / 255) * 70; const amp = Math.pow(10, db / 20); e += amp * amp; }
+          return e;
+        }
+        const eVoice = bandEnergy(100, 4000);
+        const pure = eVoice > 0 && bandEnergy(620, 780) / eVoice >= 0.55;
+        const floor = d.tone ? 70 : 100;
+        const isTone = peak >= floor && peak > avg * 3 && pure;
+        if (isTone) {
+          if (!d.tone) {
+            d.tone = true; d.toneAt = now;
+            if (d.hasPend && now - d.pendEnd >= 30) finalizePend(peerId); // 30ms以上あいたら前の符号は確定
+            // 次の符号の始まりで、前の文字との区切りを実測の無音長で確定する
+            if (!d.hasPend && d.offAt && (d.pat || d.letterDone) && !d.wordDone) {
+              const gap = now - d.offAt;
+              if (gap >= MORSE_UNIT_MS * 5) {
+                if (d.pat) flushRxChar(d);
+                d.text = (d.text + ' ').slice(-60);
+                renderRxDecode(peerId);
+              }
+              else if (d.pat && gap >= MORSE_UNIT_MS * 2 + 5) { flushRxChar(d); renderRxDecode(peerId); }
+            }
+            d.letterDone = false; d.wordDone = false;
+          }
+        } else {
+          if (d.tone) {
+            d.tone = false;
+            const seg = now - d.toneAt;
+            if (seg >= 35) { // 35ms未満のクリック等のノイズは捨てる
+              if (d.hasPend) d.pendDur += (d.toneAt - d.pendEnd) + seg; // 短い欠落はつないで1つの符号にする
+              else { d.pendDur = seg; d.hasPend = true; }
+              d.pendEnd = now;
+            }
+          }
+          if (d.hasPend && now - d.pendEnd >= 30) finalizePend(peerId);
+          if (!d.hasPend && (d.pat || (d.letterDone && !d.wordDone))) {
+            const silence = now - d.offAt;
+            if (silence >= MORSE_UNIT_MS * 5 && !d.wordDone) {
+              if (d.pat) flushRxChar(d);
+              d.text = (d.text + ' ').slice(-60);
+              d.wordDone = true; d.letterDone = true;
+              renderRxDecode(peerId);
+            } else if (d.pat && silence >= MORSE_UNIT_MS * 2 + 5 && !d.letterDone) {
+              flushRxChar(d);
+              d.letterDone = true;
+              renderRxDecode(peerId);
+            }
+          }
+        }
+      });
+    }
+
+
+    // ---------- FAXモード（隠し: 「fax」と打つと入る / ESCで解除） ----------
+    const FAX_ROWS = 15, FAX_COLS = 240, FAX_PX_MS = 20; // 紙は15行: 先頭の空行1 + 本文14行（1行分だけ）。画素は回線で潰れない太さに
+    const FAX_TEXT_ROWS = 14;
+    const FAX_FREQ = { pre: 1500, sync: 900, white: 1300, black: 2100 };
+    let faxMode = false, faxText = '', faxProbe = '';
+    let faxTxActive = false, faxPlaying = false, faxSession = 0;
+    const faxCanvas = document.getElementById('faxCanvas');
+    const faxCtx2d = faxCanvas.getContext('2d');
+    const faxImg = faxCtx2d.createImageData(FAX_COLS, FAX_ROWS);
+    function faxFillPaper() {
+      for (let i = 0; i < faxImg.data.length; i += 4) {
+        faxImg.data[i] = 248; faxImg.data[i + 1] = 248; faxImg.data[i + 2] = 240; faxImg.data[i + 3] = 255;
+      }
+      faxCtx2d.putImageData(faxImg, 0, 0);
+    }
+    function faxDrawPixel(x, y, black) {
+      if (x < 0 || x >= FAX_COLS || y < 0 || y >= FAX_ROWS) return;
+      const i = (y * FAX_COLS + x) * 4;
+      faxImg.data[i] = black ? 20 : 248;
+      faxImg.data[i + 1] = black ? 20 : 248;
+      faxImg.data[i + 2] = black ? 20 : 240;
+      faxImg.data[i + 3] = 255;
+    }
+    function renderFaxCompose() {
+      lcdSub.textContent = faxText ? faxText + '▌' : 'FAXモード: 文字を打って Enter で送信（ESCで終了）';
+    }
+    function enterFaxMode() {
+      abortMorse();
+      faxMode = true;
+      faxText = '';
+      faxCanvas.classList.remove('hidden');
+      faxFillPaper();
+      renderFaxCompose();
+    }
+    function exitFaxMode() {
+      if (faxTxActive) abortFax();
+      faxMode = false;
+      faxText = '';
+      flashSub('FAXモード終了');
+    }
+    function textToFaxGrid(text) {
+      const c = document.createElement('canvas');
+      const g = c.getContext('2d', { willReadFrequently: true });
+      const FS = 56; // 大きく描いてから縮小する（小さい字を直接潰すと線が欠けるので）
+      const H = 84; // 上下に余裕を持たせ、g のような下へ伸びる字も切らない
+      g.font = '700 ' + FS + 'px monospace';
+      const w = Math.max(1, Math.ceil(g.measureText(text).width)) + 4;
+      c.width = w; c.height = H;
+      g.font = '700 ' + FS + 'px monospace';
+      g.fillStyle = '#000';
+      g.textBaseline = 'alphabetic';
+      g.fillText(text, 2, FS);
+      const src = g.getImageData(0, 0, w, H).data;
+      // インクのある範囲を実測して、その範囲だけを14行に写す（字の位置決めをフォント任せにしない）
+      let minX = w, maxX = -1, minY = H, maxY = -1;
+      for (let y = 0; y < H; y++) for (let x = 0; x < w; x++) {
+        if (src[(y * w + x) * 4 + 3] > 40) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+      const grid = [];
+      if (maxX < 0) {
+        for (let y = 0; y < FAX_TEXT_ROWS; y++) grid.push([0]);
+        return grid;
+      }
+      const iw = maxX - minX + 1, ih = maxY - minY + 1;
+      const cols = Math.max(1, Math.min(FAX_COLS, Math.round(iw * FAX_TEXT_ROWS / ih)));
+      for (let y = 0; y < FAX_TEXT_ROWS; y++) {
+        const row = [];
+        const sy0 = minY + Math.floor(y * ih / FAX_TEXT_ROWS), sy1 = Math.min(maxY + 1, Math.max(sy0 + 1, minY + Math.floor((y + 1) * ih / FAX_TEXT_ROWS)));
+        for (let x = 0; x < cols; x++) {
+          const sx0 = minX + Math.floor(x * iw / cols), sx1 = Math.min(maxX + 1, Math.max(sx0 + 1, minX + Math.floor((x + 1) * iw / cols)));
+          let ink = 0, tot = 0;
+          for (let sy = sy0; sy < sy1; sy++) for (let sx = sx0; sx < sx1; sx++) {
+            if (src[(sy * w + sx) * 4 + 3] > 100) ink++;
+            tot++;
+          }
+          row.push(tot && ink / tot > 0.2 ? 1 : 0); // 細い線も残す（Macのフォントは線が細く、厳しく切ると欠ける）
+        }
+        grid.push(row);
+      }
+      return grid;
+    }
+    function faxTone(freq, ms) {
+      return new Promise(function (resolve) {
+        if (!faxOsc) { resolve(); return; }
+        const t = getAudioContext().currentTime;
+        faxOsc.frequency.cancelScheduledValues(t);
+        faxOsc.frequency.setTargetAtTime(freq, t, 0.002);
+        setTimeout(resolve, ms);
+      });
+    }
+    function beginFaxTx() {
+      faxTxActive = true;
+      isTransmitting = true;
+      if (micSendGain) micSendGain.gain.value = 0;
+      if (localAudioTrack) localAudioTrack.enabled = true;
+      if (faxGain) faxGain.gain.setTargetAtTime(0.2, getAudioContext().currentTime, 0.005);
+      ledTx.classList.add('active');
+      statusLabel.textContent = 'TX (FAX送信中)';
+      statusLabel.style.color = 'var(--tx-color)';
+      renderPeers();
+      if (sendPttState) sendPttState({ isTalking: true });
+      announce();
+    }
+    function finishFaxTx() {
+      if (faxGain) faxGain.gain.setTargetAtTime(0, getAudioContext().currentTime, 0.005);
+      faxTxActive = false;
+      isTransmitting = false;
+      if (micSendGain) micSendGain.gain.value = 1;
+      if (localAudioTrack) localAudioTrack.enabled = false;
+      ledTx.classList.remove('active');
+      statusLabel.textContent = 'STANDBY';
+      statusLabel.style.color = '';
+      renderPeers();
+      if (sendPttState) sendPttState({ isTalking: false });
+      announce();
+      if (faxMode) renderFaxCompose();
+    }
+    function abortFax() {
+      faxSession++;
+      faxPlaying = false;
+      if (faxTxActive) finishFaxTx();
+      if (faxGain) faxGain.gain.value = 0;
+    }
+    async function startFaxTx() {
+      if (faxPlaying || !faxText) return;
+      if (!room || isTransmitting) return;
+      if (othersTalking() > 0) { playBusyTone(); flashSub('話中です'); return; }
+      faxPlaying = true;
+      const ok = await initMicrophone();
+      if (!ok) { faxPlaying = false; flashSub('マイクの許可が必要です'); return; }
+      if (!room || othersTalking() > 0) { faxPlaying = false; return; }
+      const session = ++faxSession;
+      let grid;
+      try { grid = textToFaxGrid(faxText); } catch (_) { faxPlaying = false; flashSub('FAX化に失敗しました'); return; }
+      faxCanvas.classList.remove('hidden');
+      faxFillPaper();
+      beginFaxTx();
+      if (sendFaxPage) { try { sendFaxPage(faxGridToPayload(grid)); } catch (_) {} } // 中身はデータ便でも先に送る（表示は音に合わせて後から）
+      await morseSleep(500);
+      if (session !== faxSession) { faxPlaying = false; return; }
+      await faxTone(FAX_FREQ.pre, 700); // ピー（受信開始の合図）: 受信側が確実に拾えるよう長めに
+      async function sendFaxRow(rowArr, cols, yAbs) {
+        if (session !== faxSession) return;
+        await faxTone(FAX_FREQ.sync, 150);
+        let hasBlack = false;
+        if (rowArr) for (let i = 0; i < cols; i++) if (rowArr[i]) { hasBlack = true; break; }
+        if (!hasBlack) { await faxTone(FAX_FREQ.white, 80); return; } // 空行は短く送る（中身が無いので時間は要らない）
+        let x = 0;
+        while (x < cols && session === faxSession) {
+          let x2 = x + 1;
+          while (x2 < cols && rowArr[x2] === rowArr[x]) x2++;
+          await faxTone(rowArr[x] ? FAX_FREQ.black : FAX_FREQ.white, (x2 - x) * FAX_PX_MS);
+          for (let px = x; px < x2; px++) faxDrawPixel(px, yAbs, !!rowArr[px]);
+          faxCtx2d.putImageData(faxImg, 0, 0);
+          x = x2;
+        }
+      }
+      await sendFaxRow(null, 0, 0); // 先頭の空行（余白）
+      for (let y = 0; y < FAX_TEXT_ROWS && session === faxSession; y++) {
+        await sendFaxRow(grid[y], grid[0].length, 1 + y);
+      }
+      faxPlaying = false;
+      if (session === faxSession) { await morseSleep(150); finishFaxTx(); }
+    }
+    // ---------- FAX受信 ----------
+    const faxDecoders = new Map();
+    function faxBandEnergy(srcD, freq) {
+      const binHz = srcD.an.context.sampleRate / srcD.an.fftSize;
+      const idx = Math.round(freq / binHz);
+      let e = 0;
+      for (let i = idx - 1; i <= idx + 1; i++) {
+        if (i < 0 || i >= srcD.freq.length) continue;
+        const db = -100 + (srcD.freq[i] / 255) * 70;
+        const amp = Math.pow(10, db / 20);
+        e += amp * amp;
+      }
+      return e;
+    }
+    function decodeFaxRx() {
+      const now = performance.now();
+      rxDecoders.forEach(function (srcD, peerId) {
+        let d = faxDecoders.get(peerId);
+        if (!d) { d = { state: 'idle', preCount: 0, row: 0, lastX: -1, lastAct: 0, rowStart: 0, syncStart: 0 }; faxDecoders.set(peerId, d); }
+        srcD.an.getByteFrequencyData(srcD.freq);
+        const ePre = faxBandEnergy(srcD, FAX_FREQ.pre), eSync = faxBandEnergy(srcD, FAX_FREQ.sync);
+        const eW = faxBandEnergy(srcD, FAX_FREQ.white), eB = faxBandEnergy(srcD, FAX_FREQ.black);
+        const total = ePre + eSync + eW + eB;
+        let kind = '';
+        if (total > 0.000001) {
+          const m = Math.max(ePre, eSync, eW, eB);
+          if (m / total >= 0.5) kind = m === ePre ? 'pre' : m === eSync ? 'sync' : m === eW ? 'white' : 'black';
+        }
+        if (d.state === 'idle') {
+          if (kind === 'pre') {
+            if (++d.preCount >= 8) {
+              d.state = 'armed'; d.row = 0; d.lastAct = now;
+              const dig = faxDigital.get(peerId);
+              if (dig && !dig.started) startFaxReveal(peerId, 500); // デジタル便が来ていれば、音に合わせて表示開始
+              else if (!dig) { faxCanvas.classList.remove('hidden'); faxFillPaper(); }
+            }
+          } else d.preCount = 0;
+          return;
+        }
+        if (kind) d.lastAct = now;
+        if (now - d.lastAct > 900) { d.state = 'idle'; d.preCount = 0; return; }
+        if (d.state === 'armed') {
+          if (kind === 'sync') { d.state = 'insync'; d.syncStart = now; }
+        } else if (d.state === 'insync') {
+          if (kind !== 'sync') { d.state = 'row'; d.rowStart = now; d.lastX = -1; } // 同期の終わりを実測して行の起点にする
+          else if (now - d.syncStart > 320) { d.state = 'row'; d.rowStart = now; d.lastX = -1; }
+        } else if (d.state === 'row') {
+          if (kind === 'sync' && now - d.rowStart > 60) {
+            d.row++;
+            if (d.row >= FAX_ROWS) { d.state = 'idle'; d.preCount = 0; return; }
+            d.state = 'insync'; d.syncStart = now;
+          } else if (kind === 'white' || kind === 'black') {
+            const dig2 = faxDigital.get(peerId);
+            if (dig2 && dig2.started) return; // デジタル表示中はアナログで上書きしない
+            const x = Math.floor((now - d.rowStart) / FAX_PX_MS);
+            const from = d.lastX < 0 ? 0 : d.lastX + 1;
+            const to = Math.min(x, FAX_COLS - 1);
+            for (let px = from; px <= to; px++) faxDrawPixel(px, d.row, kind === 'black');
+            if (x !== d.lastX) { faxCtx2d.putImageData(faxImg, 0, 0); d.lastX = x; }
+          }
+        }
+      });
+    }
+
+
+    // ---------- FAXデジタル便（中身はデータで確実に届け、見せ方は音のFAXのまま） ----------
+    const faxDigital = new Map(); // peerId -> { grid, timers, started }
+    function faxGridToPayload(grid) {
+      const cols = grid[0].length;
+      let bin = '';
+      for (let y = 0; y < grid.length; y++) {
+        for (let b = 0; b < Math.ceil(cols / 8); b++) {
+          let v = 0;
+          for (let bit = 0; bit < 8; bit++) {
+            const x = b * 8 + bit;
+            if (x < cols && grid[y][x]) v |= (1 << (7 - bit));
+          }
+          bin += String.fromCharCode(v);
+        }
+      }
+      return { c: cols, d: btoa(bin) };
+    }
+    function faxPayloadToGrid(p) {
+      if (!p || typeof p.c !== 'number' || typeof p.d !== 'string') return null;
+      const cols = Math.max(1, Math.min(FAX_COLS, p.c));
+      let bin;
+      try { bin = atob(p.d); } catch (_) { return null; }
+      const bpr = Math.ceil(cols / 8);
+      if (bin.length < bpr * FAX_TEXT_ROWS) return null;
+      const grid = [];
+      for (let y = 0; y < FAX_TEXT_ROWS; y++) {
+        const row = [];
+        for (let x = 0; x < cols; x++) {
+          row.push((bin.charCodeAt(y * bpr + Math.floor(x / 8)) >> (7 - (x % 8))) & 1);
+        }
+        grid.push(row);
+      }
+      return grid;
+    }
+    function cancelFaxReveal(peerId) {
+      const st = faxDigital.get(peerId);
+      if (st) st.timers.forEach(function (t) { clearTimeout(t); });
+      faxDigital.delete(peerId);
+    }
+    function startFaxReveal(peerId, delayMs) {
+      const st = faxDigital.get(peerId);
+      if (!st || st.started) return;
+      st.started = true;
+      faxCanvas.classList.remove('hidden');
+      faxFillPaper();
+      // 送信側と同じ進行表で1行ずつ出す: 空行（同期+短い白）→ 本文行（同期+幅ぶん）。真っ白な行は速い
+      const cols = st.grid[0].length;
+      let at = delayMs || 0;
+      function scheduleRow(rowArr, yAbs, dur) {
+        const t = setTimeout(function () {
+          if (faxDigital.get(peerId) !== st) return;
+          if (rowArr) for (let x = 0; x < cols; x++) faxDrawPixel(x, yAbs, !!rowArr[x]);
+          faxCtx2d.putImageData(faxImg, 0, 0);
+        }, at);
+        st.timers.push(t);
+        at += dur;
+      }
+      scheduleRow(null, 0, 150 + 80);
+      for (let y = 0; y < FAX_TEXT_ROWS; y++) {
+        const rowArr = st.grid[y];
+        const blank = !rowArr.some(function (v) { return v; });
+        scheduleRow(rowArr, 1 + y, blank ? 150 + 80 : 150 + cols * FAX_PX_MS);
+      }
+      const done = setTimeout(function () { if (faxDigital.get(peerId) === st) faxDigital.delete(peerId); }, at + 4000);
+      st.timers.push(done);
+    }
+    function onFaxPage(data, peerId) {
+      if (POCHI_NATIVE && data) { try { window.webkit.messageHandlers.pochi.postMessage({ type: 'fax', peerId: peerId, c: data.c, d: data.d }); } catch (_) {} }
+      const grid = faxPayloadToGrid(data);
+      if (!grid) return;
+      cancelFaxReveal(peerId);
+      const st = { grid: grid, timers: [], started: false };
+      faxDigital.set(peerId, st);
+      // 音の合図（ピー）が聞こえればそちらで開始。聞こえなくても少し待って開始する
+      st.timers.push(setTimeout(function () { startFaxReveal(peerId, 0); }, 1500));
+    }
+
+
+    // ---------- ネイティブアプリ連携ブリッジ（?native=1 のときだけ有効） ----------
+    const POCHI_NATIVE = new URLSearchParams(location.search).has('native');
+    if (POCHI_NATIVE) {
+      try { if (welcomeDialog.open) welcomeDialog.close(); } catch (_) {}
+      const pochiPost = function (obj) {
+        try { window.webkit.messageHandlers.pochi.postMessage(obj); } catch (_) {}
+      };
+      const pochiLevelOf = function (an) {
+        if (!an) return 0;
+        const buf = new Uint8Array(an.fftSize);
+        an.getByteTimeDomainData(buf);
+        let peak = 0;
+        for (let i = 0; i < buf.length; i++) { const d = Math.abs(buf[i] - 128) / 128; if (d > peak) peak = d; }
+        return Math.round(peak * 1000) / 1000;
+      };
+      const pochiSnapshot = function () {
+        const rooms = [];
+        roomStats().forEach(function (st, key) {
+          rooms.push({ key: key, hash: fmt(key), count: st.count, air: !!st.air, names: st.names, tag: st.tag || '', tagBy: st.tagBy || '' });
+        });
+        rooms.sort(function (a, b) { return a.key < b.key ? -1 : 1; });
+        const peers = [];
+        if (currentKey) {
+          peers.push({ id: 'me', name: myNickname, me: true, talking: !!isTransmitting });
+          peerMap.forEach(function (p, id) { peers.push({ id: id, name: p.name || '相手', me: false, talking: !!p.isTalking }); });
+        }
+        let morse = '';
+        rxDecoders.forEach(function (d) { if (d.text) morse = d.text; });
+        return {
+          type: 'state', name: myNickname,
+          inRoom: !!currentKey, roomKey: currentKey || '', roomHash: currentKey ? fmt(currentKey) : '',
+          tag: roomMeta.tag || '', tagBy: roomMeta.by || '',
+          peers: peers, rooms: rooms,
+          meTalking: !!isTransmitting, talkerId: currentTalkerId || '',
+          morseRx: morse, faxMode: !!faxMode,
+          settings: { inputDb: inputDb, vox: !!voxCheck.checked, voxSens: parseInt(voxSens.value, 10) || 5, sfxVol: Math.round(sfxVol * 100), speakerMuted: !!speakerMuted }
+        };
+      };
+      let pochiLastJSON = '';
+      setInterval(function () {
+        const s = pochiSnapshot();
+        const j = JSON.stringify(s);
+        if (j !== pochiLastJSON) { pochiLastJSON = j; pochiPost(s); }
+      }, 400);
+      setInterval(function () {
+        if (!currentKey) return;
+        let rx = 0;
+        const an = currentTalkerId ? rxAnalysers.get(currentTalkerId) : null;
+        if (an) rx = pochiLevelOf(an);
+        pochiPost({ type: 'level', tx: pochiLevelOf(txAnalyser), rx: rx });
+      }, 150);
+      window.__pochiCmd = function (json) {
+        let cmd = null;
+        try { cmd = JSON.parse(json); } catch (_) { return; }
+        if (!cmd || !cmd.cmd) return;
+        try {
+          if (cmd.cmd === 'join' && cmd.name) hashOf(String(cmd.name)).then(function (k) { tuneKey(k); });
+          else if (cmd.cmd === 'joinKey' && cmd.key) tuneKey(String(cmd.key).toLowerCase());
+          else if (cmd.cmd === 'leave') leaveRoom();
+          else if (cmd.cmd === 'reconnect') reconnectRoom(false);
+          else if (cmd.cmd === 'pttDown') press();
+          else if (cmd.cmd === 'pttUp') release();
+          else if (cmd.cmd === 'setName') {
+            const v = String(cmd.name || '').trim().slice(0, 20) || 'NoName';
+            myNickname = v;
+            nameInput.value = v;
+            try { localStorage.setItem('pochitalk_ptt_name', v); } catch (_) {}
+            if (sendNickname) sendNickname(v);
+            announce();
+          }
+          else if (cmd.cmd === 'setTag') setTag(String(cmd.tag || ''));
+          else if (cmd.cmd === 'morse') {
+            const text = String(cmd.text || '').toUpperCase();
+            for (let i = 0; i < text.length; i++) {
+              const ch = text[i];
+              if (ch === ' ') { if (morsePlaying || morseQueue.length) morseQueue.push(' '); }
+              else if (Object.prototype.hasOwnProperty.call(MORSE_CODE, ch)) morseQueue.push(ch);
+            }
+            startMorse();
+          }
+          else if (cmd.cmd === 'esc') {
+            if (faxMode) exitFaxMode();
+            faxCanvas.classList.add('hidden');
+            morseQueue.push('E', 'S', 'C');
+            startMorse();
+          }
+          else if (cmd.cmd === 'fax') { faxText = String(cmd.text || '').slice(0, 24); if (faxText) startFaxTx(); }
+          else if (cmd.cmd === 'settings') {
+            const s = cmd.settings || {};
+            if (typeof s.inputDb === 'number') setInputDb(s.inputDb, true);
+            if (typeof s.voxSens === 'number') {
+              voxSens.value = String(Math.min(10, Math.max(1, s.voxSens)));
+              updateVoxThrMarker();
+              try { localStorage.setItem('pochitalk_vox_thr', voxSens.value); } catch (_) {}
+            }
+            if (typeof s.vox === 'boolean') {
+              if (s.vox && !voxCheck.checked) { setVoxUI(true); startVox(); }
+              else if (!s.vox && voxCheck.checked) { setVoxUI(false); stopVox(); }
+            }
+            if (typeof s.sfxVol === 'number') {
+              sfxVol = Math.min(1.5, Math.max(0, s.sfxVol / 100));
+              if (sfxGainNode) sfxGainNode.gain.value = speakerMuted ? 0 : sfxVol;
+              try { localStorage.setItem('pochitalk_sfx_vol', String(Math.round(sfxVol * 100))); } catch (_) {}
+            }
+            if (typeof s.speakerMuted === 'boolean') { speakerMuted = s.speakerMuted; applySpeakerMute(); }
+          }
+          else if (cmd.cmd === 'ping') { pochiLastJSON = ''; }
+        } catch (_) {}
+      };
+      pochiPost({ type: 'ready' });
+    }
+
+
+
+    // ---------- 部屋(ハッシュ周波数)操作 ----------
+    let pendingKey = null; // 招待URLで指定された部屋（まだ入室していない）
+    function renderFreq(key) {
+      document.getElementById('homeView').classList.toggle('hidden', !!key);
+      document.getElementById('radioView').classList.toggle('hidden', !key);
+      if (!key) document.getElementById('stickyBar').classList.add('hidden');
+      if (!key) { resetFlip(); return; }
+      roomDisplay.textContent = fmt(key);
+      chDisplay.textContent = 'ROOM HASH';
+      freqDisplay.textContent = fmt(key);
+      freqDisplay.classList.remove('tuning');
+      lcdSub.textContent = '';
+    }
+
+    function leaveRoom() {
+      if (isTransmitting) { pressed = false; stopTransmission(); }
+      if (voxCheck.checked) { setVoxUI(false); stopVox(); }
+      if (room) { room.leave(); room = null; }
+      releaseMic();
+      sendPttState = null; sendNickname = null; sendJoinAge = null; sendTag = null; sendFaxPage = null;
+      peerMap.clear();
+      currentTalkerId = null;
+      document.querySelectorAll('audio[id^="audio-"]').forEach(function (a) { a.remove(); });
+      ledRx.classList.remove('active');
+      statusLabel.textContent = 'STANDBY';
+      statusLabel.style.color = '#38bdf8';
+      currentKey = null;
+      try { history.replaceState(null, '', location.pathname); } catch (_) {}
+      renderPeers();
+      renderFreq(null);
+      renderScan();
+    }
+
+    function flashSub(text) {
+      lcdSub.textContent = text;
+      clearTimeout(flashSub.t);
+      flashSub.t = setTimeout(function () { renderFreq(currentKey); }, 2500);
+    }
+
+    function tuneKey(key) {
+      if (isTransmitting) { flashSub('送信中は周波数を変えられません'); return; }
+      if (key !== currentKey) {
+        const st0 = roomStats().get(key);
+        if (st0 && st0.count >= MAX_ROOM) { toast('この部屋は満員です（' + MAX_ROOM + '人まで）'); return; }
+      }
+      if (key === currentKey) { renderFreq(key); flashSub('すでにこの周波数です'); return; }
+      currentKey = key;
+      pendingKey = null;
+      resetFlip();
+      try { history.replaceState(null, '', '?r=' + key); } catch (_) {}
+      freqDisplay.classList.add('tuning');
+      let i = 0;
+      const t = setInterval(function () {
+        if (++i >= 9) { clearInterval(t); renderFreq(currentKey); return; }
+        freqDisplay.textContent = fmt(toHex(crypto.getRandomValues(new Uint8Array(4))));
+      }, 45);
+      endMicTest();
+      connectToChannel(currentKey);
+      renderPeers();
+      // 入室のタップ操作の中でマイクの許可を求める（許可されなければ、話すときにもう一度確認する）
+      initMicrophone(true).then(function (ok) {
+        if (!ok && room && !userMediaStream) flashSub('マイクが許可されていません。話すときに再度確認します');
+      });
+      announce();
+      renderScan();
+    }
+
+    // ---------- ロビー: 各部屋の在室状況を共有 ----------
+    // 部屋の一覧は、WebRTC（アプリを開いている全員と接続）ではなく、Nostr のリレーに、在室の知らせを直接送って共有する。
+    // 全員とつなぐ方式は、人が増えたり、TURN 中継固定だったりすると、接続の準備が溜まって、一覧が共有されなくなるため。
+    // ---------- 部屋の人数の上限（1つの部屋は8人まで）----------
+    // 通話は、全員が全員と直接つながる方式なので、人数が増えると、各端末の負荷が急に重くなる。そのため、上限を設ける。
+    // ・入る前: 一覧の人数が上限なら、入れない
+    // ・入ったあと（同時に入って超えたとき）: 入室が新しい人から、上限を超えた分が、自分で退出する（古い人は、追い出されない）
+    const MAX_ROOM = 8;
+    // おうむ返しボットの部屋は、特別扱い: タグは固定で、誰も書き換えられない。一覧では、いつも先頭に出す
+    const BOT_ROOM_KEY = '7a0b07c1';
+    const BOT_ROOM_TAG = '🦜 おうむ返しの部屋（話すと、あなたにだけ声が返ります）';
+    function isBotRoom(k) { return k === BOT_ROOM_KEY; }
+    let toastTimer = null;
+    function toast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { el.classList.add('hidden'); }, 3500);
+    }
+    function checkRoomFull() {
+      if (!currentKey || !room) return;
+      if (peerMap.size + 1 <= MAX_ROOM) return;
+      const members = [{ id: 'me', t: roomEnterTime }];
+      peerMap.forEach(function (p, id) { members.push({ id: id, t: p.enteredAt || 0 }); }); // 入室時刻が分からない相手（古い版など）は、古株として扱う
+      members.sort(function (a, b) { return a.t - b.t || (a.id < b.id ? -1 : 1); });
+      const myRank = members.findIndex(function (m) { return m.id === 'me'; });
+      if (myRank < MAX_ROOM) return; // 古い順に8人までは、残る
+      leaveRoom();
+      toast('この部屋は満員のため、退出しました（' + MAX_ROOM + '人まで）');
+    }
+    setInterval(checkRoomFull, 5000);
+
+    // ---------- 一覧の人数と、実際につながっている人数が合わないとき ----------
+    // 在室通知（リレー経由）と、通話の接続（WebRTC）は、別々の仕組みなので、通知だけ先に見えて、接続がまだ、または失敗していることがある。
+    // 10秒以上ずれたら、画面に知らせ、25秒以上ずれたら、自動でつなぎ直す（つなぎ直しは、90秒に1回まで）
+    let mismatchNote = '', mismatchSince = 0, mismatchKey = '', lastAutoReconnect = 0;
+    function checkMismatch() {
+      if (!currentKey || !room) { mismatchSince = 0; mismatchKey = ''; if (mismatchNote) { mismatchNote = ''; renderPeers(); } return; }
+      if (mismatchKey !== currentKey) { mismatchKey = currentKey; mismatchSince = 0; }
+      let expected = 0;
+      lobbyEntries.forEach(function (v) { if (v.ch === currentKey) expected++; });
+      const connected = peerMap.size;
+      if (expected <= connected) {
+        mismatchSince = 0;
+        if (mismatchNote) { mismatchNote = ''; renderPeers(); }
+        return;
+      }
+      if (!mismatchSince) mismatchSince = Date.now();
+      const dur = Date.now() - mismatchSince;
+      if (dur > 10000) {
+        const note = 'ほかに ' + (expected - connected) + ' 人が在室していますが、まだつながっていません（つなぎ直しています）';
+        if (note !== mismatchNote) { mismatchNote = note; renderPeers(); }
+      }
+      if (dur > 25000 && Date.now() - lastAutoReconnect > 90000 && !reconnecting) {
+        lastAutoReconnect = Date.now();
+        mismatchSince = Date.now();
+        reconnectRoom(true);
+      }
+    }
+    setInterval(checkMismatch, 3000);
+
+    const lobbyEntries = new Map(); // 送り主の公開鍵 -> { ch(key), talking, name, tag, by, at, ts }
+    const PRESENCE_KIND = 29334, PRESENCE_TOPIC = 'pochitalk-presence-v1', PRESENCE_BEAT_MS = 6000, PRESENCE_EXPIRE_MS = 20000;
+    let sendPresence = null, lobbyRoom = null; // 旧方式の名前（ほかの場所から参照されるので残してある。使わない）
+    const pres = { schnorr: null, priv: null, pub: '', socks: new Map(), retry: new Map(), seen: new Map(), started: false, timer: null, lastSent: 0, pending: null, announced: false };
+
+    async function presenceInit() {
+      if (pres.schnorr) return true;
+      try {
+        const mod = await import('../vendor/noble-curves-1.4.0-secp256k1.mjs');
+        pres.schnorr = mod.schnorr;
+        pres.priv = pres.schnorr.utils.randomPrivateKey();
+        pres.pub = toHex(pres.schnorr.getPublicKey(pres.priv));
+        return true;
+      } catch (_) { return false; }
+    }
+
+    async function presenceEvent(obj) {
+      const tags = [['x', PRESENCE_TOPIC]];
+      const created = Math.floor(Date.now() / 1000);
+      const content = JSON.stringify(obj);
+      const ser = JSON.stringify([0, pres.pub, created, PRESENCE_KIND, tags, content]);
+      const idBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ser));
+      const id = toHex(new Uint8Array(idBuf));
+      const sig = toHex(await pres.schnorr.sign(id, pres.priv));
+      return JSON.stringify(['EVENT', { id: id, pubkey: pres.pub, created_at: created, kind: PRESENCE_KIND, tags: tags, content: content, sig: sig }]);
+    }
+
+    async function presenceSend(obj) {
+      if (!(await presenceInit())) return;
+      const ev = await presenceEvent(obj);
+      pres.socks.forEach(function (ws) { if (ws.readyState === 1) { try { ws.send(ev); } catch (_) {} } });
+    }
+
+    // 自分の在室を知らせる。連続して呼ばれても、1秒に1回にまとめる。部屋にいないときは何も送らない（出たときだけ、1回「いない」と送る）
+    function announce() {
+      if (!pres.started) return;
+      const gap = Date.now() - pres.lastSent;
+      if (gap < 1000) {
+        if (!pres.pending) pres.pending = setTimeout(function () { pres.pending = null; announce(); }, 1000 - gap);
+        return;
+      }
+      if (!currentKey) {
+        if (!pres.announced) return;
+        pres.announced = false; pres.lastSent = Date.now();
+        presenceSend({ ch: '' });
+        return;
+      }
+      pres.announced = true; pres.lastSent = Date.now();
+      presenceSend({ ch: currentKey, talking: isTransmitting, name: myNickname, tag: roomMeta.tag, by: roomMeta.by, at: roomMeta.at });
+    }
+    function announceSoon() { setTimeout(announce, 300 + Math.random() * 1200); }
+
+    function presenceOnMessage(data) {
+      let m; try { m = JSON.parse(data); } catch (_) { return; }
+      if (!Array.isArray(m) || m[0] !== 'EVENT' || !m[2]) return;
+      const ev = m[2];
+      if (!ev || ev.kind !== PRESENCE_KIND || !ev.pubkey || ev.pubkey === pres.pub) return;
+      if (pres.seen.has(ev.id)) return; // 複数のリレーから、同じ知らせが届く
+      pres.seen.set(ev.id, Date.now());
+      if (typeof ev.created_at === 'number' && ev.created_at < Date.now() / 1000 - 120) return;
+      let d; try { d = JSON.parse(ev.content); } catch (_) { return; }
+      if (!d || typeof d.ch !== 'string') return;
+      if (d.ch === '') { if (lobbyEntries.delete(ev.pubkey)) renderScan(); return; }
+      if (!isKey(d.ch)) return;
+      const isNew = !lobbyEntries.has(ev.pubkey);
+      lobbyEntries.set(ev.pubkey, { ch: d.ch, talking: !!d.talking, name: String(d.name || '?').slice(0, 12), tag: capTag(d.tag), by: String(d.by || '').slice(0, 12), at: typeof d.at === 'number' ? d.at : 0, ts: Date.now() });
+      if (isNew) announceSoon(); // 新しく来た人に、こちらの在室を、すぐ知らせる
+      renderScan();
+    }
+
+    function presenceOpen(url) {
+      if (!pres.started || pres.socks.has(url)) return;
+      let ws; try { ws = new WebSocket(url); } catch (_) { return; }
+      pres.socks.set(url, ws);
+      ws.onopen = function () {
+        pres.retry.set(url, 5000);
+        try { ws.send(JSON.stringify(['REQ', 'pochi-presence', { kinds: [PRESENCE_KIND], '#x': [PRESENCE_TOPIC], since: Math.floor(Date.now() / 1000) - 5 }])); } catch (_) {}
+        announce();
+      };
+      ws.onmessage = function (e) { presenceOnMessage(e.data); };
+      ws.onclose = function () {
+        pres.socks.delete(url);
+        if (!pres.started) return;
+        const wait = Math.min(pres.retry.get(url) || 5000, 300000); // 落ちているリレーは、間隔を倍にしながら、再試行する
+        pres.retry.set(url, wait * 2);
+        setTimeout(function () { presenceOpen(url); }, wait);
+      };
+    }
+
+    function joinLobby() {
+      pres.started = true;
+      presenceInit().then(function (ok) {
+        if (!ok) return;
+        aliveRelays.forEach(presenceOpen);
+        if (pres.timer) return;
+        pres.timer = setInterval(function () {
+          const now = Date.now();
+          lobbyEntries.forEach(function (v, k) { if (now - v.ts > PRESENCE_EXPIRE_MS) lobbyEntries.delete(k); });
+          pres.seen.forEach(function (t, k) { if (now - t > 120000) pres.seen.delete(k); });
+          announce();
+          renderScan();
+        }, PRESENCE_BEAT_MS);
+      });
+    }
+    // 回線が戻ったら、すぐにつなぎ直す
+    window.addEventListener('online', function () { pres.retry.clear(); aliveRelays.forEach(presenceOpen); });
+
+    function roomStats() {
+      const stats = new Map();
+      lobbyEntries.forEach(function (v) {
+        const e = stats.get(v.ch) || { count: 0, air: false, names: [], tag: '', tagBy: '', tagAt: 0 };
+        e.count++; e.names.push(v.name); if (v.talking) e.air = true;
+        if (v.at > e.tagAt) { e.tagAt = v.at; e.tag = v.tag; e.tagBy = v.by; }
+        stats.set(v.ch, e);
+      });
+      if (currentKey) {
+        const me = stats.get(currentKey) || { count: 0, air: false, names: [], tag: '', tagBy: '', tagAt: 0 };
+        if (roomMeta.at > me.tagAt) { me.tagAt = roomMeta.at; me.tag = roomMeta.tag; me.tagBy = roomMeta.by; }
+        me.count++; me.names.unshift(myNickname + '(自分)'); if (isTransmitting) me.air = true;
+        stats.set(currentKey, me);
+      }
+      return stats;
+    }
+
+    // ---------- 話題タグ ----------
+    const TAG_MAX = 30;
+    function charLen(t) { return Array.from(String(t || '')).length; }
+    function capTag(t) {
+      return Array.from(String(t || '')).filter(function (c) { const n = c.charCodeAt(0); return n >= 32 && n !== 127; }).slice(0, TAG_MAX).join('').trim();
+    }
+    const tagTextEl = document.getElementById('tagText'), tagEditBtn = document.getElementById('tagEdit');
+    const tagForm = document.getElementById('tagForm'), tagInput = document.getElementById('tagInput');
+    const tagCount = document.getElementById('tagCount');
+    function updateTagCount() {
+      const n = charLen(tagInput.value);
+      tagCount.textContent = n;
+      tagCount.parentNode.classList.toggle('full', n >= TAG_MAX);
+    }
+    // 編集中は「やめる」、それ以外は「つける / 変える」
+    function syncTagBtn() {
+      const open = !tagForm.classList.contains('hidden');
+      tagEditBtn.textContent = open ? 'やめる' : (roomMeta.tag ? '変える' : 'つける');
+    }
+    function closeTagForm() { tagForm.classList.add('hidden'); syncTagBtn(); }
+    function renderTagRow() {
+      tagTextEl.replaceChildren();
+      if (isBotRoom(currentKey)) {
+        tagTextEl.textContent = BOT_ROOM_TAG;
+        tagTextEl.title = '';
+        tagEditBtn.classList.add('hidden');
+        tagForm.classList.add('hidden');
+        return;
+      }
+      tagEditBtn.classList.remove('hidden');
+      if (roomMeta.tag) {
+        const b = document.createElement('b'); b.textContent = roomMeta.tag;
+        const by = document.createElement('span'); by.className = 'tag-by'; by.textContent = roomMeta.by ? '（' + roomMeta.by + 'が付けた）' : '';
+        tagTextEl.append('🏷 ', b, by);
+        tagTextEl.title = roomMeta.tag + (roomMeta.by ? '（' + roomMeta.by + 'が付けた）' : '');
+      } else {
+        tagTextEl.textContent = '🏷 話題タグ：まだありません';
+        tagTextEl.title = '';
+      }
+      syncTagBtn();
+    }
+    function setTag(text) {
+      if (!currentKey || isBotRoom(currentKey)) return;
+      const t = capTag(text);
+      roomMeta = { tag: t, by: t ? myNickname : '', at: Date.now() };
+      if (sendTag) sendTag(roomMeta);
+      renderTagRow(); announce(); renderScan();
+    }
+    tagEditBtn.addEventListener('click', function () {
+      tagForm.classList.toggle('hidden');
+      syncTagBtn();
+      if (!tagForm.classList.contains('hidden')) { tagInput.value = roomMeta.tag || ''; updateTagCount(); tagInput.focus(); const end = tagInput.value.length; tagInput.setSelectionRange(end, end); } // 前のタグを残し、末尾から書き換え始める
+    });
+    tagInput.addEventListener('input', updateTagCount);
+    document.getElementById('tagSend').addEventListener('click', function () { setTag(tagInput.value); closeTagForm(); });
+    tagInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); setTag(tagInput.value); closeTagForm(); }
+    });
+    renderTagRow();
+
+    const searchInput = document.getElementById('searchInput');
+
+    // 検索語から、絞り込みの条件を作る（部屋のURL / ハッシュ / ニックネーム）
+    function parseSearch() {
+      const q = searchInput.value.trim();
+      if (!q) return null;
+      const m = q.match(/[?&]r=([0-9a-fA-F]{8})(?![0-9a-fA-F])/);
+      const hexq = q.toLowerCase().replace(/[· -]/g, ''); // 区切り（· - 空白）を無視
+      const exact = m ? m[1].toLowerCase() : (/^[0-9a-f]{8}$/.test(hexq) ? hexq : null);
+      return { text: q.toLowerCase(), hex: /^[0-9a-f]{2,8}$/.test(hexq) ? hexq : null, exact: exact };
+    }
+
+    function matchSearch(key, st, f) {
+      if (f.exact) return key === f.exact;
+      if (f.hex && key.indexOf(f.hex) >= 0) return true;
+      if (st.tag && st.tag.toLowerCase().indexOf(f.text) >= 0) return true;
+      return st.names.some(function (n) { return n.toLowerCase().indexOf(f.text) >= 0; });
+    }
+
+    // ---------- 招待URLで開いたとき: 画面の先頭に、その部屋を大きく出す ----------
+    const inviteCard = document.getElementById('inviteCard');
+    function renderInvite(st) {
+      if (!pendingKey || currentKey) { inviteCard.classList.add('hidden'); return; }
+      inviteCard.classList.remove('hidden');
+      document.getElementById('inviteHash').textContent = fmt(pendingKey);
+      const info = document.getElementById('inviteInfo');
+      if (st && st.count > 0) {
+        info.textContent = '';
+        info.appendChild(document.createTextNode('👤 ' + st.count + '人：'));
+        appendNames(info, st.names);
+        if (st.tag) info.appendChild(document.createTextNode('　🏷 ' + st.tag));
+      } else {
+        info.textContent = 'いまは誰もいません。入って待つこともできます。';
+      }
+    }
+    document.getElementById('inviteJoin').addEventListener('click', function () { if (pendingKey) tuneKey(pendingKey); });
+    document.getElementById('inviteLater').addEventListener('click', function () {
+      pendingKey = null;
+      try { history.replaceState(null, '', location.pathname); } catch (_) {}
+      renderScan();
+    });
+    document.getElementById('inviteAbout').addEventListener('click', function () { openDialog(aboutDialog); });
+
+    function appendNames(el, names) { // 名前を1人ずつ割れない要素で並べる（改行は「、」の後だけ）
+      names.forEach(function (nm, i) {
+        if (i) el.appendChild(document.createTextNode('、'));
+        const ns = document.createElement('span');
+        ns.className = 'chip-name';
+        ns.textContent = nm;
+        el.appendChild(ns);
+      });
+    }
+
+    // ---------- 部屋を探すダイヤル ----------
+    const DIAL_ROW = 84; // 1行の高さ(px)。CSS の --rdial-row と同じ
+    let dialKeys = [];
+    let dialBusy = false, dialPending = false, dialTimer = null, dialProgrammatic = false, dialLastIdx = -1, dialLastTick = 0, dialRaf = 0;
+    function dialIndex() { return Math.max(0, Math.min(Math.max(0, dialKeys.length - 1), Math.round(scanList.scrollTop / DIAL_ROW))); }
+    function dialTick() { // ダイヤルが1つ進むごとの、カチッという音（音が出せる状態のときだけ）
+      const now = Date.now();
+      if (now - dialLastTick < 45) return;
+      dialLastTick = now;
+      try { if (navigator.vibrate) navigator.vibrate(4); } catch (_) {}
+      try {
+        if (!audioCtx || audioCtx.state !== 'running') return;
+        const osc = audioCtx.createOscillator(), g = audioCtx.createGain();
+        osc.type = 'square'; osc.frequency.value = 1900;
+        g.gain.setValueAtTime(0.03, audioCtx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.02);
+        osc.connect(g); g.connect(sfxOut(audioCtx));
+        osc.start(); osc.stop(audioCtx.currentTime + 0.025);
+      } catch (_) {}
+    }
+    // 円柱（ドラム）の形に見せる: 部屋は円柱の表面に並び、中央の1行が、真正面を向く。
+    // 1行ぶん回すと STEP 度回る。上下の部屋は、奥に回り込み、縦に詰まって、暗くなる。
+    const DIAL_STEP = 52;                                   // 1行あたりの回転角（度）。大きいほど、上下の部屋が、強く詰まって見える
+    const DIAL_R = DIAL_ROW / (DIAL_STEP * Math.PI / 180);   // 円柱の半径（px）。中央付近で、スクロールと同じ速さで動くように決める
+    const railTicks = [], ridges = [];
+    (function makeParts() {
+      // 円柱の側面を横切る、細い線（全幅）。回すと流れ、上下に行くほど間隔が詰まる = 丸く見える
+      const box = document.getElementById('ridges');
+      for (let k = 0; k < 36; k++) { const r = document.createElement('div'); r.className = 'rdial-ridge'; box.appendChild(r); ridges.push({ el: r, a: k * 10 }); }
+      // 両端の目盛りの溝
+      ['railL', 'railR'].forEach(function (id) {
+        const rail = document.getElementById(id);
+        for (let k = 0; k < 30; k++) { const t = document.createElement('div'); t.className = 'rdial-tick'; rail.appendChild(t); railTicks.push({ el: t, a: k * 12 }); }
+      });
+    })();
+    function dialUpdate() {
+      const kids = scanList.children, top = scanList.scrollTop, idx = dialIndex();
+      const rot = top / DIAL_ROW * DIAL_STEP; // いまの円柱の回転角（度）
+      // 左右にはずらさない・ゆがめない（縦方向に、つぶすだけ）。円柱を真横から見た形（奥行きの遠近は使わない）
+      for (let i = 0; i < kids.length; i++) {
+        const el = kids[i];
+        if (!el.classList.contains('rdial-item')) continue;
+        const off = (i * DIAL_ROW - top) / DIAL_ROW;                 // 中央との差（行数）
+        const th = Math.max(-88, Math.min(88, off * DIAL_STEP));      // 円柱の上での角度
+        const rad = th * Math.PI / 180;
+        const c = Math.cos(rad);
+        const dy = DIAL_R * Math.sin(rad) - off * DIAL_ROW;           // 平らに並べたときの位置から、円柱の上の位置へのずれ
+        el.style.transform = 'translateY(' + dy.toFixed(1) + 'px) scaleY(' + Math.max(0.04, c).toFixed(3) + ')';
+        el.style.opacity = Math.abs(off) > 1.85 ? '0' : String(Math.max(0.1, Math.pow(c, 1.4)).toFixed(2));
+        el.style.filter = (el.classList.contains('full') ? 'grayscale(0.7) ' : '') + 'brightness(' + (0.5 + 0.5 * c).toFixed(2) + ')';
+        el.classList.toggle('on-line', i === idx);
+      }
+      const place = function (list, alpha, edgeHeavy) {
+        for (let n = 0; n < list.length; n++) {
+          const rt = list[n];
+          const rel = ((rt.a - rot) % 360 + 540) % 360 - 180;       // -180〜180
+          if (Math.abs(rel) > 86) { rt.el.style.opacity = '0'; continue; }
+          const rr = rel * Math.PI / 180;
+          const k = edgeHeavy ? (0.12 + 0.88 * (1 - Math.cos(rr))) : (0.2 + 0.8 * Math.cos(rr));
+          rt.el.style.opacity = String((alpha * k).toFixed(2));
+          rt.el.style.transform = 'translateY(' + (DIAL_R * Math.sin(rr)).toFixed(1) + 'px)';
+        }
+      };
+      place(ridges, 1, true);   // 横切る線は、円柱の端ほど濃く、中央ほど薄く（文字に重なって、うるさくならないように）
+      place(railTicks, 1, false);
+      if (idx !== dialLastIdx) { if (dialLastIdx >= 0 && !dialProgrammatic) dialTick(); dialLastIdx = idx; }
+    }
+    function dialGo(i) { scanList.scrollTo({ top: Math.max(0, Math.min(dialKeys.length - 1, i)) * DIAL_ROW, behavior: 'smooth' }); }
+    function dialEnter() { const key = dialKeys[dialIndex()]; if (key) tuneKey(key); }
+    function dialIdleSoon(ms) {
+      clearTimeout(dialTimer);
+      dialTimer = setTimeout(function () { dialBusy = false; if (dialPending) { dialPending = false; renderScan(); } }, ms);
+    }
+    scanList.addEventListener('scroll', function () {
+      if (!dialRaf) dialRaf = requestAnimationFrame(function () { dialRaf = 0; dialUpdate(); });
+      if (dialProgrammatic) return;
+      dialBusy = true; dialIdleSoon(280); // 回している間は、一覧を作り直さない（回している最中に動かないように）
+    }, { passive: true });
+    ['pointerdown', 'touchstart'].forEach(function (ev) { scanList.addEventListener(ev, function () { dialBusy = true; clearTimeout(dialTimer); }, { passive: true }); });
+    ['pointerup', 'touchend', 'pointercancel'].forEach(function (ev) { scanList.addEventListener(ev, function () { dialIdleSoon(400); }, { passive: true }); });
+    scanList.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { dialGo(dialIndex() + 1); e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { dialGo(dialIndex() - 1); e.preventDefault(); }
+      else if (e.key === 'Enter' || e.key === ' ') { dialEnter(); e.preventDefault(); e.stopPropagation(); } // スペースを、話すキーとして扱わせない
+    });
+
+    function buildDial(keys, stats, f) {
+      if (dialBusy) { dialPending = true; return; }
+      const prevKey = dialKeys[dialIndex()], prevIdx = dialIndex();
+      scanList.textContent = '';
+      dialKeys = keys.slice();
+      if (!keys.length) {
+        const none = document.createElement('div');
+        none.className = 'rdial-empty';
+        none.textContent = f ? '該当する部屋がありません' : 'いまある部屋はありません。新しい部屋を作ってください';
+        scanList.appendChild(none);
+        dialLastIdx = -1;
+        return;
+      }
+      keys.forEach(function (key, i) {
+        const st = stats.get(key);
+        const b = document.createElement('div');
+        b.className = 'rdial-item' + (key === BOT_ROOM_KEY ? ' bot' : '') + (key === currentKey ? ' me' : '') + (st.air ? ' air' : '') + (key === pendingKey ? ' invited' : '') + (st.count >= MAX_ROOM && key !== currentKey ? ' full' : '');
+        b.setAttribute('role', 'option');
+        b.dataset.key = key;
+        const head = document.createElement('div');
+        head.textContent = (key === BOT_ROOM_KEY ? '🦜 ' : '') + (st.air ? '🔴 ' : '🔵 ') + fmt(key) + ' · 👤' + st.count + (key === currentKey && st.count !== peerMap.size + 1 ? '（つながっているのは ' + (peerMap.size + 1) + ' 人）' : '') + (st.count >= MAX_ROOM ? ' · 満員' : '') + (key === pendingKey ? ' · 招待' : '');
+        b.appendChild(head);
+        if (st.tag) {
+          const tg = document.createElement('div');
+          tg.className = 'chip-tag';
+          tg.textContent = '🏷 ' + st.tag + (st.tagBy ? '（' + st.tagBy + '）' : '');
+          b.appendChild(tg);
+        }
+        const who = document.createElement('div');
+        who.className = 'chip-who';
+        if (st.invited) who.textContent = '招待された部屋（現在は無人）';
+        else if (st.empty) who.textContent = 'この部屋には、いま誰もいません';
+        else appendNames(who, st.names);
+        b.appendChild(who);
+        // 赤い線に合わせた部屋をタップすると入る。ほかの部屋をタップすると、そこまで回る
+        b.addEventListener('click', function () { if (i === dialIndex()) tuneKey(key); else dialGo(i); });
+        scanList.appendChild(b);
+      });
+      // 再描画のあとも、同じ部屋が、赤い線の位置に残るようにする（初回は、いまいる部屋、なければ先頭）
+      let at = prevKey ? keys.indexOf(prevKey) : -1;
+      if (at < 0) at = dialLastIdx < 0 ? Math.max(0, keys.indexOf(currentKey)) : Math.min(prevIdx, keys.length - 1);
+      dialProgrammatic = true;
+      scanList.scrollTop = at * DIAL_ROW;
+      dialLastIdx = at;
+      dialUpdate();
+      setTimeout(function () { dialProgrammatic = false; }, 120);
+    }
+
+    function renderScan() {
+      const stats = roomStats();
+      if (pendingKey && !stats.has(pendingKey)) stats.set(pendingKey, { count: 0, air: false, names: [], invited: true });
+      const f = parseSearch();
+      // URLやハッシュで指定された部屋に、いま誰もいない場合も、入れるように出す
+      if (f && f.exact && !stats.has(f.exact)) stats.set(f.exact, { count: 0, air: false, names: [], empty: true });
+      const allKeys = Array.from(stats.keys()).sort();
+      let keys = f ? allKeys.filter(function (k) { return matchSearch(k, stats.get(k), f); }) : allKeys;
+      // 招待された部屋は、一覧の先頭に出す
+      if (keys.indexOf(BOT_ROOM_KEY) > 0) keys = [BOT_ROOM_KEY].concat(keys.filter(function (k) { return k !== BOT_ROOM_KEY; })); // ボットの部屋は、いつも先頭
+      if (pendingKey && keys.indexOf(pendingKey) >= 0) keys = [pendingKey].concat(keys.filter(function (k) { return k !== pendingKey; }));
+      renderInvite(pendingKey ? stats.get(pendingKey) : null);
+      let total = 0;
+      stats.forEach(function (v) { total += v.count; });
+      onlineCount.textContent = f
+        ? '🔍 ' + keys.length + ' / ' + allKeys.length + '部屋'
+        : '👥 ' + total + '人 / ' + allKeys.length + '部屋';
+      buildDial(keys, stats, f);
+    }
+    searchInput.addEventListener('input', renderScan);
+
+    // ---------- 再接続（部屋には入ったまま、通話とロビーの接続を張り直す）----------
+    let reconnecting = false, hiddenAt = 0;
+    async function reconnectRoom(auto) {
+      if (!currentKey || reconnecting) return;
+      reconnecting = true;
+      const btn = document.getElementById('reconnectBtn');
+      btn.disabled = true;
+      await refreshIceServers(true); // つなぎ直しでは資格情報を取り直してから入る
+      try {
+        if (isTransmitting) { pressed = false; stopTransmission(); }
+        flashSub(auto ? '接続が切れた可能性があるので、つなぎ直しています…' : '再接続中…');
+        const key = currentKey, meta = roomMeta, enter = roomEnterTime;
+        const oldRoom = room, oldLobby = lobbyRoom;
+        // 古い接続を片付ける（マイクと、部屋に入っている状態はそのまま）
+        room = null; lobbyRoom = null;
+        sendPttState = null; sendNickname = null; sendJoinAge = null; sendTag = null; sendPresence = null; sendFaxPage = null;
+        peerMap.clear(); rxAnalysers.clear(); rxDecoders.clear(); lobbyEntries.clear();
+        currentTalkerId = null;
+        document.querySelectorAll('audio[id^="audio-"]').forEach(function (a) { a.remove(); });
+        ledRx.classList.remove('active');
+        renderPeers(); renderScan();
+        await Promise.all([oldRoom ? oldRoom.leave() : null, oldLobby ? oldLobby.leave() : null]);
+        await new Promise(function (r) { setTimeout(r, 300); });
+        if (currentKey !== key) return; // 待っている間に退出・移動した
+        connectToChannel(key);
+        roomMeta = meta; roomEnterTime = enter; renderTagRow(); // タグと入室時刻は引き継ぐ
+        joinLobby();
+        announce();
+        renderScan();
+        flashSub('再接続しました。相手が見つかるまで少し待ってください');
+      } catch (e) {
+        flashSub('再接続に失敗しました。ページを再読み込みしてください');
+      } finally {
+        reconnecting = false;
+        btn.disabled = false;
+      }
+    }
+    document.getElementById('reconnectBtn').addEventListener('click', function () { reconnectRoom(false); });
+    // 回線が戻ったときは、自動でつなぎ直す
+    window.addEventListener('online', function () { reconnectRoom(true); });
+    // ---------- QRコード（裏返して、裏面に招待QRを見せる）----------
+    const radioEl = document.getElementById('radioView'), frontFace = document.getElementById('frontFace'), backFace = document.getElementById('backFace');
+    let flipping = false;
+    const wait = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+    async function renderQr() {
+      const url = location.origin + location.pathname + '?r=' + currentKey;
+      document.getElementById('qrRoom').textContent = fmt(currentKey);
+      document.getElementById('qrUrl').textContent = url;
+      const box = document.getElementById('qrBox');
+      box.textContent = '読み込み中…';
+      try {
+        const mod = await import('../vendor/qrcode-generator-1.4.4.mjs'); // QRボタンを押したときだけ読み込む
+        const qrcode = mod.default || mod;
+        const qr = qrcode(0, 'M');
+        qr.addData(url);
+        qr.make();
+        box.innerHTML = qr.createSvgTag({ cellSize: 6, margin: 0, scalable: true });
+      } catch (_) {
+        box.textContent = 'QRコードを読み込めませんでした。招待URLのコピーをお使いください。';
+      }
+    }
+
+    async function flipTo(showBack) {
+      if (flipping || !currentKey) return;
+      if (showBack === radioEl.classList.contains('flipped')) return;
+      flipping = true;
+      try {
+        if (showBack) { await renderQr(); backFace.style.minHeight = frontFace.offsetHeight + 'px'; }
+        const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const swap = function () {
+          frontFace.classList.toggle('hidden', showBack);
+          backFace.classList.toggle('hidden', !showBack);
+          radioEl.classList.toggle('flipped', showBack);
+        };
+        if (still) { swap(); return; }
+        radioEl.style.transition = 'transform .2s ease-in';
+        radioEl.style.transform = 'perspective(900px) rotateY(90deg)';
+        await wait(200);
+        swap();
+        radioEl.style.transition = 'none';
+        radioEl.style.transform = 'perspective(900px) rotateY(-90deg)';
+        void radioEl.offsetWidth;
+        radioEl.style.transition = 'transform .22s ease-out';
+        radioEl.style.transform = 'perspective(900px) rotateY(0deg)';
+        await wait(230);
+        radioEl.style.transition = ''; radioEl.style.transform = '';
+      } finally { flipping = false; }
+    }
+
+    // 部屋を出る・移るときは、アニメーションなしで表に戻す
+    function resetFlip() {
+      radioEl.classList.remove('flipped');
+      frontFace.classList.remove('hidden');
+      backFace.classList.add('hidden');
+      radioEl.style.transition = ''; radioEl.style.transform = '';
+    }
+    document.getElementById('qrBtn').addEventListener('click', function () { document.getElementById('qrBtn').blur(); flipTo(true); });
+    document.getElementById('qrBack').addEventListener('click', function () { flipTo(false); });
+    window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && radioEl.classList.contains('flipped')) flipTo(false); });
+
+    // ---------- バックグラウンド / フォアグラウンド ----------
+    // iPhone などは、バックグラウンドに回るとページの処理とマイクが止まり、接続が切れる。
+    // 戻ってきたときに、必要なら自動でつなぎ直し、マイクも取り直す。
+    const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    let leftAt = 0; // バックグラウンドに回った時刻
+
+    function goneBackground() { if (!leftAt) leftAt = Date.now(); }
+
+    function peersUnhealthy() {
+      try {
+        const pcs = room ? room.getPeers() : {};
+        return Object.keys(pcs).some(function (id) {
+          const st = pcs[id] && pcs[id].connectionState;
+          return st === 'failed' || st === 'disconnected' || st === 'closed';
+        });
+      } catch (_) { return false; }
+    }
+
+    function backToForeground() {
+      const away = leftAt ? Date.now() - leftAt : 0;
+      leftAt = 0;
+      if (!currentKey) return;
+      try { getAudioContext(); } catch (_) {}
+      const micDead = !!userMediaStream && userMediaStream.getAudioTracks().every(function (t) { return t.readyState === 'ended'; });
+      // iPhone は少し離れただけでも切れやすいので、短い時間でもつなぎ直す。ほかの端末は、切れているか、長く離れたときだけ
+      const need = micDead || peersUnhealthy() || away > (isIOS ? 3000 : 20000);
+      if (!need) return;
+      const voxWasOn = voxCheck.checked;
+      if (micDead) { if (voxWasOn) { setVoxUI(false); stopVox(); } releaseMic(); } // 止まったマイクは捨てて、取り直す
+      reconnectRoom(true).then(function () {
+        if (userMediaStream) return;
+        initMicrophone(true).then(function (ok) {
+          if (ok && voxWasOn) { setVoxUI(true); startVox(); }
+          else if (!ok) flashSub('マイクが止まりました。話すボタンを押して、もう一度許可してください');
+        });
+      });
+    }
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) goneBackground(); else backToForeground();
+    });
+    window.addEventListener('pagehide', goneBackground);
+    window.addEventListener('pageshow', function (e) { if (e.persisted) backToForeground(); });
+    document.addEventListener('freeze', goneBackground);
+    document.addEventListener('resume', backToForeground);
+
+    document.getElementById('emptyBtn').addEventListener('click', function () {
+      const key = toHex(crypto.getRandomValues(new Uint8Array(4)));
+      tuneKey(key);
+      flashSub('新しい部屋を作りました。招待で友達を呼べます');
+    });
+
+    const aboutDialog = document.getElementById('aboutDialog');
+    const settingsDialog = document.getElementById('settingsDialog');
+    const welcomeDialog = document.getElementById('welcomeDialog');
+    function openDialog(d) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+    document.getElementById('settingsBtn').addEventListener('click', function () { openDialog(settingsDialog); });
+    function closeSettings() { settingsDialog.close(); endMicTest(); if (!room) releaseMic(); }
+    document.getElementById('settingsClose').addEventListener('click', closeSettings);
+    settingsDialog.addEventListener('click', function (e) { if (e.target === settingsDialog) closeSettings(); });
+    // 設定を閉じたら、マイクテストを止めてマイクを解放する（入室中は部屋が使うのでそのまま）
+    settingsDialog.addEventListener('close', function () { endMicTest(); if (!room) releaseMic(); });
+    document.getElementById('welcomeMicBtn').addEventListener('click', function () { openDialog(settingsDialog); });
+    document.getElementById('welcomeAboutBtn').addEventListener('click', function () { openDialog(aboutDialog); });
+    document.getElementById('welcomeClose').addEventListener('click', function () { welcomeDialog.close(); });
+    // 初回案内の表示設定: オフにしたときだけ記録する（設定の中とダイアログのチェックは同じ値）
+    const welcomeAgain = document.getElementById('welcomeAgain'), welcomeAgain2 = document.getElementById('welcomeAgain2');
+    function getWelcomeOn() { try { return localStorage.getItem('pochitalk_welcome') !== 'off'; } catch (_) { return true; } }
+    function setWelcomeOn(on) {
+      try { if (on) localStorage.removeItem('pochitalk_welcome'); else localStorage.setItem('pochitalk_welcome', 'off'); } catch (_) {}
+      welcomeAgain.checked = welcomeAgain2.checked = on;
+    }
+    welcomeAgain.checked = welcomeAgain2.checked = getWelcomeOn();
+    welcomeAgain.addEventListener('change', function () { setWelcomeOn(welcomeAgain.checked); });
+    welcomeAgain2.addEventListener('change', function () { setWelcomeOn(welcomeAgain2.checked); });
+    document.getElementById('aboutBtn').addEventListener('click', function () {
+      if (aboutDialog.showModal) aboutDialog.showModal(); else aboutDialog.setAttribute('open', '');
+    });
+    document.getElementById('aboutClose').addEventListener('click', function () { aboutDialog.close(); });
+    aboutDialog.addEventListener('click', function (e) { if (e.target === aboutDialog) aboutDialog.close(); });
+
+    // ---------- VOX（声を拾って自動で送信）----------
+    const voxCheck = { checked: false }; // VOX が ON か（ボタンで切り替える）
+    const voxBtn = document.getElementById('voxBtn'), voxState = document.getElementById('voxState');
+    function setVoxUI(on) {
+      voxCheck.checked = on;
+      voxBtn.classList.toggle('on', on);
+      voxBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      voxState.textContent = on ? 'ON' : 'OFF';
+    }
+    const voxPanel = document.getElementById('voxPanel');
+    const voxFill = document.getElementById('voxFill');
+    const voxThrEl = document.getElementById('voxThr');
+    const voxSens = document.getElementById('voxSens');
+    const VOX_HOLD_MS = 1200;   // 声が止んでからこの時間で送信終了
+    const VOX_COOLDOWN_MS = 700; // 終了音を拾って再送信しないための待ち
+    let voxAnalyser = null, voxTimer = null, voxBuf = null;
+    let voxBusyHits = 0, voxBusyAt = 0, voxBusyBeepAt = 0;
+    let voxHits = 0, voxLastVoice = 0, voxCooldownUntil = 0, voxInitiated = false;
+
+    function voxThreshold() { return 0.02 + (parseInt(voxSens.value, 10) - 1) * 0.007; }
+    function updateVoxThrMarker() { voxThrEl.style.left = Math.min(100, voxThreshold() / 0.2 * 100) + '%'; }
+
+    function voxTick() {
+      if (!voxAnalyser) return;
+      voxAnalyser.getFloatTimeDomainData(voxBuf);
+      let sum = 0;
+      for (let i = 0; i < voxBuf.length; i++) sum += voxBuf[i] * voxBuf[i];
+      const lvl = Math.sqrt(sum / voxBuf.length);
+      const thr = voxThreshold();
+      voxFill.style.width = Math.min(100, lvl / 0.2 * 100) + '%';
+      voxFill.classList.toggle('over', lvl > thr);
+      if (!room) { voxHits = 0; return; }
+      const now = Date.now();
+      if (!isTransmitting) {
+        if (!startPending) voxInitiated = false;
+        // 他の人が話している間は割り込まない
+        if (lvl > thr && othersTalking() === 0 && now > voxCooldownUntil && !startPending) {
+          if (++voxHits >= 3) {
+            voxHits = 0;
+            voxInitiated = true;
+            voxLastVoice = now;
+            pressed = true;
+            startTransmission(true);
+          }
+        } else if (lvl > thr && othersTalking() > 0) {
+          // 相手が話している間に、声を出した: 話中の音で知らせる（最初の0.15秒の声は無視。2.5秒に1回まで）
+          if (++voxBusyHits >= 3 && now > voxBusyBeepAt) {
+            voxBusyHits = 0; voxBusyBeepAt = now + 2500;
+            playBusyTone(); flashSub('話中です（相手が話しています）');
+          }
+        } else if (lvl <= thr) { voxHits = 0; voxBusyHits = 0; }
+      } else if (voxInitiated) {
+        if (lvl > thr) voxLastVoice = now;
+        else if (now - voxLastVoice > VOX_HOLD_MS) {
+          pressed = false;
+          voxInitiated = false;
+          stopTransmission();
+          voxCooldownUntil = Date.now() + VOX_COOLDOWN_MS;
+        }
+      }
+    }
+
+    async function startVox() {
+      getAudioContext();
+      const ok = await initMicrophone();
+      if (!ok || !txAnalyser) { setVoxUI(false); return; }
+      voxAnalyser = txAnalyser; // 入力レベル調整後の音量で判定する
+      voxBuf = new Float32Array(voxAnalyser.fftSize);
+      voxPanel.classList.remove('hidden');
+      updateVoxThrMarker();
+      voxTimer = setInterval(voxTick, 50);
+    }
+
+    function stopVox() {
+      clearInterval(voxTimer); voxTimer = null;
+      voxAnalyser = null;
+      voxPanel.classList.add('hidden');
+      voxFill.style.width = '0';
+      if (voxInitiated && isTransmitting) { pressed = false; stopTransmission(); }
+      voxInitiated = false;
+    }
+
+    voxBtn.addEventListener('click', function () {
+      if (!voxCheck.checked) { setVoxUI(true); startVox(); }
+      else { setVoxUI(false); stopVox(); }
+      voxBtn.blur();
+    });
+    try {
+      const savedSens = parseInt(localStorage.getItem('pochitalk_vox_thr'), 10);
+      if (savedSens >= 1 && savedSens <= 10) voxSens.value = savedSens;
+    } catch (_) {}
+    voxSens.addEventListener('input', function () {
+      updateVoxThrMarker();
+      try { localStorage.setItem('pochitalk_vox_thr', voxSens.value); } catch (_) {}
+    });
+
+    // ---------- 音声レベル（部屋の中・ホームのマイクテスト共通）----------
+    function makeMeter(canvas, dbEl, labelEl, dimIdle) {
+      const lv = canvas.getContext('2d');
+      const W = canvas.width, H = canvas.height, SEGS = 24;
+      let level = 0, peak = 0, peakHoldUntil = 0, td = null;
+      return function (src) {
+        let target = 0, db = -Infinity;
+        if (src) {
+          if (!td || td.length !== src.an.fftSize) td = new Uint8Array(src.an.fftSize);
+          src.an.getByteTimeDomainData(td);
+          let sum = 0;
+          for (let i = 0; i < td.length; i++) { const v = (td[i] - 128) / 128; sum += v * v; }
+          const rms = Math.sqrt(sum / td.length);
+          db = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
+          target = Math.min(1, Math.max(0, (db + 60) / 60));
+        }
+        level += (target - level) * (target > level ? 0.5 : 0.12);
+        const now = performance.now();
+        if (level >= peak) { peak = level; peakHoldUntil = now + 800; }
+        else if (now > peakHoldUntil) peak = Math.max(level, peak - 0.02);
+        lv.clearRect(0, 0, W, H);
+        const sg = 3, sw = (W - sg * (SEGS - 1)) / SEGS;
+        for (let i = 0; i < SEGS; i++) {
+          const pos = (i + 1) / SEGS;
+          const on = pos <= level + 0.001;
+          const isPeak = Math.abs(pos - peak) < 0.5 / SEGS + 0.001 && peak > 0.02;
+          // 話してもいない・受信してもいない（マイクの待機表示）ときは、点灯を薄くして差をつける
+          const lit = (dimIdle && src && src.idle) ? 0.38 : 1;
+          lv.globalAlpha = (on || isPeak) ? lit : 0.16;
+          lv.fillStyle = pos > 0.85 ? '#ef4444' : pos > 0.65 ? '#fbbf24' : '#10b981';
+          lv.fillRect(i * (sw + sg), 0, sw, H);
+        }
+        lv.globalAlpha = 1;
+        dbEl.textContent = isFinite(db) ? Math.round(db) + ' dB' : '-∞ dB';
+        if (labelEl) labelEl.textContent = !src ? 'LEVEL' : (src.idle ? 'MIC' : (isTransmitting ? 'TX' : 'RX'));
+      };
+    }
+
+    (function () {
+      const roomMeter = makeMeter(document.getElementById('levelCanvas'), document.getElementById('levelDb'), document.getElementById('levelLabel'), true);
+      const homeMeter = makeMeter(document.getElementById('homeLevelCanvas'), document.getElementById('homeLevelDb'), null);
+      const radioView = document.getElementById('radioView');
+      const homeView = document.getElementById('homeView');
+
+      function pickSource() {
+        if (isTransmitting && txAnalyser) return { an: txAnalyser };
+        if (currentTalkerId && rxAnalysers.get(currentTalkerId)) return { an: rxAnalysers.get(currentTalkerId) };
+        if (txAnalyser) return { an: txAnalyser, idle: true };
+        return null;
+      }
+
+      function draw() {
+        requestAnimationFrame(draw);
+        if (!radioView.classList.contains('hidden')) roomMeter(pickSource());
+        else if (!homeView.classList.contains('hidden')) homeMeter(micTest && txAnalyser ? { an: txAnalyser, idle: true } : null);
+      }
+      requestAnimationFrame(draw);
+    })();
+
+    // ---------- 入力レベル（マイクの増幅 0〜30dB）----------
+    const homeGain = document.getElementById('homeGain');
+    const homeGainVal = document.getElementById('homeGainVal');
+    function setInputDb(v, save) {
+      inputDb = Math.min(30, Math.max(0, parseInt(v, 10) || 0));
+      homeGain.value = inputDb;
+      const label = inputDb === 0 ? 'そのまま' : '+' + inputDb + ' dB';
+      homeGainVal.textContent = label;
+      if (micGain) micGain.gain.value = Math.pow(10, inputDb / 20);
+      if (save) { try { localStorage.setItem('pochitalk_input_db', String(inputDb)); } catch (_) {} }
+    }
+    try { setInputDb(localStorage.getItem('pochitalk_input_db'), false); } catch (_) { setInputDb(0, false); }
+    homeGain.addEventListener('input', function () { setInputDb(homeGain.value, true); });
+
+    // ---------- スピーカーミュート（相手の声と効果音を止める。マイクは止めない）----------
+    const speakerBtn = document.getElementById('speakerBtn');
+    function applySpeakerMute() {
+      document.querySelectorAll('audio[id^="audio-"]').forEach(function (a) { a.muted = speakerMuted; });
+      if (sfxGainNode) sfxGainNode.gain.value = speakerMuted ? 0 : sfxVol;
+      speakerBtn.textContent = speakerMuted ? '🔇' : '🔈';
+      speakerBtn.setAttribute('aria-pressed', speakerMuted ? 'true' : 'false');
+      speakerBtn.classList.toggle('muted', speakerMuted);
+    }
+    speakerBtn.addEventListener('click', function () {
+      speakerMuted = !speakerMuted;
+      applySpeakerMute();
+      flashSub(speakerMuted ? 'スピーカーをミュートしました' : 'スピーカーのミュートを解除しました');
+    });
+
+    // ---------- 話すボタンの位置（左 / 中央 / 右）----------
+    // 中央のときだけ、左手用で VOX ボタンの側を切り替える。左寄せ→VOX は右側、右寄せ→VOX は左側
+    const pttPosSeg = document.getElementById('pttPosSeg');
+    function setPttPos(pos, save) {
+      if (pos !== 'left' && pos !== 'right') pos = 'center';
+      document.querySelector('.ptt-wrap').classList.toggle('pos-left', pos === 'left');
+      document.querySelector('.ptt-wrap').classList.toggle('pos-right', pos === 'right');
+      pttPosSeg.querySelectorAll('.seg-btn').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-pos') === pos); });
+      if (save) { try { if (pos === 'center') localStorage.removeItem('pochitalk_ptt_pos'); else localStorage.setItem('pochitalk_ptt_pos', pos); } catch (_) {} }
+    }
+    pttPosSeg.addEventListener('click', function (e) {
+      const b = e.target.closest('.seg-btn');
+      if (b) setPttPos(b.getAttribute('data-pos'), true);
+    });
+    try { setPttPos(localStorage.getItem('pochitalk_ptt_pos'), false); } catch (_) { setPttPos('center', false); }
+
+    // ---------- 左手用（VOX ボタンの位置）----------
+    const leftyCheck = document.getElementById('leftyCheck'), pttWrap = document.querySelector('.ptt-wrap');
+    function setLefty(on, save) {
+      leftyCheck.checked = on;
+      pttWrap.classList.toggle('lefty', on);
+      if (save) { try { if (on) localStorage.setItem('pochitalk_lefty', '1'); else localStorage.removeItem('pochitalk_lefty'); } catch (_) {} }
+    }
+    try { setLefty(localStorage.getItem('pochitalk_lefty') === '1', false); } catch (_) { setLefty(false, false); }
+    leftyCheck.addEventListener('change', function () { setLefty(leftyCheck.checked, true); });
+
+    // ---------- 効果音の音量 ----------
+    document.getElementById('testRoomBtn').addEventListener('click', function () { closeSettings(); tuneKey('7a0b07c1'); });
+    const sfxVolEl = document.getElementById('sfxVol'), sfxVolVal = document.getElementById('sfxVolVal');
+    function setSfxVol(v, save) {
+      const n = Math.min(150, Math.max(0, parseInt(v, 10)));
+      sfxVol = isNaN(n) ? 1 : n / 100;
+      sfxVolEl.value = Math.round(sfxVol * 100);
+      sfxVolVal.textContent = Math.round(sfxVol * 100) + '%';
+      if (sfxGainNode) sfxGainNode.gain.value = speakerMuted ? 0 : sfxVol;
+      if (save) { try { localStorage.setItem('pochitalk_sfx_vol', String(Math.round(sfxVol * 100))); } catch (_) {} }
+    }
+    try { const sv = localStorage.getItem('pochitalk_sfx_vol'); setSfxVol(sv === null ? 100 : sv, false); } catch (_) { setSfxVol(100, false); }
+    sfxVolEl.addEventListener('input', function () { setSfxVol(sfxVolEl.value, true); });
+    sfxVolEl.addEventListener('change', function () { getAudioContext(); playPttEndTone(); }); // 離したら試し聴き
+
+    // ホームのマイクテスト（入室しなくても、入力レベルとメーターを確認できる）
+    const micTestBtn = document.getElementById('micTestBtn');
+    function endMicTest() { micTest = false; micTestBtn.textContent = 'マイクテスト開始'; }
+    micTestBtn.addEventListener('click', async function () {
+      if (micTest) { endMicTest(); if (!room) releaseMic(); return; }
+      micTest = true;
+      micTestBtn.textContent = 'マイクテスト停止';
+      const ok = await initMicrophone();
+      if (!ok) endMicTest();
+    });
+
+    document.getElementById('leaveBtn').addEventListener('click', function () { leaveRoom(); });
+    document.getElementById('leaveBtn2').addEventListener('click', function () { leaveRoom(); });
+
+    // 液晶が画面外にスクロールしたら、上部にルームハッシュのバーを出す
+    (function () {
+      const bar = document.getElementById('stickyBar');
+      const lcd = document.querySelector('.lcd');
+      const radioView2 = document.getElementById('radioView');
+      if (!('IntersectionObserver' in window)) return;
+      new IntersectionObserver(function (entries) {
+        const visible = entries[0].isIntersecting;
+        const inRoom = !document.getElementById('radioView').classList.contains('hidden');
+        bar.classList.toggle('hidden', visible || !inRoom || radioView2.classList.contains('flipped'));
+      }).observe(lcd);
+    })();
+
+    document.getElementById('shareBtn').addEventListener('click', function () {
+      if (!currentKey) return;
+      const url = location.origin + location.pathname + '?r=' + currentKey;
+      const done = function () { flashSub('招待URLをコピーしました'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done, function () { prompt('招待URL', url); });
+      } else { prompt('招待URL', url); }
+    });
+
+    nameInput.addEventListener('input', function () {
+      myNickname = nameInput.value.trim() || 'NoName';
+    });
+    nameInput.addEventListener('change', function () {
+      myNickname = nameInput.value.trim() || 'NoName';
+      try { localStorage.setItem('pochitalk_ptt_name', myNickname); } catch (_) {}
+      if (sendNickname) sendNickname(myNickname);
+      announce();
+      renderScan();
+    });
+
+    // 招待URLで開いたときは、招待の画面を優先して、初回案内は出さない（設定からいつでも見られる）
+    if (getWelcomeOn() && !isKey((urlParams.get('r') || '').trim().toLowerCase())) openDialog(welcomeDialog);
+
+    (async function init() {
+      const p = (urlParams.get('r') || '').trim().toLowerCase();
+      pendingKey = isKey(p) ? p : null;
+      renderFreq(null);
+      await refreshIceServers();
+      setInterval(function () { refreshIceServers(false); }, 5 * 60 * 1000); // 通話中も資格情報を新しく保つ
+      joinLobby();
+      renderScan();
+    })();
+  </script>
+</body>
+</html>

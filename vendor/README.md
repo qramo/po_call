@@ -9,6 +9,7 @@ esm.sh から実行時に読み込んでいたライブラリを、**同じ中�
 | `trystero-0.25.4.mjs` | `https://esm.sh/trystero@0.25.4?bundle` が指す `/trystero@0.25.4/es2022/trystero.bundle.mjs` | 参加（②ライブラリの読み込み）・ロビー |
 | `nostr-tools-2.10.4.mjs` | `https://esm.sh/nostr-tools@2.10.4?bundle` が指す `/nostr-tools@2.10.4/es2022/nostr-tools.bundle.mjs` | 在室の公開・名刺の Nostr の確認 |
 | `qrcode-generator-1.4.4.mjs` | `https://esm.sh/qrcode-generator@1.4.4?bundle` が指す `/qrcode-generator@1.4.4/es2022/qrcode-generator.bundle.mjs` | 招待の QR |
+| `noble-curves-1.4.0-secp256k1.mjs` | `https://esm.sh/@noble/curves@1.4.0/secp256k1?bundle` が指す `/@noble/curves@1.4.0/es2022/secp256k1.bundle.mjs` | `ptt/`（ぽちっと通話）の在室の知らせの署名 |
 | `piper-plus-0.7.0/` | npm `piper-plus@0.7.0` の tarball の `src/`（全部）と `dist/rust-wasm/piper_plus_wasm.js`・`piper_plus_wasm_bg.wasm`（60MB） | 読み上げ（v0.16.14〜） |
 | `piper-plus-g2p-0.4.2/` | npm `@piper-plus/g2p@0.4.2` の tarball の `src/`（全部）と `data/sv_function_words.json` | 読み上げ（piper-plus が import） |
 | `onnxruntime-web-1.30.0/dist/` | npm `onnxruntime-web@1.30.0` の tarball の `dist/ort.wasm.min.mjs`・`ort-wasm-simd-threaded.mjs`・`ort-wasm-simd-threaded.wasm`（14MB） | 読み上げ（推論） |
