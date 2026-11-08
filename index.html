@@ -8195,7 +8195,7 @@ const lobbyRenderSeen = new Map()   // 発信者peerId → 最後に一覧を描
 const lobbyRenderFlush = { t: null }   // 間引いた分をまとめて描き直すタイマー（取りこぼさない）
 const renderLobbyThrottled = peerId => throttleBy(lobbyRenderSeen, peerId, LOBBY_RENDER_MS, lobbyRenderFlush, renderLobby)
 const presences = new Map()  // 発信者peerId → {room, name, emoji, muted, stage, ts}
-// ぽちっと通話（/ptt/・リョータさんの pochittalk と同じ網）の在室。送り主の公開鍵 → {ch, name, talking, tag, ts}。
+// ぽちっと通話（/ptt/・リョータさんの pochittalk と同じ網）の在室。送り主の公開鍵 → {ch, name, talking, tag, by, ts}。
 // 向こうは在室を Nostr の公開リレーへ直接流している（kind 29334・#x タグ・6 秒ごと・20 秒で失効）ので、ロビーはそれを読むだけ。
 // こちらからは何も送らない。部屋はタップで /ptt/?r=<部屋> に移る（同じ部屋に入る＝向こうの人とも話せる）
 const pttRooms = new Map()
@@ -8522,12 +8522,13 @@ const pttLive = () => {
     let r = out.get(v.ch)
     if (!r) out.set(v.ch, r = { people: [], tag: '' })
     r.people.push({ name: v.name, talking: v.talking })
-    if (v.tag && !r.tag) r.tag = v.tag
+    if (v.tag && !r.tag) { r.tag = v.tag; r.by = v.by }
   })
   return out
 }
 let pttAsk = null, pttAskTimer = null
 const pttAskClear = () => { clearTimeout(pttAskTimer); if (pttAsk) { pttAsk = null; renderLobby() } }
+const pttFmt = ch => ch.slice(0, 4).toUpperCase() + '·' + ch.slice(4).toUpperCase()   // 向こうの fmt() と同じ
 const pttGo = ch => {
   pttAskClear()
   const was = !!call.joinedId
@@ -8543,11 +8544,14 @@ const renderPttRooms = (list, ptt) => {
     btn.dataset.ptt = ch
     const top = document.createElement('div'); top.className = 'room-top'
     const nm = document.createElement('span'); nm.className = 'room-name'
-    nm.textContent = '🔘 ' + (r.tag || '押して話す部屋')
+    // 部屋の呼び名は向こうの画面と同じ書き方（ぽちっと通話の一覧・招待と見比べられるように）。話題タグがあれば見出しはタグ
+    const label = 'ぽちっと通話 #' + pttFmt(ch)
+    nm.textContent = '🔘 ' + (r.tag || label)
     const ct = document.createElement('span'); ct.className = 'room-count'; ct.textContent = r.people.length + '人'
     top.append(nm, ct)
     const sub = document.createElement('div'); sub.className = 'room-sub'
-    sub.textContent = 'ぽちっと通話・ボタンを押している間だけ話せます'
+    // タグ付きは、ぽっと通話の部屋と同じく元の呼び名と付けた人を添える（説明はタップの確認で出る）
+    sub.textContent = r.tag ? label + (r.by ? '　' + r.by + 'が付けた' : '') : 'ボタンを押している間だけ話せます'
     const ppl = document.createElement('div'); ppl.className = 'room-people'
     r.people.forEach(p => {
       const rp = document.createElement('span'); rp.className = 'rp'
@@ -8564,7 +8568,7 @@ const renderPttRooms = (list, ptt) => {
     if (pttAsk === ch) {
       const ask = document.createElement('div'); ask.className = 'leave-confirm room-ask'; ask.id = 'pttAsk'
       const txt = document.createElement('span')
-      txt.textContent = (call.joinedId ? '「' + roomLabel(call.joinedId) + '」を退出して、' : '') + 'ぽちっと通話のページに移りますか？ ボタンを押している間だけ話せる部屋です'
+      txt.textContent = (call.joinedId ? '「' + roomLabel(call.joinedId) + '」を退出して、' : '') + '「ぽちっと通話 #' + pttFmt(ch) + '」に移りますか？ ボタンを押している間だけ話せる部屋です（別のページが開きます）'
       const yes = document.createElement('button'); yes.type = 'button'; yes.id = 'pttAskYes'; yes.textContent = '移る'
       const no = document.createElement('button'); no.type = 'button'; no.textContent = 'やめる'
       yes.onclick = () => pttGo(ch)
@@ -8590,7 +8594,7 @@ const startPttWatch = async () => {
         if (!d || typeof d.ch !== 'string') return
         if (d.ch === '' || !/^[0-9a-f]{8}$/.test(d.ch)) { if (pttRooms.delete(ev.pubkey)) renderLobby(); return }
         const isNew = !pttRooms.has(ev.pubkey)
-        pttRooms.set(ev.pubkey, { ch: d.ch, talking: !!d.talking, name: capText(String(d.name || ''), 12), tag: capText(String(d.tag || ''), ROOM_MAX), ts: Date.now() })
+        pttRooms.set(ev.pubkey, { ch: d.ch, talking: !!d.talking, name: capText(String(d.name || ''), 12), tag: capText(String(d.tag || ''), ROOM_MAX), by: capText(String(d.by || ''), 12), ts: Date.now() })
         if (isNew) renderLobby(); else renderLobbyThrottled('ptt:' + ev.pubkey)
       }
     })
