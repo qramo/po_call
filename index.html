@@ -452,15 +452,23 @@
   /* 盤の引き手と、しまえる部分（.dock-more）。高さは grid の 0fr ⇄ 1fr で滑らかに変える（中身の高さを測らずに済む）。
      参加前は引き手を出さず、しまいもしない（シェアの段がそのまま流れる） */
   .dock-grip{ display:none }
-  body.in-call .dock-grip{ display:flex; justify-content:center; align-items:center; width:72px; height:22px; margin:-6px auto 0; padding:0;
+  /* 引き手は細いバー（利用者 2026-11-09：矢印の段が大きい）。バーは左右 2 本の線で、しまっている間はわずかに山形（∧）、
+     開いている間は谷形（∨）に折れて向きを示す。押せる範囲は見た目より上下に広げる（::before・段の高さは増やさない） */
+  body.in-call .dock-grip{ position:relative; display:flex; justify-content:center; align-items:center; width:64px; height:12px; margin:-5px auto 1px; padding:0;
     background:none; border:0; cursor:pointer; touch-action:none }
-  /* 目印は山形の矢印（しまっている間は ∧＝引き出せる、開いている間は ∨＝しまえる）。しまっている間は少しだけ上下に揺れて気づかせる */
-  .dg-chev{ width:30px; height:15px; color:var(--link); opacity:.75; transition:transform .3s cubic-bezier(.2,.8,.2,1), opacity .15s }
-  .dock.open .dg-chev{ transform:rotate(180deg); opacity:.5 }
-  .dock:not(.open) .dg-chev{ animation:chevHint 2.4s ease-in-out 3 }
-  @keyframes chevHint{ 0%, 60%, 100%{ translate:0 0 } 75%{ translate:0 -3px } 90%{ translate:0 1px } }
-  .dock-grip:hover .dg-chev, .dock-grip:focus-visible .dg-chev{ opacity:1 }
-  @media (prefers-reduced-motion:reduce){ .dock:not(.open) .dg-chev{ animation:none } }
+  body.in-call .dock-grip::before{ content:''; position:absolute; inset:-10px -16px -6px }
+  /* 半透明は引き手全体にかける（線ごとだと 2 本の重なる真ん中だけ濃くなる） */
+  body.in-call .dock-grip{ opacity:.6; transition:opacity .15s }
+  body.in-call .dock.open .dock-grip{ opacity:.4 }
+  body.in-call .dock-grip:hover, body.in-call .dock-grip:focus-visible{ opacity:1 }
+  .dg-l, .dg-r{ width:18px; height:4px; border-radius:2px; background:var(--link); transition:transform .3s cubic-bezier(.2,.8,.2,1) }
+  .dg-l{ transform-origin:right center; margin-right:-1px; transform:rotate(-14deg) }
+  .dg-r{ transform-origin:left center; margin-left:-1px; transform:rotate(14deg) }
+  .dock.open .dg-l{ transform:rotate(14deg) }
+  .dock.open .dg-r{ transform:rotate(-14deg) }
+  .dock:not(.open) .dock-grip{ animation:gripHint 2.4s ease-in-out 3 }   /* しまっている間は最初に 3 回だけ軽く浮いて気づかせる */
+  @keyframes gripHint{ 0%, 60%, 100%{ translate:0 0 } 75%{ translate:0 -3px } 90%{ translate:0 1px } }
+  @media (prefers-reduced-motion:reduce){ .dock:not(.open) .dock-grip{ animation:none } }
   body.in-call .dock .eq{ cursor:pointer; touch-action:none }   /* レベルメーターのあたりを押しても開け閉め */
   body.in-call .dock-more{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .3s cubic-bezier(.2,.8,.2,1) }
   body.in-call .dock.open .dock-more{ grid-template-rows:1fr }
@@ -1524,7 +1532,7 @@
     <div id="dock" class="dock">
     <!-- 引き手（通話中だけ）。盤はふだん「レベルメーター＋ミュート／退出」だけ。リアクション・機能・ひとことの段は
          引き手を押す（上へ払う）と滑らかに出て、もう一度押す（下へ払う）としまう（利用者 2026-11-09）。開け閉めは端末に覚える -->
-    <button id="dockGrip" class="dock-grip" type="button" aria-controls="dockMore" aria-expanded="false" aria-label="リアクションなどを出す"><svg class="dg-chev" viewBox="0 0 24 12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9l7-5 7 5"/></svg></button>
+    <button id="dockGrip" class="dock-grip" type="button" aria-controls="dockMore" aria-expanded="false" aria-label="リアクションなどを出す"><span class="dg-l"></span><span class="dg-r"></span></button>
     <div id="eq" class="eq" hidden aria-hidden="true"></div>
     <!-- ミュート／退出は**イコライザーと招待リンクの間**（2026-09-18・利用者の指定）。
          カードの上に置くと、スマホでは参加者リストを見ている間に画面の外へ出て目に入らない。
