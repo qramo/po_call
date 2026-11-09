@@ -378,7 +378,16 @@
   .leave-confirm span{ flex:1; min-width:0 }
   .leave-confirm button{ flex:none; width:auto; margin:0; padding:6px 12px; font-size:13px; border-radius:999px }
   #leaveYes{ background:var(--red); color:#fff }
-  .room-ask{ margin-top:-2px }   /* ロビーの部屋の直下（一覧の gap を少し詰める） */
+  /* ロビーの部屋の2択は、その部屋のカードに重ねる（下からするっと出る）。画面の下端の部屋を押しても
+     はみ出さない（利用者 2026-11-09）。カードと2択を同じ升目に置くので、2択が背の高いときは枠ごと伸びる。
+     注意色は半透明なので、カードの色の上に重ねて塗る（下の文字が透けない） */
+  .room-wrap{ display:grid }
+  .room-wrap > *{ grid-area:1 / 1 }
+  .room-wrap > .room-ask{ align-self:end; z-index:1; margin:0; border-radius:12px;
+    background:linear-gradient(var(--warn-bg), var(--warn-bg)), var(--panel); box-shadow:0 -6px 14px -8px rgba(0,0,0,.3) }
+  .room-ask.slide{ animation:askUp .24s cubic-bezier(.2,.8,.2,1) }
+  @keyframes askUp{ from{ transform:translateY(100%); clip-path:inset(0 0 100% 0) } to{ transform:none; clip-path:inset(0) } }
+  @media (prefers-reduced-motion:reduce){ .room-ask.slide{ animation:none } }
   #roomAskYes{ background:var(--join-bg); color:var(--join-fg) }
   #roomAskNo{ background:var(--chip); color:var(--chip-fg) }
   #leaveNo{ background:var(--chip); color:var(--chip-fg) }
@@ -8537,8 +8546,27 @@ const pttLive = () => {
   })
   return out
 }
+// 2択をカードに重ねて置く（.room-wrap に部屋のボタンと2択を入れる）。一覧は在室のたび描き直されるので、
+// 下から出る動きは出したときの 1 回だけ（askSlid に覚える。畳んだら消す）
+let askSlid = null
+const askOver = (list, btn, ask, key) => {
+  const fresh = askSlid !== key
+  if (fresh) { askSlid = key; ask.classList.add('slide') }
+  const wrap = document.createElement('div'); wrap.className = 'room-wrap'
+  wrap.append(btn, ask); list.append(wrap)
+  // 出したときだけ、カードごと見える所まで送る。通話中は下に盤が固定されていて、下端の部屋は盤の裏に隠れる
+  // （利用者 2026-11-09）。一覧が自分でスクロールする（PC の max-height）なら先に一覧の中を送る
+  if (fresh) requestAnimationFrame(() => {
+    const lb = list.getBoundingClientRect().bottom, over = wrap.getBoundingClientRect().bottom - lb
+    if (list.scrollHeight > list.clientHeight && over > 0) list.scrollTop += over + 4
+    const vv = window.visualViewport, vb = vv ? vv.offsetTop + vv.height : innerHeight, dock = $('dock')
+    const bottom = (document.body.classList.contains('in-call') && dock.getClientRects().length ? Math.min(dock.getBoundingClientRect().top, vb) : vb) - 8
+    const d = wrap.getBoundingClientRect().bottom - bottom
+    if (d > 0) window.scrollBy({ top: d, behavior: 'smooth' })
+  })
+}
 let pttAsk = null, pttAskTimer = null
-const pttAskClear = () => { clearTimeout(pttAskTimer); if (pttAsk) { pttAsk = null; renderLobby() } }
+const pttAskClear = () => { clearTimeout(pttAskTimer); askSlid = null; if (pttAsk) { pttAsk = null; renderLobby() } }
 const pttFmt = ch => ch.slice(0, 4).toUpperCase() + '·' + ch.slice(4).toUpperCase()   // 向こうの fmt() と同じ
 const pttGo = ch => {
   pttAskClear()
@@ -8575,8 +8603,8 @@ const renderPttRooms = (list, ptt) => {
       pttAsk = ch; clearTimeout(pttAskTimer); pttAskTimer = setTimeout(pttAskClear, 8000)
       renderLobby()
     }
-    list.append(btn)
-    if (pttAsk === ch) {
+    if (pttAsk !== ch) list.append(btn)
+    else {
       const ask = document.createElement('div'); ask.className = 'leave-confirm room-ask'; ask.id = 'pttAsk'
       const txt = document.createElement('span')
       txt.textContent = (call.joinedId ? '「' + roomLabel(call.joinedId) + '」を退出して、' : '') + '「ぽちっと通話 #' + pttFmt(ch) + '」に移りますか？ ボタンを押している間だけ話せる部屋です（別のページが開きます）'
@@ -8584,7 +8612,7 @@ const renderPttRooms = (list, ptt) => {
       const no = document.createElement('button'); no.type = 'button'; no.textContent = 'やめる'
       yes.onclick = () => pttGo(ch)
       no.onclick = pttAskClear
-      ask.append(txt, yes, no); list.append(ask)
+      ask.append(txt, yes, no); askOver(list, btn, ask, 'ptt:' + ch)
     }
   })
 }
@@ -8761,8 +8789,8 @@ const renderLobby = () => {
     }
     btn.append(dur, ppl)
     btn.onclick = () => askRoom(room, lobbyName(room, people))
-    list.append(btn)
-    if (lobbyAsk && lobbyAsk.room === room) {   // タップした部屋の直下に2択
+    if (!(lobbyAsk && lobbyAsk.room === room)) list.append(btn)
+    else {   // タップした部屋のカードに2択を重ねる
       const label = (isBcRoom(room) ? '📣 ' : '') + lobbyAsk.name
       const ask = document.createElement('div'); ask.className = 'leave-confirm room-ask'; ask.id = 'roomAsk'
       const txt = document.createElement('span'); txt.id = 'roomAskText'
@@ -8791,7 +8819,7 @@ const renderLobby = () => {
       }
       yes.onclick = () => { joinQuiet = !!lobbyAsk.quiet; selectRoom(room, lobbyAsk.name) }
       no.onclick = lobbyAskClear
-      ask.append(yes, no); list.append(ask)
+      ask.append(yes, no); askOver(list, btn, ask, room)
     }
   })
   renderPttRooms(list, ptt)
@@ -8808,10 +8836,10 @@ const renderLobby = () => {
 // フォーカスは当てない（スマホでキーボードが出るのを避ける）。通話中に別部屋をタップしたら
 // 確認のうえ今の部屋を退出してから入り直す（自室のタップは無視）。
 // ロビーのタップの確認は**ページ内の2択**（v0.14.3・confirm() 不可の理由は #leaveConfirm のコメント）。
-// タップした部屋のカードの直下に出す（目線がその部屋にある）。出るのは1つだけ。もう一度押すか
+// タップした部屋のカードに重ねて出す（目線がその部屋にある・下端の部屋でもはみ出さない）。出るのは1つだけ。もう一度押すか
 // 「やめる」か 8 秒放置で畳む。一覧は在室のたびに描き直されるので、状態（lobbyAsk）から毎回描く。
 let lobbyAsk = null, lobbyAskTimer = null
-const lobbyAskClear = () => { clearTimeout(lobbyAskTimer); if (lobbyAsk) { lobbyAsk = null; renderLobby() } }
+const lobbyAskClear = () => { clearTimeout(lobbyAskTimer); askSlid = null; if (lobbyAsk) { lobbyAsk = null; renderLobby() } }
 const askRoom = (room, name) => {
   if (room === call.joinedId) return
   if (lobbyAsk && lobbyAsk.room === room) { lobbyAskClear(); return }
