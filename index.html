@@ -471,6 +471,7 @@
   @media (prefers-reduced-motion:reduce){ .dock:not(.open) .dock-grip{ animation:none } }
   body.in-call .dock .eq{ cursor:pointer; touch-action:none }   /* レベルメーターのあたりを押しても開け閉め */
   body.in-call .dock-more{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .3s cubic-bezier(.2,.8,.2,1) }
+  body.in-call .dock.slow .dock-more{ transition-duration:.8s }   /* 入室のときに見せてから引っ込めるのは、目で追えるようにゆっくり */
   body.in-call .dock.open .dock-more{ grid-template-rows:1fr }
   /* はみ出しは切る（しまっている間に見えない）。ボタンの影が切れないよう、内側に少し余白を持たせて外へ打ち消す */
   body.in-call .dock-more > div{ min-height:0; overflow:hidden; padding:4px; margin:-4px }   /* 上も 4px：入力欄の光る枠が切れない（2026-11-09 iPhone） */
@@ -585,6 +586,7 @@
   .fb-hint{ font-size:12px; color:var(--fb-sub) }
   .fb-url{ max-width:100%; font:12px/1.4 ui-monospace,'SF Mono',Menlo,monospace; color:var(--fb-sub); text-decoration:none; word-break:break-all;
     padding:6px 10px; border-radius:8px; background:rgba(255,255,255,.06) }
+  @media (min-width:561px){ .fb-url{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; word-break:normal } }
   .fb-copy{ width:auto; margin:2px 0 0; padding:9px 18px; font-size:14px; font-weight:700; border-radius:999px; border:0;
     background:#00e5cc; color:#05221f }
   .peers-line{ flex:none; max-width:46%; margin-left:auto; display:inline-flex; align-items:center; gap:4px;
@@ -2044,13 +2046,26 @@ const trayShow = (n, focus = true) => {
 document.querySelectorAll('.tray-tab').forEach(t => { t.onclick = () => t.dataset.pane === trayCur ? trayShow('react', false) : trayShow(t.dataset.pane) })
 // 盤の引き手：押すと開け閉め、上へ払うと開く・下へ払うとしまう。開け閉めは端末に覚える（既定はしまう）
 const DOCK_OPEN_KEY = 'pot-dock-open'
+let dockPeekT = 0
 const dockOpen = (on, save = true) => {
+  clearTimeout(dockPeekT); dockPeekT = 0
   $('dock').classList.toggle('open', on)
   $('dockGrip').setAttribute('aria-expanded', String(on))
   $('dockGrip').setAttribute('aria-label', on ? 'リアクションなどをしまう' : 'リアクションなどを出す')
   if (save) try { localStorage.setItem(DOCK_OPEN_KEY, on ? '1' : '') } catch {}
 }
 try { dockOpen(localStorage.getItem(DOCK_OPEN_KEY) === '1', false) } catch {}
+// 入室したら、しまってあっても一度リアクションなどを見せてから、ゆっくり引っ込める＝引き手から出せると分かる
+// （利用者 2026-11-09）。その間に盤を触ったら引っ込めない
+const dockPeek = () => {
+  if ($('dock').classList.contains('open')) return
+  dockOpen(true, false)
+  dockPeekT = setTimeout(() => {
+    if (!document.body.classList.contains('in-call')) return
+    $('dock').classList.add('slow'); dockOpen(false, false); setTimeout(() => $('dock').classList.remove('slow'), 900)
+  }, 2200)
+}
+$('dock').addEventListener('pointerdown', () => { clearTimeout(dockPeekT); dockPeekT = 0 })
 // 引き手とレベルメーターのあたりの両方で受ける（細い引き手だけだと狙いにくい）
 for (const g of [$('dockGrip'), $('eq')]) {
   let y0 = null, swiped = false
@@ -2430,9 +2445,17 @@ const flipTo = async back => {
   flipping = true
   const fbox = $('flipBox'), front = $('flipFront'), rear = $('flipBack')
   if (back) drawBack()
-  // 裏は中身の高さ（表と揃えると、スマホでは下の盤の裏に隠れる）。返したら裏が見える所まで送る
+  // スマホの裏は中身の高さ（表と揃えると、下の盤の裏に隠れる）。返したら裏が見える所まで送る。
+  // PC は表と同じ高さに揃える＝返してもカードの大きさが変わらない（利用者 2026-11-09）。入りきらなければ QR を縮める
+  const frontH = front.offsetHeight, wide = matchMedia('(min-width:561px)').matches
   const swap = () => {
     front.hidden = back; rear.hidden = !back; flipped = back; document.body.classList.toggle('flipped', back)
+    rear.style.height = ''; $('fbQr').style.removeProperty('--qs')
+    if (back && wide && frontH > 0) {
+      rear.style.height = frontH + 'px'
+      const over = rear.scrollHeight - frontH, qs = $('fbQr').offsetWidth / 1.2
+      if (over > 0) $('fbQr').style.setProperty('--qs', Math.max(120, Math.floor(qs - over / 1.2)) + 'px')
+    }
     $('shareFlip').setAttribute('aria-expanded', String(back))
     const top = fbox.getBoundingClientRect().top - 12
     if (top < 0 || (back && fbox.getBoundingClientRect().bottom > (document.body.classList.contains('in-call') && $('dock').getClientRects().length ? $('dock').getBoundingClientRect().top : innerHeight))) window.scrollBy({ top, behavior: 'auto' })
@@ -2449,7 +2472,7 @@ const flipTo = async back => {
   flipping = false
 }
 // 退出のときは回さずに表へ（join/leave の対称）
-const unflip = () => { flipped = false; flipping = false; document.body.classList.remove('flipped'); $('flipFront').hidden = false; $('flipBack').hidden = true; $('shareFlip').setAttribute('aria-expanded', 'false') }
+const unflip = () => { flipped = false; flipping = false; document.body.classList.remove('flipped'); $('flipFront').hidden = false; $('flipBack').hidden = true; $('flipBack').style.height = ''; $('shareFlip').setAttribute('aria-expanded', 'false') }
 $('shareFlip').onclick = () => flipTo(true)
 $('flipClose').onclick = () => flipTo(false)
 $('fbCopy').onclick = () => copyLink($('fbCopy'), shareText())
@@ -8009,6 +8032,7 @@ const armJoined = (roomId, name, bcast) => {
     if (stageOf() !== before) { sendTo(call.profileAction, myProfilePayload()); sendHeartbeat() }
   }, 30000)
   vis('join', false); vis('leave', true); document.body.classList.add('in-call')   // 操作盤を下に固定（.dock）・PC はカードの底板（sticky）
+  dockPeek()
   requestAnimationFrame(measureEqBars)   // 通話中の文字の大きさ（18px）で本数を数え直す
   renderSpeak()   // ミュート／「マイクを使う」のどちらを出すかは、マイクを持っているかで決まる
   // 前の通話で出た「音声を有効化」を必ず消す。隠すのは resetJoinedUI だけだったが、あれは
@@ -8202,6 +8226,7 @@ const resetJoinedUI = () => {
   vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false); document.body.classList.remove('in-call'); trayShow('react')
   document.body.classList.remove('lobby-open'); $('lobbyTab').setAttribute('aria-expanded', 'false')   // スマホの部屋のドロワーも畳む
   unflip()                                                // カードの裏（招待の QR）も表に戻す
+  try { dockOpen(localStorage.getItem(DOCK_OPEN_KEY) === '1', false) } catch { dockOpen(false, false) }   // 見せている途中で出ても、覚えている形に戻す
   vis('speak', false); $('speak').disabled = false
   vis('sndPeerRow', false)
   vis('sndReactRow', false)
