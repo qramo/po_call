@@ -437,7 +437,7 @@
   body.in-call .dock #qrBox:not([hidden]) ~ #shareLabel, body.in-call .dock #qrBox:not([hidden]) ~ br,
   body.in-call .dock #qrBox:not([hidden]) ~ a.share{ display:none }
   /* 入力中（body.typing）は盤を入力欄だけに。畳む順は「盤の中で入力欄以外」 */
-  body.in-call.typing .dock .eq, body.in-call.typing .dock .actions, body.in-call.typing .dock .tray-tabs,
+  body.in-call.typing .dock .eq, body.in-call.typing .dock .dock-grip, body.in-call.typing .dock .actions, body.in-call.typing .dock .tray-tabs,
   body.in-call.typing .dock #unlock, body.in-call.typing .dock .leave-confirm{ display:none }
   body.in-call.typing .dock .tray-pane.on{ margin-top:0 }
   body.in-call.typing .dock{ padding-top:10px }
@@ -445,6 +445,25 @@
      （利用者 2026-11-07）。下の余白（--dock-h）は ResizeObserver が高さ 0 を無視して前の値のまま */
   body.in-call.typing-field .dock{ display:none }
   /* 最下段の切り替え（通話中だけ）。主タブと同じ「選んだものは文字色・下線」 */
+  /* 盤の引き手と、しまえる部分（.dock-more）。高さは grid の 0fr ⇄ 1fr で滑らかに変える（中身の高さを測らずに済む）。
+     参加前は引き手を出さず、しまいもしない（シェアの段がそのまま流れる） */
+  .dock-grip{ display:none }
+  body.in-call .dock-grip{ display:flex; justify-content:center; align-items:center; width:72px; height:22px; margin:-6px auto 0; padding:0;
+    background:none; border:0; cursor:pointer; touch-action:none }
+  /* 目印は山形の矢印（しまっている間は ∧＝引き出せる、開いている間は ∨＝しまえる）。しまっている間は少しだけ上下に揺れて気づかせる */
+  .dg-chev{ width:30px; height:15px; color:var(--link); opacity:.75; transition:transform .3s cubic-bezier(.2,.8,.2,1), opacity .15s }
+  .dock.open .dg-chev{ transform:rotate(180deg); opacity:.5 }
+  .dock:not(.open) .dg-chev{ animation:chevHint 2.4s ease-in-out 3 }
+  @keyframes chevHint{ 0%, 60%, 100%{ translate:0 0 } 75%{ translate:0 -3px } 90%{ translate:0 1px } }
+  .dock-grip:hover .dg-chev, .dock-grip:focus-visible .dg-chev{ opacity:1 }
+  @media (prefers-reduced-motion:reduce){ .dock:not(.open) .dg-chev{ animation:none } }
+  body.in-call .dock .eq{ cursor:pointer; touch-action:none }   /* レベルメーターのあたりを押しても開け閉め */
+  body.in-call .dock-more{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .3s cubic-bezier(.2,.8,.2,1) }
+  body.in-call .dock.open .dock-more{ grid-template-rows:1fr }
+  /* はみ出しは切る（しまっている間に見えない）。ボタンの影が切れないよう、内側に少し余白を持たせて外へ打ち消す */
+  body.in-call .dock-more > div{ min-height:0; overflow:hidden; padding:0 4px 4px; margin:0 -4px -4px }
+  body.in-call .dock:not(.open) .dock-more > div{ visibility:hidden; transition:visibility 0s .3s }
+  @media (prefers-reduced-motion:reduce){ body.in-call .dock-more{ transition:none } }
   .tray-tabs{ display:none; gap:4px; margin-top:8px; padding-top:6px; border-top:1px solid var(--border) }
   body.in-call .tray-tabs{ display:flex }
   .tray-tab{ flex:1; width:auto; margin:0; padding:5px 0 3px; background:transparent; color:var(--sub); font-size:16px; font-weight:700;
@@ -545,10 +564,12 @@
   .fb-body{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:10px; padding-top:8px }
   .fb-invite{ font-size:12px; font-weight:700; letter-spacing:3px; color:#8fe9de }
   .fb-room{ max-width:100%; font-size:22px; font-weight:800; line-height:1.3; overflow-wrap:anywhere }
-  .fb-qr{ width:min(62vw, 220px); aspect-ratio:1; padding:14px; box-sizing:content-box; border-radius:18px; background:#fff; color:#0a1222;
+  /* 白地は正方形で固定（aspect-ratio は iPhone の Safari で縦に伸びた）。余白は QR の規格の 4 マス分ほど（約 0.1×一辺） */
+  .fb-qr{ --qs:min(58vw, 210px); width:var(--qs); height:var(--qs); flex:none; padding:calc(var(--qs) * .1); box-sizing:content-box;
+    border-radius:20px; background:#fff; color:#0a1222;
     display:flex; align-items:center; justify-content:center; font-size:12px;
     box-shadow:0 0 0 4px rgba(0,229,204,.35), 0 0 34px rgba(0,229,204,.45) }
-  .fb-qr svg{ width:100%; height:100%; display:block }
+  .fb-qr svg{ width:100%; height:100%; display:block; flex:none }
   .fb-hint{ font-size:12px; color:var(--fb-sub) }
   .fb-url{ max-width:100%; font:12px/1.4 ui-monospace,'SF Mono',Menlo,monospace; color:var(--fb-sub); text-decoration:none; word-break:break-all;
     padding:6px 10px; border-radius:8px; background:rgba(255,255,255,.06) }
@@ -1497,6 +1518,9 @@
          まとめ、**通話中は画面の下に固定**する（body.in-call）。スマホで参加者リストを見ている間もミュートと退出が
          親指の届く所にある。箱の高さは JS が --dock-h に入れ、body の下余白で中身が隠れないようにする。 -->
     <div id="dock" class="dock">
+    <!-- 引き手（通話中だけ）。盤はふだん「レベルメーター＋ミュート／退出」だけ。リアクション・機能・ひとことの段は
+         引き手を押す（上へ払う）と滑らかに出て、もう一度押す（下へ払う）としまう（利用者 2026-11-09）。開け閉めは端末に覚える -->
+    <button id="dockGrip" class="dock-grip" type="button" aria-controls="dockMore" aria-expanded="false" aria-label="リアクションなどを出す"><svg class="dg-chev" viewBox="0 0 24 12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9l7-5 7 5"/></svg></button>
     <div id="eq" class="eq" hidden aria-hidden="true"></div>
     <!-- ミュート／退出は**イコライザーと招待リンクの間**（2026-09-18・利用者の指定）。
          カードの上に置くと、スマホでは参加者リストを見ている間に画面の外へ出て目に入らない。
@@ -1525,6 +1549,7 @@
          1 リアクション／2 機能（小窓・つなぎ直す）／3 ひとこと（入力欄）。シェア（招待リンク・QR）の段は参加前だけ普通に流れて出る。
          通話中のシェアは見出しの「シェア」→ カードの裏（#flipBack・利用者 2026-11-09 に 4 つから 3 つへ）。
          切り替えは最下段の 3 つのボタン（.tray-tabs・通話中だけ出る）。 -->
+    <div id="dockMore" class="dock-more"><div>
     <div class="tray">
       <div class="tray-pane on" data-pane="react">
         <!-- リアクション。中身は JS が REACTIONS から作る（一覧の定義を1か所に保つ）。どのタブを見ていても押せる -->
@@ -1574,6 +1599,7 @@
       <button type="button" class="tray-tab" data-pane="chat" aria-selected="false" aria-label="ひとこと"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4c4.7 0 8.5 3.1 8.5 7s-3.8 7-8.5 7c-1 0-2-.1-2.9-.4L5 20l1.2-3.5C4.5 15.2 3.5 13.2 3.5 11c0-3.9 3.8-7 8.5-7z"/></svg><small>ひとこと</small></button>
     </div>
     </div>
+    </div></div>
     </div>
   </div>
   <!-- 版の表示。不具合の報告で「どの版か」が分かるように。中身は APP_VERSION から入れる。
@@ -2004,6 +2030,32 @@ const trayShow = (n, focus = true) => {
 }
 // 選んでいる段のボタンをもう一度押すと畳む＝リアクション（いつもの段）に戻る（利用者 2026-11-09）
 document.querySelectorAll('.tray-tab').forEach(t => { t.onclick = () => t.dataset.pane === trayCur ? trayShow('react', false) : trayShow(t.dataset.pane) })
+// 盤の引き手：押すと開け閉め、上へ払うと開く・下へ払うとしまう。開け閉めは端末に覚える（既定はしまう）
+const DOCK_OPEN_KEY = 'pot-dock-open'
+const dockOpen = (on, save = true) => {
+  $('dock').classList.toggle('open', on)
+  $('dockGrip').setAttribute('aria-expanded', String(on))
+  $('dockGrip').setAttribute('aria-label', on ? 'リアクションなどをしまう' : 'リアクションなどを出す')
+  if (save) try { localStorage.setItem(DOCK_OPEN_KEY, on ? '1' : '') } catch {}
+}
+try { dockOpen(localStorage.getItem(DOCK_OPEN_KEY) === '1', false) } catch {}
+// 引き手とレベルメーターのあたりの両方で受ける（細い引き手だけだと狙いにくい）
+for (const g of [$('dockGrip'), $('eq')]) {
+  let y0 = null, swiped = false
+  g.addEventListener('pointerdown', e => { if (!document.body.classList.contains('in-call')) return; y0 = e.clientY; swiped = false; try { g.setPointerCapture(e.pointerId) } catch {} })
+  g.addEventListener('pointermove', e => {
+    if (y0 == null || swiped) return
+    const dy = e.clientY - y0
+    if (Math.abs(dy) > 18) { swiped = true; dockOpen(dy < 0) }
+  })
+  g.addEventListener('pointerup', () => { y0 = null })
+  g.addEventListener('pointercancel', () => { y0 = null })
+  g.addEventListener('click', () => {
+    if (!document.body.classList.contains('in-call')) return
+    if (swiped) { swiped = false; return }
+    dockOpen(!$('dock').classList.contains('open'))
+  })
+}
 // iPhone の Safari では、キーボードが出ても position:fixed の盤は持ち上がらず、キーボードの裏に隠れる
 // （固定の基準はレイアウトの viewport で、縮むのは見えている viewport のほう）。見えている画面の下端を
 // visualViewport から求め、盤の bottom をそこへ合わせる。キーボードが消えれば 0 に戻る。
@@ -4310,10 +4362,11 @@ const selectTab = key => {
   call.tab = key
   if (key === 'chat') $('tabChat').classList.remove('unread')   // 見たら既読
   // 主タブでひとことを開いたら、盤もひとことの段（入力欄）にする（段から来たときは既に on＝二重に呼ばない）
-  if (key === 'chat' && document.body.classList.contains('in-call') && !document.querySelector('.tray-pane[data-pane="chat"].on')) trayShow('chat', false)
+  // 盤をしまっていても開く（入力欄は盤の中にある）。端末の記憶は変えない
+  if (key === 'chat' && document.body.classList.contains('in-call')) { if (!document.querySelector('.tray-pane[data-pane="chat"].on')) trayShow('chat', false); dockOpen(true, false) }
   renderTabs()
   // 最新の行が見える位置へ送る。盤の段が切り替わって高さが決まってから測る（2 フレーム後）
-  if (key === 'chat') requestAnimationFrame(() => requestAnimationFrame(showChatLatest))
+  if (key === 'chat') { requestAnimationFrame(() => requestAnimationFrame(showChatLatest)); setTimeout(showChatLatest, 340) }   // 盤が開ききってからもう一度（開く動きは 0.3 秒）
 }
 TAB_PANELS.forEach(([key, tabId]) => { $(tabId).onclick = () => selectTab(key) })
 $('tabs').addEventListener('keydown', e => {
@@ -5978,6 +6031,8 @@ const measureEqBars = () => {
   el.removeChild(probe)
   if (adv > 0) eqBars = Math.max(6, Math.floor(el.clientWidth / adv))
 }
+// 盤の幅や文字の大きさが変わったら数え直す（参加の瞬間は通話中の文字の大きさになる前で、本数が足りなかった）
+try { new ResizeObserver(() => measureEqBars()).observe($('eq')) } catch {}
 const drawEq = () => {
   const level = Math.max(0.12, eqLevel())   // 静音時も 0.12 の下限で下段がチラチラする
   let s = ''
@@ -7940,6 +7995,7 @@ const armJoined = (roomId, name, bcast) => {
     if (stageOf() !== before) { sendTo(call.profileAction, myProfilePayload()); sendHeartbeat() }
   }, 30000)
   vis('join', false); vis('leave', true); document.body.classList.add('in-call')   // 操作盤を下に固定（.dock）・PC はカードの底板（sticky）
+  requestAnimationFrame(measureEqBars)   // 通話中の文字の大きさ（18px）で本数を数え直す
   renderSpeak()   // ミュート／「マイクを使う」のどちらを出すかは、マイクを持っているかで決まる
   // 前の通話で出た「音声を有効化」を必ず消す。隠すのは resetJoinedUI だけだったが、あれは
   // つなぎ直しの途中では呼ばれない。＝一度出たボタンが居座り、押しても再生するものが無い、
