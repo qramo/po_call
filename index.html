@@ -479,6 +479,7 @@
   /* はみ出しは切る（しまっている間に見えない）。ボタンの影が切れないよう、内側に少し余白を持たせて外へ打ち消す */
   body.in-call .dock-more > div{ min-height:0; overflow:hidden; padding:4px; margin:-4px }   /* 上も 4px：入力欄の光る枠が切れない（2026-11-09 iPhone） */
   body.in-call .dock:not(.open) .dock-more > div{ visibility:hidden; transition:visibility 0s .3s }
+  body.in-call .dock.slow:not(.open) .dock-more > div{ transition-delay:.8s }   /* ゆっくりしまう間は中身も最後まで見せる（箱だけ縮むのを防ぐ） */
   @media (prefers-reduced-motion:reduce){ body.in-call .dock-more{ transition:none } }
   .tray-tabs{ display:none; gap:4px; margin-top:8px; padding-top:6px; border-top:1px solid var(--border) }
   body.in-call .tray-tabs{ display:flex }
@@ -2069,9 +2070,8 @@ const dockOpen = (on, save = true) => {
   $('dock').classList.toggle('open', on)
   $('dockGrip').setAttribute('aria-expanded', String(on))
   $('dockGrip').setAttribute('aria-label', on ? 'リアクションなどをしまう' : 'リアクションなどを出す')
-  if (save) try { localStorage.setItem(DOCK_OPEN_KEY, on ? '1' : '') } catch {}
+  if (save) lsSet(DOCK_OPEN_KEY, on ? '1' : '')
 }
-try { dockOpen(localStorage.getItem(DOCK_OPEN_KEY) === '1', false) } catch {}
 // 入室したら、しまってあっても一度リアクションなどを見せてから、ゆっくり引っ込める＝引き手から出せると分かる
 // （利用者 2026-11-09）。その間に盤を触ったら引っ込めない
 const dockPeek = () => {
@@ -2092,11 +2092,13 @@ for (const g of [$('dockGrip'), $('eq')]) {
     const dy = e.clientY - y0
     if (Math.abs(dy) > 18) { swiped = true; dockOpen(dy < 0) }
   })
-  g.addEventListener('pointerup', () => { y0 = null })
-  g.addEventListener('pointercancel', () => { y0 = null })
+  // 払いの印は指を離したあとで消す。click は pointerup の直後（同じ処理の中）に来るので、消すのはその後（setTimeout 0）。
+  // スマホでは指が動いた後の click は来ないので、click の中で消すと次のタップが空振りした
+  const done = () => { y0 = null; setTimeout(() => { swiped = false }, 0) }
+  g.addEventListener('pointerup', done)
+  g.addEventListener('pointercancel', done)
   g.addEventListener('click', () => {
-    if (!document.body.classList.contains('in-call')) return
-    if (swiped) { swiped = false; return }
+    if (!document.body.classList.contains('in-call') || swiped) return
     dockOpen(!$('dock').classList.contains('open'))
   })
 }
@@ -2135,6 +2137,7 @@ $('chatText').addEventListener('blur', () => setTimeout(() => { if (document.act
 // getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
 const lsGet = (k, d = null) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
 const lsSet = (k, v) => { try { localStorage.setItem(k, v) } catch {} }
+dockOpen(lsGet(DOCK_OPEN_KEY) === '1', false)   // 盤の開け閉めの記憶（既定はしまう）
 // sessionStorage（登壇引き継ぎトークン等）も同様に例外を握る
 const ssGet = (k, d = null) => { try { return sessionStorage.getItem(k) ?? d } catch { return d } }
 const ssSet = (k, v) => { try { sessionStorage.setItem(k, v) } catch {} }
@@ -2447,7 +2450,7 @@ $('copyTop').onclick = () => copyLink($('copyTop'))                 // URL だ�
 $('copy').onclick    = () => copyLink($('copy'), shareText())      // 「部屋名 - 名前」＋URL
 // カードの裏（招待の QR と URL）。裏の中身は表を返すたびに作る（部屋名が変わったら syncShare が描き直す）。
 // 回し方：表を 90° まで回す → 中身を入れ替える → 裏を -90° から 0° へ。止まっている間は transform を残さない
-let flipped = false, flipping = false
+let flipped = false, flipping = false, flipGen = 0   // flipGen：unflip で進める。回している途中の続き（swap）は古い世代なら捨てる
 const drawBack = async () => {
   const id = pendingRoom(), url = shareUrl()
   $('fbMark').textContent = $('brandMark').textContent
@@ -2462,6 +2465,7 @@ const drawBack = async () => {
 const flipTo = async back => {
   if (flipping || back === flipped) return
   flipping = true
+  const gen = flipGen
   const fbox = $('flipBox'), front = $('flipFront'), rear = $('flipBack')
   if (back) drawBack()
   // スマホの裏は中身の高さ（表と揃えると、下の盤の裏に隠れる）。返したら裏が見える所まで送る。
@@ -2485,14 +2489,15 @@ const flipTo = async back => {
   else {
     try {
       await fbox.animate([{ transform: P + 'rotateY(0)' }, { transform: P + 'rotateY(90deg)' }], { duration: 170, easing: 'cubic-bezier(.5,0,.9,.5)' }).finished
+      if (gen !== flipGen) return   // 回している間に退出などで表へ戻された（unflip が後始末済み）
       swap()
       await fbox.animate([{ transform: P + 'rotateY(-90deg)' }, { transform: P + 'rotateY(0)' }], { duration: 260, easing: 'cubic-bezier(.1,.5,.3,1)' }).finished
-    } catch { swap() }
+    } catch { if (gen === flipGen) swap() }
   }
-  flipping = false
+  if (gen === flipGen) flipping = false
 }
 // 退出のときは回さずに表へ（join/leave の対称）
-const unflip = () => { flipped = false; flipping = false; document.body.classList.remove('flipped'); $('flipFront').hidden = false; $('flipBack').hidden = true; $('flipBack').style.height = ''; $('shareFlip').setAttribute('aria-expanded', 'false') }
+const unflip = () => { flipGen++; flipped = false; flipping = false; document.body.classList.remove('flipped'); $('flipFront').hidden = false; $('flipBack').hidden = true; $('flipBack').style.height = ''; $('shareFlip').setAttribute('aria-expanded', 'false') }
 $('shareFlip').onclick = () => flipTo(true)
 $('flipClose').onclick = () => flipTo(false)
 $('fbCopy').onclick = () => copyLink($('fbCopy'), shareText())
@@ -4421,9 +4426,12 @@ const selectTab = key => {
   if (key === 'chat' && document.body.classList.contains('in-call')) { if (!document.querySelector('.tray-pane[data-pane="chat"].on')) trayShow('chat', false); dockOpen(true, false) }
   renderTabs()
   // 最新の行が見える位置へ送る。盤の段が切り替わって高さが決まってから測る（2 フレーム後）
-  if (key === 'chat') { requestAnimationFrame(() => requestAnimationFrame(showChatLatest)); setTimeout(showChatLatest, 340) }   // 盤が開ききってからもう一度（開く動きは 0.3 秒）
+  if (key === 'chat') raf2(showChatLatest)   // 盤が開く動きの終わりにもう一度（下の transitionend）
 }
 TAB_PANELS.forEach(([key, tabId]) => { $(tabId).onclick = () => selectTab(key) })
+// 盤が開ききった（高さの動きが終わった）ら、ひとことの最新の行を合わせ直す。時間の決め打ち（0.3 秒）だと、
+// ゆっくりしまう .slow や動きを減らす設定で合わなかった。showChatLatest はひとことの欄が見えていなければ何もしない
+$('dockMore').addEventListener('transitionend', e => { if (e.target === $('dockMore') && $('dock').classList.contains('open')) showChatLatest() })
 $('tabs').addEventListener('keydown', e => {
   const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
   if (!d) return
@@ -8052,8 +8060,7 @@ const armJoined = (roomId, name, bcast) => {
     if (stageOf() !== before) { sendTo(call.profileAction, myProfilePayload()); sendHeartbeat() }
   }, 30000)
   vis('join', false); vis('leave', true); document.body.classList.add('in-call')   // 操作盤を下に固定（.dock）・PC はカードの底板（sticky）
-  dockPeek()
-  requestAnimationFrame(measureEqBars)   // 通話中の文字の大きさ（18px）で本数を数え直す
+  dockPeek()   // 本数の数え直し（通話中の文字の大きさ）は #eq の ResizeObserver がする
   renderSpeak()   // ミュート／「マイクを使う」のどちらを出すかは、マイクを持っているかで決まる
   // 前の通話で出た「音声を有効化」を必ず消す。隠すのは resetJoinedUI だけだったが、あれは
   // つなぎ直しの途中では呼ばれない。＝一度出たボタンが居座り、押しても再生するものが無い、
@@ -8248,7 +8255,7 @@ const resetJoinedUI = () => {
   vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false); document.body.classList.remove('in-call'); trayShow('react')
   document.body.classList.remove('lobby-open'); $('lobbyTab').setAttribute('aria-expanded', 'false')   // スマホの部屋のドロワーも畳む
   unflip()                                                // カードの裏（招待の QR）も表に戻す
-  try { dockOpen(localStorage.getItem(DOCK_OPEN_KEY) === '1', false) } catch { dockOpen(false, false) }   // 見せている途中で出ても、覚えている形に戻す
+  dockOpen(lsGet(DOCK_OPEN_KEY) === '1', false)   // 見せている途中で出ても、覚えている形に戻す
   vis('speak', false); $('speak').disabled = false
   vis('sndPeerRow', false)
   vis('sndReactRow', false)
@@ -8792,10 +8799,15 @@ const lobbyOpen = on => {
   document.body.classList.toggle('lobby-open', on)
   $('lobbyTab').setAttribute('aria-expanded', String(on))
   if (on) { $('lobbyBox').scrollTop = 0; try { history.pushState({ potLobby: 1 }, '') } catch {} }
-  else lobbyAskClear(), pttAskClear()
+  else {
+    lobbyAskClear(); pttAskClear()
+    // 開くときに積んだ履歴を戻す（×・部屋のタップ・ぽちっと通話へ、どこから閉じても）。戻るボタンで閉じたときは
+    // すでに前の履歴に居るので何もしない。残すと、あとで戻るボタンを 2 回押さないと戻れなかった
+    if (history.state && history.state.potLobby) try { history.back() } catch {}
+  }
 }
 $('lobbyTab').onclick = () => lobbyOpen(true)
-$('lobbyClose').onclick = () => { if (history.state && history.state.potLobby) history.back(); else lobbyOpen(false) }
+$('lobbyClose').onclick = () => lobbyOpen(false)
 addEventListener('popstate', () => lobbyOpen(false))
 
 // ─ ぽちっと通話の部屋（上の pttRooms）─ 部屋 → {people:[{name, talking}], tag}。失効したものは数えない
