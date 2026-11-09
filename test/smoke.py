@@ -434,6 +434,9 @@ def T23(r, a, b):
     ここを触るときは、その1行を必ず目で確認すること。
     """
     fly = "document.querySelectorAll('.react-fly').length"
+    # リアクションはアバターが見えていないと飛ばない。前のテスト（T25 など）が上のタブを
+    # ひとことに切り替えたままでも測れるように、両方ともメンバーへ戻してから押す。
+    show_tab(a, 'members'); show_tab(b, 'members')
     a.eval("document.querySelectorAll('#reactions button')[0].click()")
     mine = a.wait_for("%s >= 1" % fly, timeout=10)
     theirs = b.wait_for("%s >= 1" % fly, timeout=20)
