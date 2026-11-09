@@ -441,6 +441,10 @@
   body.in-call.typing .dock #unlock, body.in-call.typing .dock .leave-confirm{ display:none }
   body.in-call.typing .dock .tray-pane.on{ margin-top:0 }
   body.in-call.typing .dock{ padding-top:10px }
+  /* 入力中はページの下に余白を足す（2026-11-09 iPhone の録画）。通話中のページは一覧がドロワーへ移り、盤もしまえるようになって
+     短くなった。短いと、入力欄の上に最新の行を合わせる送り（keepLogVisible）が端で止まり、iOS は見えている画面のほうを
+     ずらして盤がキーボードの裏に沈んだ。余白はキーボードの裏に隠れるので見えない */
+  body.in-call.typing{ padding-bottom:calc(var(--dock-h, 120px) + 100vh) }
   /* 話題タグ・おたよりの欄に入っている間（body.typing-field・スマホ）は盤ごと畳む。盤に入力欄が無いので残す物が無い
      （利用者 2026-11-07）。下の余白（--dock-h）は ResizeObserver が高さ 0 を無視して前の値のまま */
   body.in-call.typing-field .dock{ display:none }
@@ -6837,6 +6841,7 @@ const keepLogVisible = () => {
       const natTop = $('tabsTop').getBoundingClientRect().top + (parseFloat(getComputedStyle(tabs).marginTop) || 0)
       const d = natTop - topWant
       if (Math.abs(d) > 4) window.scrollBy({ top: d, behavior: 'auto' })
+      fitDock(); requestAnimationFrame(fitDock)   // 送ったあと盤を見えている画面の下端へ（scroll の知らせが来ないことがある）
       return
     }
   }
@@ -6844,6 +6849,7 @@ const keepLogVisible = () => {
   const last = (!log.hidden && log.lastElementChild) || pan
   const d = last.getBoundingClientRect().bottom - want
   if (Math.abs(d) > 4) window.scrollBy({ top: d, behavior: 'auto' })
+  fitDock(); requestAnimationFrame(fitDock)
 }
 chatText.addEventListener('focus', () => { setTimeout(keepLogVisible, 350); setTimeout(keepLogVisible, 700) })
 window.visualViewport?.addEventListener('resize', () => { if (document.activeElement === chatText) setTimeout(keepLogVisible, 120) })
