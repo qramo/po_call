@@ -469,6 +469,14 @@ def T24(r, a, b):
             'リロードされていない=%s / 参加者2人=%s / 音が来ている=%s' % (stayed, joined, audio))
 
 
+def flip_back(tab):
+    """見出しの「シェア」でカードを裏返し、QR が描かれるまで待つ（招待のコピーは裏の「招待リンクをコピー」）。
+    裏のタブでは回る動きが止まるので、手前に出してから押す（人が押すときも必ず手前）"""
+    tab.call('Page.bringToFront')
+    tab.eval("document.getElementById('shareFlip').click()", await_promise=False)
+    return tab.wait_for("!document.getElementById('flipBack').hidden && !!document.querySelector('#fbQr svg')", timeout=SHORT)
+
+
 def show_tab(tab, which):
     """通話中のタブを切り替える（人が押すのと同じ経路）。which は members / chat / settings"""
     tab.eval("document.getElementById('tab%s').click()" % which.capitalize())
@@ -770,7 +778,7 @@ def T40(r):
     t = r.open_tab()
     closed = t.eval("!document.getElementById('createBox').open")
     idle_hidden = t.eval("document.getElementById('statusCard').hidden")
-    share_hidden = t.eval("document.getElementById('shareWrap').hidden")
+    share_hidden = t.eval("document.getElementById('shareFlip').hidden")
     ver_shown = t.eval("!!document.querySelector('.ver').offsetParent")   # 版はいつでも見える
     join_in = t.eval("document.getElementById('createBox').contains(document.getElementById('join'))")
     # 閉じている間の見出しは「部屋を作る」
@@ -784,10 +792,8 @@ def T40(r):
                            " s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.backgroundColor !== 'transparent' })()")
     # 開けば招待リンクも出る（作る前に配る導線＝配信部屋のため）
     t.eval("document.querySelector('#createBox > summary').click()")
-    # 招待は見出しの「シェア」（押すとカードが裏返る）。前の QR・長い URL の欄は見せない（2026-11-09・通話中とそろえた）
-    opened = t.wait_for("!document.getElementById('shareWrap').hidden"
-                        " && !!document.getElementById('shareFlip').offsetParent"
-                        " && !document.getElementById('shareWrap').offsetParent", timeout=SHORT)
+    # 招待は見出しの「シェア」（押すとカードが裏返る・2026-11-09 に通話中とそろえた）
+    opened = t.wait_for("!document.getElementById('shareFlip').hidden && !!document.getElementById('shareFlip').offsetParent", timeout=SHORT)
     # ★開いたら見出しが「部屋名」ラベルに変身する（プロフィールと同じ作法・利用者の指定）。
     #   中に同じラベルを二重に置かないので、ここが崩れると部屋名の見出しが消える。
     label_open = t.eval("document.querySelector('#createBox > summary').innerText").replace('\n', ' ')
@@ -864,12 +870,12 @@ def T44(r):
     t0.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
     t0.eval("(() => { document.getElementById('createBox').open = true; const i = document.getElementById('room');"
             " i.value = '指紋テスト'; i.dispatchEvent(new Event('input')); document.getElementById('kindBc').click() })()")
-    assert t0.wait_for("document.getElementById('share').href.includes('~pk~')", timeout=SHORT), '配信部屋の鍵ができない'
-    hash_ = '#' + t0.eval("document.getElementById('share').href").split('#', 1)[1]
+    assert t0.wait_for("document.getElementById('fbUrl').href.includes('~pk~')", timeout=SHORT), '配信部屋の鍵ができない'
+    hash_ = '#' + t0.eval("document.getElementById('fbUrl').href").split('#', 1)[1]
     click_join(t0)   # オーナーが参加＝部屋が開いている（リスナー側の「入口の確認」が live になる）
     assert t0.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER), 'オーナーが参加できない'
     row = "document.getElementById('kindRow').hidden"
-    pk = "document.getElementById('share').href.includes('~pk~')"
+    pk = "document.getElementById('fbUrl').href.includes('~pk~')"
     lbl = "document.getElementById('joinLbl').textContent"
     # ① オーナー本人
     t1 = r.open_tab(hash_=hash_)
@@ -1298,8 +1304,8 @@ def T51(r, room):
     o.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
     o.eval("(() => { document.getElementById('createBox').open = true; const i = document.getElementById('room');"
            " i.value = %s; i.dispatchEvent(new Event('input')); document.getElementById('kindBc').click() })()" % js_str(room + 'END'))
-    assert o.wait_for("document.getElementById('share').href.includes('~pk~')", timeout=SHORT), '配信部屋の鍵ができない'
-    h = '#' + o.eval("document.getElementById('share').href").split('#', 1)[1]
+    assert o.wait_for("document.getElementById('fbUrl').href.includes('~pk~')", timeout=SHORT), '配信部屋の鍵ができない'
+    h = '#' + o.eval("document.getElementById('fbUrl').href").split('#', 1)[1]
     click_join(o)
     assert o.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER), '配信者が参加できない'
     # ★v0.16.23：鍵は IndexedDB（pot-call-keys）に引っ越したので、退避は下の __potBcErase(true) が担う
@@ -1420,29 +1426,25 @@ def T53(r, room):
 
 
 def T54(r, room):
-    """招待リンクのコピーは「部屋名 - 名前」＋改行＋URL（v0.14.7）。バナーのコピーは URL だけ"""
+    """招待リンクのコピーは「部屋名 - 名前」＋改行＋URL（v0.14.7）。バナーのコピーは URL だけ。コピーのボタンはカードの裏（2026-11-09）"""
     x = room + 'CP'
     t = r.open_tab()
     t.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
     r.join(t, x)
     assert t.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER), '参加できない'
     who = t.eval("document.getElementById('name').value") or 'ゲスト'
-    url = t.eval("document.getElementById('share').href")
-    t.eval("document.getElementById('copy').click()", await_promise=False)
+    url = t.eval("document.getElementById('fbUrl').href")
+    # 招待のコピーはカードの裏（見出しの「シェア」→「招待リンクをコピー」・2026-11-09）
+    assert flip_back(t), '裏返らない'
+    t.eval("document.getElementById('fbCopy').click()", await_promise=False)
     got = t.wait_for("__T.clip.length >= 1", timeout=SHORT)
     txt = t.eval("__T.clip[0]") or ''
     lines = txt.split('\n')
     fmt = got and len(lines) == 2 and lines[0] == '🫖 ' + x + ' - ' + who and lines[1] == url
-    labeled = t.eval("document.getElementById('copy').textContent").startswith('コピーしました')
+    labeled = t.eval("document.getElementById('fbCopy').textContent").startswith('コピーしました')
     t.eval("document.getElementById('copyTop').click()", await_promise=False)
     t.wait_for("__T.clip.length >= 2", timeout=SHORT)
     top = t.eval("__T.clip[1]") == url
-    # 見えているリンクをタップ → URL だけ（v0.14.8）。同じ部屋へのリンクなので hash は変わらない
-    before_hash = t.eval("location.hash")
-    t.eval("document.getElementById('share').click()", await_promise=False)
-    t.wait_for("__T.clip.length >= 3", timeout=SHORT)
-    link_only = t.eval("__T.clip[2]") == url and t.eval("location.hash") == before_hash
-    told = 'URL をコピーしました' in (t.eval("document.getElementById('shareLabel').textContent") or '')
     # ★ロビーの部屋カードの共有ボタンも同じ形（v0.15.29・利用者の要望）：別タブ c のロビーに t の部屋が出たら押す。
     #   名前はコピーする本人（c）の名前。URL は t の共有リンクと同じ
     c = r.open_tab()
@@ -1468,9 +1470,9 @@ def T54(r, room):
     # ★「つながり中」の仮の行（在室情報の名前）でも members に名前が出るので、接続が済んで仮の行から外れるまで待つ
     seen = t.wait_for("document.getElementById('members').textContent.includes(%s) && !((window.__potPending && window.__potPending()) || []).includes(%s)"
                       % (js_str(who_c), js_str(who_c)), timeout=DISCOVER)
-    t.eval("document.getElementById('copy').click()", await_promise=False)
-    t.wait_for("__T.clip.length >= 4", timeout=SHORT)
-    two = (t.eval("__T.clip[3]") or '').split('\n')[0]
+    t.eval("document.getElementById('fbCopy').click()", await_promise=False)   # 裏は出したまま
+    t.wait_for("__T.clip.length >= 3", timeout=SHORT)
+    two = (t.eval("__T.clip[2]") or '').split('\n')[0]
     names = seen and two == '🫖 ' + x + ' - ' + who + '、' + who_c
     # ★配信部屋は配信者の名前（v0.15.30）：配信者 o の招待リンクも、別タブ d のロビーのカードも「📣 部屋名 - o の名前」
     xb = x + 'BC'
@@ -1479,8 +1481,8 @@ def T54(r, room):
     bc_inv = bc_card = False
     if bc_ok:
         who_o = o.eval("document.getElementById('name').value") or 'ゲスト'
-        url_o = o.eval("document.getElementById('share').href")
-        o.eval("document.getElementById('copy').click()", await_promise=False)
+        url_o = o.eval("document.getElementById('fbUrl').href")
+        flip_back(o); o.eval("document.getElementById('fbCopy').click()", await_promise=False)
         o.wait_for("__T.clip.length >= 1", timeout=SHORT)
         bc_inv = (o.eval("__T.clip[0]") or '') == '📣 ' + xb + ' - ' + who_o + '\n' + url_o
         d = r.open_tab()
@@ -1491,10 +1493,10 @@ def T54(r, room):
             d.wait_for("__T.clip.length >= 1", timeout=SHORT)
             bc_card = (d.eval("__T.clip[0]") or '') == '📣 ' + xb + ' - ' + who_o + '\n' + url_o
         click_leave(o)
-    ok = fmt and labeled and top and link_only and told and card_fmt and names and bc_inv and bc_card
-    r.check('T54', '招待リンクのコピーは「部屋名 - 名前」＋URL（リンクのタップは URL だけ・ロビーのカードも同じ形・雑談は在室者の羅列・配信は配信者）', ok, 'pass',
-            '形=%s(%r) / ボタンの文言=%s / バナーは URL だけ=%s / リンクのタップは URL だけ=%s / 案内=%s / ロビーのカード=%s(%r) / 在室者の羅列=%s(%r) / 配信：招待=%s・カード=%s'
-            % (fmt, txt[:60], labeled, top, link_only, told, card_fmt, card_txt[:60], names, two[:60], bc_inv, bc_card))
+    ok = fmt and labeled and top and card_fmt and names and bc_inv and bc_card
+    r.check('T54', '招待リンクのコピーは「部屋名 - 名前」＋URL（バナーは URL だけ・ロビーのカードも同じ形・雑談は在室者の羅列・配信は配信者）', ok, 'pass',
+            '形=%s(%r) / ボタンの文言=%s / バナーは URL だけ=%s / ロビーのカード=%s(%r) / 在室者の羅列=%s(%r) / 配信：招待=%s・カード=%s'
+            % (fmt, txt[:60], labeled, top, card_fmt, card_txt[:60], names, two[:60], bc_inv, bc_card))
     click_leave(c2); click_leave(t)
 
 
@@ -1522,7 +1524,7 @@ def T41(r, room):
     #   （2026-09-12・利用者の指摘）。状態カードと招待リンクは「部屋を作る」と一蓮托生。
     t.eval("document.querySelector('#createBox > summary').click()")
     folded = t.wait_for("document.getElementById('statusCard').hidden"
-                        " && document.getElementById('shareWrap').hidden", timeout=SHORT)
+                        " && document.getElementById('shareFlip').hidden", timeout=SHORT)
     ok = joined and in_hash and cleared and kept and folded
     r.check('T41', '退出で URL から部屋が落ちる（部屋名は残る）', ok, 'pass',
             '参加=%s / 参加中に hash がある=%s / 退出で消える=%s / 部屋名は残る=%s / 畳めば状態カードも消える=%s'
@@ -1623,7 +1625,7 @@ def make_bcast(r, tab, room):
              " r.value = %s; r.dispatchEvent(new Event('input'));"
              " const c = document.getElementById('kindBc');"
              " c.checked = true; c.dispatchEvent(new Event('change')) })()" % js_str(room))
-    got = tab.wait_for("document.getElementById('share').textContent.includes('~pk~')", timeout=SHORT)
+    got = tab.wait_for("document.getElementById('fbUrl').href.includes('~pk~')", timeout=SHORT)
     click_join(tab)
     return got
 
@@ -1644,7 +1646,7 @@ def T26(r, room):
     t = r.open_tab()
     name = room + 'BC'
     made = make_bcast(r, t, name)
-    url = t.eval("document.getElementById('share').textContent")
+    url = t.eval("document.getElementById('fbUrl').href")
     kept = t.eval("document.getElementById('room').value")
     joined = t.wait_for("location.hash.includes('~pk~')", timeout=DISCOVER)
     note = t.eval(BC_NOTE)
@@ -2387,8 +2389,7 @@ def T76(r, room):
     a.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
     r.join(a, room + 'VND')
     joined = a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
-    a.eval("document.getElementById('qr').click()", await_promise=False)
-    qr = a.wait_for("!!document.querySelector('#qrImg svg')", timeout=SHORT)
+    qr = flip_back(a)   # QR はカードの裏
     time.sleep(3)   # 在室の公開（nostr-tools の読み込み）を待つ
     urls = a.eval("JSON.stringify(performance.getEntriesByType('resource').map(e => e.name))")
     names = json.loads(urls)
@@ -2760,7 +2761,7 @@ def T87(r):
     # 同じ名前で配信部屋を選ぶと、同じ指紋のリンクになる（新しい鍵を作らない）
     a.eval("(() => { document.getElementById('createBox').open = true; const i = document.getElementById('room');"
            " i.value = '引っ越しテスト'; i.dispatchEvent(new Event('input')); document.getElementById('kindBc').click() })()")
-    same = a.wait_for("document.getElementById('share').href.includes('~pk~' + %s)" % js_str(fp), timeout=SHORT)
+    same = a.wait_for("document.getElementById('fbUrl').href.includes('~pk~' + %s)" % js_str(fp), timeout=SHORT)
     a.eval("window.__potBcErase()")
     ok = booted and listed and ls_gone and same
     r.check('T87', '配信鍵の引っ越し：localStorage の旧い鍵が IndexedDB へ移り、指紋（配信リンク）は変わらない', ok, 'pass',
@@ -2782,7 +2783,7 @@ def T90(r, room):
     a = r.open_tab(); a.eval(hide_help)
     r.join(a, name0)
     joined = bool(a.wait_for("!!document.querySelector('#state .rn-edit')", timeout=DISCOVER))
-    share = a.eval("document.getElementById('share').textContent") or ''
+    share = a.eval("document.getElementById('fbUrl').href") or ''
     old = a.eval('location.hash') or ''
     short = '#room=' in share and '&name=' not in share and '&name=' in old
     b = r.open_tab(hash_=share[share.find('#'):] if '#' in share else '')
@@ -3454,8 +3455,8 @@ def T28(r, room):
     o.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
     o.eval("(() => { document.getElementById('createBox').open = true; const i = document.getElementById('room');"
            " i.value = %s; i.dispatchEvent(new Event('input')); document.getElementById('kindBc').click() })()" % js_str(room + 'NOBC'))
-    assert o.wait_for("document.getElementById('share').href.includes('~pk~')", timeout=SHORT), '配信部屋の鍵ができない'
-    h = '#' + o.eval("document.getElementById('share').href").split('#', 1)[1]
+    assert o.wait_for("document.getElementById('fbUrl').href.includes('~pk~')", timeout=SHORT), '配信部屋の鍵ができない'
+    h = '#' + o.eval("document.getElementById('fbUrl').href").split('#', 1)[1]
     click_join(o)
     assert o.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER), '配信者が参加できない'
     # 聞き役は別の端末＝鍵を持たない（localStorage は同じブラウザの全タブで共有されるので消す。配信者は参加済み）
@@ -3765,10 +3766,9 @@ def T21(r, a):
     ブラウザは違反を securitypolicyviolation で必ず教えてくれるので、それを数える。
     通話・ロビー・TURN・Analytics を一通り通した**後**に見ること（読み込みは遅れて起きる）。
     """
-    # QR は押されるまで qrcode-generator を読みに行かない＝ここまでの流れでは vendor/ への
+    # QR はカードを裏返すまで qrcode-generator を読みに行かない＝ここまでの流れでは vendor/ への
     # 読み込みが1本ぶん試されていない。CSP の検査の前に通しておく。
-    a.eval("document.getElementById('qr').click()", await_promise=False)
-    qr = a.wait_for("!!document.querySelector('#qrImg svg')", timeout=SHORT)
+    qr = flip_back(a)
     r.check('T21b', 'QRコードが生成できる（vendor/ からの読み込みが通る）', qr, 'pass',
             '' if qr else 'SVG が出ない＝CSP の script-src を疑う')
 
