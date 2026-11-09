@@ -784,7 +784,10 @@ def T40(r):
                            " s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.backgroundColor !== 'transparent' })()")
     # 開けば招待リンクも出る（作る前に配る導線＝配信部屋のため）
     t.eval("document.querySelector('#createBox > summary').click()")
-    opened = t.wait_for("!document.getElementById('shareWrap').hidden", timeout=SHORT)
+    # 招待は見出しの「シェア」（押すとカードが裏返る）。前の QR・長い URL の欄は見せない（2026-11-09・通話中とそろえた）
+    opened = t.wait_for("!document.getElementById('shareWrap').hidden"
+                        " && !!document.getElementById('shareFlip').offsetParent"
+                        " && !document.getElementById('shareWrap').offsetParent", timeout=SHORT)
     # ★開いたら見出しが「部屋名」ラベルに変身する（プロフィールと同じ作法・利用者の指定）。
     #   中に同じラベルを二重に置かないので、ここが崩れると部屋名の見出しが消える。
     label_open = t.eval("document.querySelector('#createBox > summary').innerText").replace('\n', ' ')

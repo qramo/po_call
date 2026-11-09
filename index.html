@@ -550,15 +550,22 @@
   /* 通話中は見出しの 1 行目（点だけの行）の右に固定する。部屋名は 2 行目なので重ならない */
   body.in-call .status-head{ position:relative }
   body.in-call .head-right{ position:absolute; top:-6px; right:0 }
-  .share-flip{ display:none; flex:none; width:auto; margin:0; padding:4px 10px 4px 8px; align-items:center; gap:5px; align-self:center;
+  .share-flip{ flex:none; width:auto; margin:0; padding:4px 10px 4px 8px; align-items:center; gap:5px; align-self:center;
     font-size:12px; font-weight:700; border-radius:999px; background:var(--chip); color:var(--chip-fg); border:1px solid var(--border) }
   .share-flip svg{ width:15px; height:15px }
-  body.in-call .share-flip{ display:inline-flex }
+  /* 参加前も同じ（利用者 2026-11-09「同じに揃えましょう」）。出すかどうかは招待リンクを配れるか（syncIdleChrome が hidden を付け外し） */
+  .share-flip{ display:inline-flex }
+  .share-flip[hidden]{ display:none }
+  /* 前の招待リンクの欄（QR・長い URL・2 つのボタン）は見せない。シェアは見出しの「シェア」→ カードの裏だけ */
+  .tray-pane[data-pane="share"]{ display:none !important }
   /* カードの裏＝招待状。スクショで共有されても映えるよう、昼夜どちらの配色でも同じ紺地にティールの光（ブランドの札） */
   .flip-box{ transform-origin:50% 30% }
-  /* 通話中は台紙の色を表（#flipFront）が持つ＝回るときに台紙ごと回る（状態カード自身は透明にする） */
-  body.in-call .status{ background:transparent }
-  body.in-call #flipFront{ margin:-14px -14px 0; padding:14px 14px 0; border-radius:10px; background:var(--panel) }
+  /* 台紙の色は表（#flipFront）が持つ＝回るときに台紙ごと回る（状態カード自身は透明にする）。参加前も同じ */
+  .status{ background:transparent }
+  #flipFront{ margin:-14px -14px 0; padding:14px 14px 0; border-radius:10px; background:var(--panel) }
+  /* 参加前は下に盤が無いので、下の余白まで台紙にする（無いと「シェア」の下でカードが切れて見える）。「未参加」とシェアは同じ高さに */
+  body:not(.in-call) #flipFront{ padding-bottom:14px; margin-bottom:-14px }
+  body:not(.in-call) .head-right{ align-self:center }
   body.flipped .lobby-tab{ display:none !important }   /* 裏を出している間は右端のつまみを隠す（スクショに写さない） */
   .flip-back{ --fb-ink:#eaf6ff; --fb-sub:rgba(234,246,255,.66); position:relative; overflow:hidden; box-sizing:border-box;
     display:flex; flex-direction:column; margin:-14px -14px 0; padding:16px 16px 20px; border-radius:16px; color:var(--fb-ink);
@@ -2446,8 +2453,9 @@ const flipTo = async back => {
   const fbox = $('flipBox'), front = $('flipFront'), rear = $('flipBack')
   if (back) drawBack()
   // スマホの裏は中身の高さ（表と揃えると、下の盤の裏に隠れる）。返したら裏が見える所まで送る。
-  // PC は表と同じ高さに揃える＝返してもカードの大きさが変わらない（利用者 2026-11-09）。入りきらなければ QR を縮める
-  const frontH = front.offsetHeight, wide = matchMedia('(min-width:561px)').matches
+  // 通話中の PC は表と同じ高さに揃える＝返してもカードの大きさが変わらない（利用者 2026-11-09）。入りきらなければ QR を縮める。
+  // 参加前は表が「未参加」の 1 行だけなので揃えない（裏の中身の高さ）
+  const frontH = front.offsetHeight, wide = matchMedia('(min-width:561px)').matches && !!call.joinedId
   const swap = () => {
     front.hidden = back; rear.hidden = !back; flipped = back; document.body.classList.toggle('flipped', back)
     rear.style.height = ''; $('fbQr').style.removeProperty('--qs')
@@ -8184,6 +8192,8 @@ const syncIdleChrome = () => {
   //   **失敗の知らせが出る場所ごと消える**。
   $('statusCard').hidden = !(call.joinedId || stateKind !== 'idle' || open)
   $('shareWrap').hidden = !roomInput.value.trim() || !(call.joinedId || open)
+  $('shareFlip').hidden = $('shareWrap').hidden
+  if ($('shareFlip').hidden && flipped) unflip()   // 「部屋を作る」を畳んだら裏も表に戻す
 }
 const syncCreateBox = () => {
   const box = $('createBox')
