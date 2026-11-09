@@ -8469,7 +8469,8 @@ $('entryOpen').onclick = () => {
 //   作りたて（開いて 3 分まで）：ほかの部屋の真ん中の点より下にはしない（人数 1・まだ静か、で沈ませない）
 // 並びの例外：自分のいる部屋は先頭。見ている人が 🌱 なら、ようこそ・やまびこ（MOVED_ROOMS）を、いちばん点の高い部屋のすぐ下へ。
 // 揺れ止め（活発さは 5 秒ごとに変わる）：並べ替えは 25 秒ごと。そのあいだに増えた部屋は点の位置に差し込み、消えた部屋は抜くだけ。
-//   確認の 2 択が出ている間と、一覧を触って 4 秒以内は動かさない。点の差が 0.75 以下の隣どうしは入れ替えない。
+//   確認の 2 択が出ている間と、一覧を触って 4 秒以内（PC はマウスを一覧の上で動かしても）は動かさない。点の差が 0.75 以下の隣どうしは入れ替えない。
+//   2 択が出ている間は、増えた部屋も差し込まず末尾に足す（押そうとした部屋が下へ逃げない。利用者 2026-11-09）
 const RANK_EVERY_MS = 25000, RANK_MARGIN = 0.75, RANK_TAU_MS = 60000, RANK_GROW_MS = 5 * 60000, RANK_TOUCH_MS = 4000
 const roomStat = new Map()   // 部屋 → { talkers, mean, at, heard, seen, hist: [[時刻, 人数], …] }
 let lobbyOrder = [], lobbyRankAt = 0, lobbyTouchAt = 0
@@ -8507,11 +8508,11 @@ const lobbyScore = f => {
   if (f.ageSec > 4 * 3600) s -= (f.ageSec - 4 * 3600) / 3600
   return s
 }
-// 並びの土台（例外を当てる前）。reorder が偽なら、前の並びを保って出し入れだけする
-const lobbyRankBase = (prev, score, reorder) => {
+// 並びの土台（例外を当てる前）。reorder が偽なら、前の並びを保って出し入れだけする。hold なら増えた部屋は末尾へ
+const lobbyRankBase = (prev, score, reorder, hold = false) => {
   const order = prev.filter(r => r in score)
   Object.keys(score).filter(r => !order.includes(r)).sort((a, b) => score[b] - score[a]).forEach(r => {
-    const i = order.findIndex(x => score[x] < score[r])
+    const i = hold ? -1 : order.findIndex(x => score[x] < score[r])
     if (i < 0) order.push(r); else order.splice(i, 0, r)
   })
   if (reorder) {
@@ -8532,7 +8533,7 @@ const lobbyRankApply = (base, own, boost) => {
 }
 window.__potLobbyRank = { score: lobbyScore, base: lobbyRankBase, apply: lobbyRankApply }   // テスト用（T86）
 const lobbyTouched = () => { lobbyTouchAt = Date.now() }
-;['pointerdown', 'touchstart', 'wheel', 'scroll'].forEach(ev => $('lobbyList').addEventListener(ev, lobbyTouched, { passive: true }))
+;['pointerdown', 'pointermove', 'touchstart', 'wheel', 'scroll'].forEach(ev => $('lobbyList').addEventListener(ev, lobbyTouched, { passive: true }))
 
 // ─ ぽちっと通話の部屋（上の pttRooms）─ 部屋 → {people:[{name, talking}], tag}。失効したものは数えない
 const pttLive = () => {
@@ -8565,7 +8566,7 @@ const askOver = (list, btn, ask, key) => {
     if (d > 0) window.scrollBy({ top: d, behavior: 'smooth' })
   })
 }
-let pttAsk = null, pttAskTimer = null
+let pttAsk = null, pttAskTimer = null, pttOrder = []
 const pttAskClear = () => { clearTimeout(pttAskTimer); askSlid = null; if (pttAsk) { pttAsk = null; renderLobby() } }
 const pttFmt = ch => ch.slice(0, 4).toUpperCase() + '·' + ch.slice(4).toUpperCase()   // 向こうの fmt() と同じ
 const pttGo = ch => {
@@ -8576,7 +8577,9 @@ const pttGo = ch => {
 }
 // 一覧の末尾に、ぽちっと通話の部屋を 🔘 で出す（向こうと同じ印）。タップで確認の 2 択 → /ptt/ へ移る
 const renderPttRooms = (list, ptt) => {
-  [...ptt.keys()].sort().slice(0, LOBBY_MAX_ROOMS).forEach(ch => {
+  // 並びは見つけた順のまま（新しい部屋は末尾）。ID 順だと、来た部屋が途中に入って押そうとした部屋がずれる
+  pttOrder = [...pttOrder.filter(ch => ptt.has(ch)), ...[...ptt.keys()].filter(ch => !pttOrder.includes(ch))]
+  pttOrder.slice(0, LOBBY_MAX_ROOMS).forEach(ch => {
     const r = ptt.get(ch), talking = r.people.some(p => p.talking)
     const btn = document.createElement('button')
     btn.className = 'room ptt-room' + (talking ? ' act2' : '')
@@ -8601,6 +8604,7 @@ const renderPttRooms = (list, ptt) => {
     btn.onclick = () => {
       if (pttAsk === ch) { pttAskClear(); return }
       pttAsk = ch; clearTimeout(pttAskTimer); pttAskTimer = setTimeout(pttAskClear, 8000)
+      lobbyAsk = null; clearTimeout(lobbyAskTimer)   // 2択は一覧に 1 つだけ（ぽっと通話の部屋の2択は畳む）
       renderLobby()
     }
     if (pttAsk !== ch) list.append(btn)
@@ -8665,9 +8669,10 @@ const renderLobby = () => {
   feats.forEach((f, r) => { score[r] = lobbyScore(f) })
   const vals = Object.values(score).sort((a, b) => a - b), mid = vals.length ? vals[Math.floor(vals.length / 2)] : 0
   feats.forEach((f, r) => { if (f.ageSec < 180) score[r] = Math.max(score[r], mid) })
-  const reorder = !lobbyAsk && now - lobbyTouchAt >= RANK_TOUCH_MS && now - lobbyRankAt >= RANK_EVERY_MS
+  const asking = !!(lobbyAsk || pttAsk)
+  const reorder = !asking && now - lobbyTouchAt >= RANK_TOUCH_MS && now - lobbyRankAt >= RANK_EVERY_MS
   if (reorder) lobbyRankAt = now
-  lobbyOrder = lobbyRankBase(lobbyOrder, score, reorder)
+  lobbyOrder = lobbyRankBase(lobbyOrder, score, reorder, asking)
   const names = lobbyRankApply(lobbyOrder, call.joinedId, viewerSprout ? Object.values(MOVED_ROOMS) : [])
   // ロビーに入った直後はまだ誰も見つけていないだけなので「ありません」と断定しない。
   // 相手の発見（Nostrでの合流＋WebRTCの確立）に数秒かかるため、その間は探索中と出す。
@@ -8844,6 +8849,7 @@ const askRoom = (room, name) => {
   if (room === call.joinedId) return
   if (lobbyAsk && lobbyAsk.room === room) { lobbyAskClear(); return }
   lobbyAsk = { room, name }
+  pttAsk = null; clearTimeout(pttAskTimer)   // 2択は一覧に 1 つだけ（ぽちっと通話の部屋の2択は畳む）
   clearTimeout(lobbyAskTimer); lobbyAskTimer = setTimeout(lobbyAskClear, 8000)
   renderLobby()
 }
