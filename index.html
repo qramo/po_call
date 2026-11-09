@@ -2060,7 +2060,7 @@ const dockPeek = () => {
     $('dock').classList.add('slow'); dockOpen(false, false); setTimeout(() => $('dock').classList.remove('slow'), 900)
   }, 2200)
 }
-$('dock').addEventListener('pointerdown', () => { clearTimeout(dockPeekT); dockPeekT = 0 })
+for (const ev of ['pointerdown', 'focusin']) $('dock').addEventListener(ev, () => { clearTimeout(dockPeekT); dockPeekT = 0 })   // focusin＝キーボードで触ったとき
 // 引き手とレベルメーターのあたりの両方で受ける（細い引き手だけだと狙いにくい）
 for (const g of [$('dockGrip'), $('eq')]) {
   let y0 = null, swiped = false
@@ -2068,7 +2068,8 @@ for (const g of [$('dockGrip'), $('eq')]) {
   g.addEventListener('pointermove', e => {
     if (y0 == null || swiped) return
     const dy = e.clientY - y0
-    if (Math.abs(dy) > 18) { swiped = true; dockOpen(dy < 0) }
+    // 開く向きに払うと開く：スマホは画面の下から上へ伸びる、PC はカードの底板で下へ伸びる（引き手の ∧∨ と同じ・2026-11-10）
+    if (Math.abs(dy) > 18) { swiped = true; dockOpen(matchMedia('(min-width:561px)').matches ? dy > 0 : dy < 0) }
   })
   // 払いの印は指を離したあとで消す。click は pointerup の直後（同じ処理の中）に来るので、消すのはその後（setTimeout 0）。
   // スマホでは指が動いた後の click は来ないので、click の中で消すと次のタップが空振りした
@@ -2152,7 +2153,7 @@ const CALL_INIT = () => ({
   muted: false,         // 自分がミュート中か（トラックの enabled と対で持つ）
   joinedId: null,       // 参加中の部屋ID（null＝未参加）。v0.13 からハッシュ（旧クライアントの部屋なら名前）
   meta: { name: '', nameAt: 0, nameBy: '', tag: '', tagBy: '', tagAt: 0 },   // 部屋のメタデータ（名前もタグも新しいほうが勝つ。名前は v0.16.26 試作から変えられる）
-  nameEarly: null,      // 配信部屋：本人確認の前に届いた配信者の改名（確認できたら採用する）
+  nameEarly: new Map(), // 配信部屋：本人確認の前に届いた名前（相手ごと。配信者と確認できた相手の分だけ採用する）
   joinedAt: 0,          // 参加した時刻。継続時間は「入ってから何秒」の差分で交換するので、
                         // 端末ごとの時計ズレの影響を受けない。巻き戻らない performance.now() を使う
   usingRelay: false,    // この通話がTURN中継経由か（!!ice）＝相手にIPが見えるかの自己申告
@@ -2396,15 +2397,20 @@ const copyLink = async (btn, text = shareUrl()) => {
     btn.textContent = 'コピーしました ✓'
     clearTimeout(btn._revert); btn._revert = setTimeout(() => { btn.textContent = original }, 1600)  // 少し後に元へ
   } catch {
-    btn.textContent = '長押しでコピー: ' + shareUrl()  // 失敗時はURLを残す（長押しでコピーできるように）
+    clearTimeout(btn._revert)   // 直前の成功の「元へ」が失敗の表示を消さないように
+    btn.textContent = '長押しでコピー: ' + shareUrl()  // 失敗時はURLを残す（長押しでコピーできるように）。戻すのは copyReset
   }
 }
+// 失敗の表示（その部屋の URL）は、裏を描き直す・表へ戻すときに元の文言へ（別の部屋に前の URL を残さない）
+const copyReset = btn => { clearTimeout(btn._revert); if (btn.dataset.label) btn.textContent = btn.dataset.label }
 $('copyTop').onclick = () => copyLink($('copyTop'))                 // URL だけ（Safari で開くため）
 // カードの裏（招待の QR と URL）。裏の中身は表を返すたびに作る（部屋名が変わったら syncShare が描き直す）。
 // 回し方：表を 90° まで回す → 中身を入れ替える → 裏を -90° から 0° へ。止まっている間は transform を残さない
 let flipped = false, flipping = false, flipGen = 0   // flipGen：unflip で進める。回している途中の続き（swap）は古い世代なら捨てる
+let flipAnim = null   // 回している動き。unflip で止める（退出のあとに表が 90° まで回って戻る動きを残さない）
 const drawBack = async () => {   // URL（#fbUrl）は syncShare が部屋が決まるたびに入れている
   const id = pendingRoom(), url = shareUrl()
+  copyReset($('fbCopy'))
   $('fbMark').textContent = $('brandMark').textContent
   $('fbRoom').textContent = (isBcRoom(id) ? '📣 ' : '') + pendingRoomName()
   const box = $('fbQr')
@@ -2423,6 +2429,7 @@ const flipTo = async back => {
   // 通話中の PC は表と同じ高さに揃える＝返してもカードの大きさが変わらない（利用者 2026-11-09）。入りきらなければ QR を縮める。
   // 参加前は表が「未参加」の 1 行だけなので揃えない（裏の中身の高さ）
   const frontH = front.offsetHeight, wide = matchMedia('(min-width:561px)').matches && !!call.joinedId
+  const hadFocus = fbox.contains(document.activeElement)   // 押したボタンは隠れるので、フォーカスを反対側のボタンへ渡す
   const swap = () => {
     front.hidden = back; rear.hidden = !back; flipped = back; document.body.classList.toggle('flipped', back)
     rear.style.height = ''; $('fbQr').style.removeProperty('--qs')
@@ -2432,6 +2439,7 @@ const flipTo = async back => {
       if (over > 0) $('fbQr').style.setProperty('--qs', Math.max(120, Math.floor(qs - over / 1.2)) + 'px')
     }
     $('shareFlip').setAttribute('aria-expanded', String(back))
+    if (hadFocus) (back ? $('flipClose') : $('shareFlip')).focus({ preventScroll: true })
     const top = fbox.getBoundingClientRect().top - 12
     if (top < 0 || (back && fbox.getBoundingClientRect().bottom > (document.body.classList.contains('in-call') && $('dock').getClientRects().length ? $('dock').getBoundingClientRect().top : innerHeight))) window.scrollBy({ top, behavior: 'auto' })
   }
@@ -2442,16 +2450,16 @@ const flipTo = async back => {
   if (matchMedia('(prefers-reduced-motion:reduce)').matches || !fbox.animate) swap()
   else {
     try {
-      await settle(fbox.animate([{ transform: P + 'rotateY(0)' }, { transform: P + 'rotateY(90deg)' }], { duration: 170, easing: 'cubic-bezier(.5,0,.9,.5)' }))
+      await settle(flipAnim = fbox.animate([{ transform: P + 'rotateY(0)' }, { transform: P + 'rotateY(90deg)' }], { duration: 170, easing: 'cubic-bezier(.5,0,.9,.5)' }))
       if (gen !== flipGen) return   // 回している間に退出などで表へ戻された（unflip が後始末済み）
       swap()
-      await settle(fbox.animate([{ transform: P + 'rotateY(-90deg)' }, { transform: P + 'rotateY(0)' }], { duration: 260, easing: 'cubic-bezier(.1,.5,.3,1)' }))
+      await settle(flipAnim = fbox.animate([{ transform: P + 'rotateY(-90deg)' }, { transform: P + 'rotateY(0)' }], { duration: 260, easing: 'cubic-bezier(.1,.5,.3,1)' }))
     } catch { if (gen === flipGen) swap() }
   }
   if (gen === flipGen) flipping = false
 }
 // 退出のときは回さずに表へ（join/leave の対称）
-const unflip = () => { flipGen++; flipped = false; flipping = false; document.body.classList.remove('flipped'); $('flipFront').hidden = false; $('flipBack').hidden = true; $('flipBack').style.height = ''; $('shareFlip').setAttribute('aria-expanded', 'false') }
+const unflip = () => { flipGen++; try { flipAnim?.cancel() } catch {} flipAnim = null; copyReset($('fbCopy')); flipped = false; flipping = false; document.body.classList.remove('flipped'); $('flipFront').hidden = false; $('flipBack').hidden = true; $('flipBack').style.height = ''; $('shareFlip').setAttribute('aria-expanded', 'false') }
 $('shareFlip').onclick = () => flipTo(true)
 $('flipClose').onclick = () => flipTo(false)
 $('fbCopy').onclick = () => copyLink($('fbCopy'), shareText())
@@ -7027,9 +7035,9 @@ const challengeOwner = (force = false) => {
 }
 // 本人確認が取れた瞬間に、配信者の分として取り置いていた合図を当て、確認前に捨てた音を取り直す。
 const onOwnerAuthed = own => {
-  if (call.nameEarly) {   // 確認前に届いていた配信者の改名（上の meta の注）
-    const e = call.nameEarly; call.nameEarly = null
-    if (e.peerId === own && e.at > (call.meta.nameAt || 0) && e.name !== call.meta.name) { takeRoomName(e.name, e.at, e.by); metaFlushNow() }
+  { // 確認前に届いていた配信者の名前（上の meta の注）。ほかの人の取り置きは捨てる
+    const e = call.nameEarly.get(own); call.nameEarly.clear()
+    if (e && e.name !== call.meta.name && (!call.meta.name || e.at > (call.meta.nameAt || 0))) { takeRoomName(e.name, e.at, e.by); metaFlushNow() }
   }
   if (call.ttsAnnEarly) { const e = call.ttsAnnEarly.get(own); if (e) { call.ttsAnn = e; call.ttsAnnEarly.delete(own) } }
   if (call.reqOpenEarly && call.reqOpenEarly.peerId === own) {
@@ -7514,11 +7522,15 @@ const wireRoom = () => {
     const m = call.meta, name = capRoom(String(d.name ?? ''))
     const nat = Math.max(-1, Math.min(Number(d.nameAt) || 0, Date.now() + 60000))
     let changed = false
+    // 配信部屋では、名前を持たずに来た人が補う名前（nameAt 0）も、同じ名前のまま時刻だけ進めるのも配信者からだけ
+    // （聞き役に名前を入れる・改名を止めるのを他の人ができないように・2026-11-10 レビュー）。取り置きは相手ごと
+    const fromOwner = !call.bcast || ownerOk(peerId)
     if (name && name !== m.name && (!m.name || nat > (m.nameAt || 0))) {
-      if (call.bcast && nat > 0 && !ownerOk(peerId)) {
-        if (!call.nameEarly || nat > call.nameEarly.at) call.nameEarly = { peerId, name, at: nat, by: capText(d.nameBy, 20) }
+      if (!fromOwner) {
+        const e = call.nameEarly.get(peerId)
+        if (!e || nat > e.at) call.nameEarly.set(peerId, { name, at: nat, by: capText(d.nameBy, 20) })
       } else changed = takeRoomName(name, nat, capText(d.nameBy, 20)) || changed
-    } else if (name && name === m.name && nat > (m.nameAt || 0)) { m.nameAt = nat; m.nameBy = capText(d.nameBy, 20) }
+    } else if (fromOwner && name && name === m.name && nat > (m.nameAt || 0)) { m.nameAt = nat; m.nameBy = capText(d.nameBy, 20) }
     const at = Math.min(Number(d.tagAt) || 0, Date.now() + 60000)
     if (at > (m.tagAt || 0)) { m.tag = capText(d.tag, ROOM_MAX); m.tagBy = capText(d.tagBy, 20); m.tagAt = at; changed = true }
     // 後処理（描画・hash 書き換え・ロビーへの heartbeat）は発信者ごとに間引く。タグの奪い合い連打への自衛
@@ -8192,7 +8204,9 @@ $('mute').onclick = toggleMute
 const resetJoinedUI = () => {
   $('countRow').hidden = true
   vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false); document.body.classList.remove('in-call'); trayShow('react')
-  document.body.classList.remove('lobby-open'); $('lobbyTab').setAttribute('aria-expanded', 'false')   // スマホの部屋のドロワーも畳む
+  // スマホの部屋のドロワーも畳む。開いたときに積んだ履歴は lobbyOpen が戻す（下の URL の書き換えはそれが済んでから）
+  const drawerEntry = !!(history.state && history.state.potLobby)
+  lobbyOpen(false)
   unflip()                                                // カードの裏（招待の QR）も表に戻す
   dockOpen(lsGet(DOCK_OPEN_KEY) === '1', false)   // 見せている途中で出ても、覚えている形に戻す
   vis('speak', false); $('speak').disabled = false
@@ -8211,7 +8225,10 @@ const resetJoinedUI = () => {
   //   2026-09-12 に利用者が遭遇）。URL としても、居ない部屋を指したままなのは嘘。
   //   replaceState を使うのは、hashchange を起こさず履歴も増やさないため
   //   （`location.hash = ''` だと hashchange が飛び、β の「安定版へ」の追従処理まで動く）。
-  try { history.replaceState(null, '', location.pathname + location.search) } catch {}
+  //   ドロワーの履歴を戻している最中なら、戻り終えた先（部屋の URL の項目）で書き換える。先に書き換えると、
+  //   戻った先との hash の差で部屋の URL へ戻ってしまう（配信の終了・定員超過で押し出されたとき・2026-11-10 レビュー）
+  const dropHash = () => { try { history.replaceState(null, '', location.pathname + location.search) } catch {} }
+  if (drawerEntry) addEventListener('popstate', dropHash, { once: true }); else dropHash()
   roomInput.disabled = false; lockProfile(false); syncCreateBox()
   $('setupFields').classList.remove('collapsed')   // join で畳んだ入力欄を戻す
 }
@@ -8729,7 +8746,7 @@ const lobbyTouched = () => { lobbyTouchAt = Date.now() }
 ;['pointerdown', 'pointermove', 'touchstart', 'wheel', 'scroll'].forEach(ev => $('lobbyList').addEventListener(ev, lobbyTouched, { passive: true }))
 // スマホの通話中のドロワー（CSS の body.lobby-open）。開くと履歴を 1 つ積み、ブラウザの「戻る」で閉じる
 // （Android の戻るで通話のページごと離れない）。× で閉じるときは積んだぶんを戻して消す。
-// 部屋を移る・退出するときは履歴に触らずに畳む（参加で location.hash が履歴を足すので、戻すと食い違う）
+// 閉じ方（×・部屋のタップ・ぽちっと通話へ・退出）にかかわらず、積んだぶんは閉じるときに戻す（下の else）
 const lobbyDrawer = () => matchMedia('(max-width:560px)').matches && document.body.classList.contains('in-call')
 const lobbyOpen = on => {
   const was = document.body.classList.contains('lobby-open')

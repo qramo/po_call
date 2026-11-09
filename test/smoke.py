@@ -2874,6 +2874,78 @@ def T89(r, room):
             % (made, joined, owner[0], owner[1], heard, listener[0], listener[1]))
 
 
+def dock_drag(t, dy):
+    """盤の引き手を本物のマウス操作で払う（dy>0 で下へ）。払ったあとの click で開閉が戻らないことも一緒に見る"""
+    x, y = t.eval("(() => { const b = document.getElementById('dockGrip').getBoundingClientRect(); return [b.x + b.width / 2, b.y + b.height / 2] })()")
+    t.call('Input.dispatchMouseEvent', type='mousePressed', x=x, y=y, button='left', clickCount=1)
+    for k in (1, 2, 3):
+        t.call('Input.dispatchMouseEvent', type='mouseMoved', x=x, y=y + dy * k / 3, button='left')
+    t.call('Input.dispatchMouseEvent', type='mouseReleased', x=x, y=y + dy, button='left', clickCount=1)
+    time.sleep(0.4)
+    return t.eval("document.getElementById('dock').classList.contains('open')")
+
+
+def T91(r, room):
+    """盤の開閉（2026-11-10 レビュー）。入室したら一度見せてから引っ込める・キーボードで触ったら引っ込めない。
+    払う向きは引き手の矢印と同じ：PC（盤はカードの底板で下へ伸びる）は下へ払うと開く、スマホ（下に固定で上へ伸びる）は上へ。
+    PC で矢印だけ反転して払う向きが逆のままだった。払ったあとの click で開閉が戻らないことも見る"""
+    a = r.open_tab()
+    a.call('Emulation.setDeviceMetricsOverride', width=1000, height=900, deviceScaleFactor=1, mobile=False)
+    a.eval("localStorage.setItem('pot-call-hide-help','1'); localStorage.removeItem('pot-dock-open'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    r.join(a, room + 'DOCK')
+    joined = a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
+    OPEN = "document.getElementById('dock').classList.contains('open')"
+    peek = bool(a.wait_for(OPEN, timeout=3))
+    a.call('Page.bringToFront')   # 手前のタブでないと focus() で focusin が来ない
+    focused = a.eval("(() => { const b = document.querySelector('#dock .reactions button'); if (!b) return 'no button'; b.focus(); return document.activeElement === b })()")   # キーボードで触った（focusin）
+    time.sleep(3.5)
+    kept = a.eval(OPEN) is True
+    a.eval("document.activeElement.blur(); document.getElementById('dockGrip').click()")   # 押して閉じる
+    time.sleep(0.4)
+    tap = a.eval(OPEN) is False
+    pc = [dock_drag(a, 60), dock_drag(a, -60)]       # 下で開く・上で閉じる
+    a.call('Emulation.setDeviceMetricsOverride', width=390, height=844, deviceScaleFactor=2, mobile=True)
+    time.sleep(0.5)
+    phone = [dock_drag(a, -60), dock_drag(a, 60)]    # 上で開く・下で閉じる
+    a.call('Emulation.clearDeviceMetricsOverride')
+    a.call('Page.navigate', url='about:blank')       # 部屋とロビーから抜ける（残すと後ろの 2 タブのテストの相手探しが重くなる）
+    ok = joined and peek and kept and tap and pc == [True, False] and phone == [True, False]
+    r.check('T91', '盤の開閉（入室で見せる・キーボードで止まる・払う向きが矢印と同じ）', ok, 'pass',
+            '参加=%s / 入室で見せる=%s / フォーカス=%s / キーボードで触ると残る=%s / 押して閉じる=%s / PC 下・上=%s / スマホ 上・下=%s'
+            % (joined, peek, focused, kept, tap, pc, phone))
+
+
+def T92(r, room):
+    """スマホの「通話中の部屋」ドロワーと戻るボタン（2026-11-10 レビュー）。開くと履歴を 1 つ積み、
+    × で閉じると戻して消す。開いたまま退出（配信の終了・定員超過の押し出しと同じ後片付け）しても積んだぶんを戻す。
+    以前は URL の書き換えで目印ごと消え、戻るを押すと退出した部屋の URL に戻っていた"""
+    a = r.open_tab()
+    a.call('Emulation.setDeviceMetricsOverride', width=390, height=844, deviceScaleFactor=2, mobile=True)
+    a.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    r.join(a, room + 'DRW')
+    joined = a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
+    ST = "!!(history.state && history.state.potLobby)"
+    a.eval("document.getElementById('lobbyTab').click()")
+    pushed = a.wait_for("document.body.classList.contains('lobby-open') && " + ST, timeout=SHORT)
+    a.eval("document.getElementById('lobbyClose').click()")
+    closed = a.wait_for("!document.body.classList.contains('lobby-open') && !" + ST, timeout=SHORT)
+    stay = a.eval("location.hash.startsWith('#room=') && document.body.classList.contains('in-call')")
+    a.eval("document.getElementById('lobbyTab').click()")
+    again = a.wait_for(ST, timeout=SHORT)
+    a.eval("document.getElementById('leave').click(); document.getElementById('leaveYes') && document.getElementById('leaveYes').click()")
+    left = a.wait_for("!document.body.classList.contains('in-call') && !document.body.classList.contains('lobby-open')", timeout=SHORT)
+    time.sleep(0.6)
+    clean = a.eval("location.hash === '' && !" + ST)
+    a.eval("history.back()"); time.sleep(0.6)
+    back = a.eval("location.hash")
+    a.call('Emulation.clearDeviceMetricsOverride')
+    a.call('Page.navigate', url='about:blank')       # ロビーから抜ける（T91 と同じ）
+    ok = joined and pushed and closed and stay and again and left and clean and not back.startswith('#room=')
+    r.check('T92', 'ドロワーの履歴（× で戻す・開いたまま退出しても戻るが部屋の URL に戻らない）', ok, 'pass',
+            '参加=%s / 開くと積む=%s / × で戻す=%s / 通話のまま=%s / 再び開く=%s / 退出=%s / 退出後 hash と目印なし=%s / 戻った先=%r'
+            % (joined, pushed, closed, stay, again, left, clean, back))
+
+
 def T88(r, room):
     """主タブで「ひとこと」を開くと、最新の行が見える位置へ送る（2026-11-07 β 実機）。
     ひとことの欄は下詰めでスクロールしないので、最新の行は欄の下端にある。スマホで縦が狭いと
@@ -4149,6 +4221,10 @@ def main():
             T86(r, room)
         if run('T88'):
             T88(r, room)
+        if run('T91'):
+            T91(r, room)
+        if run('T92'):
+            T92(r, room)
         if run('T89'):
             T89(r, room)
         if run('T90'):
