@@ -1894,12 +1894,23 @@ try { new ResizeObserver(([e]) => { if (e.contentRect.height > 0) document.docum
 // 段（tray）の切り替え。ひとことの段を選んだら主タブもひとことにする（打つ→読む の視線が繋がる）。
 // 退出で resetJoinedUI がリアクションに戻す
 // 逆（主タブのひとこと→段）は selectTab が呼ぶ。そのときは入力欄にフォーカスしない（読むだけの人のキーボードを出さない）
+let trayCur = 'react', trayBack = 'react'   // いま開いている段／シェアを閉じたときに戻る段
 const trayShow = (n, focus = true) => {
+  if (trayCur === 'share' && n !== 'share') resetQr()   // シェアを離れたら QR も畳む（次は URL の表示から）
+  if (n === 'share' && trayCur !== 'share') trayBack = trayCur
+  trayCur = n
   document.querySelectorAll('.tray-pane').forEach(p => p.classList.toggle('on', p.dataset.pane === n))
   document.querySelectorAll('.tray-tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.pane === n)))
   if (n === 'chat' && call.joinedId) { selectTab('chat'); if (focus) { try { $('chatText').focus({ preventScroll: true }) } catch {} } }
 }
-document.querySelectorAll('.tray-tab').forEach(t => { t.onclick = () => trayShow(t.dataset.pane) })
+// 選んでいる段のボタンをもう一度押すと畳む＝リアクション（いつもの段）に戻る。シェアだけは開く前の段に戻る（利用者 2026-11-09）
+const trayClose = () => trayShow(trayCur === 'share' ? trayBack : 'react', false)
+document.querySelectorAll('.tray-tab').forEach(t => { t.onclick = () => t.dataset.pane === trayCur ? trayClose() : trayShow(t.dataset.pane) })
+// シェアは一度見せたら終わりの段なので、盤の外を押しても閉じる（押した先の操作はそのまま効く）。
+// ひとこと・機能は閉じない（一覧を触るたびに入力欄が消えると困る）
+document.addEventListener('pointerdown', e => {
+  if (trayCur === 'share' && document.body.classList.contains('in-call') && !$('dock').contains(e.target)) trayClose()
+}, true)
 // iPhone の Safari では、キーボードが出ても position:fixed の盤は持ち上がらず、キーボードの裏に隠れる
 // （固定の基準はレイアウトの viewport で、縮むのは見えている viewport のほう）。見えている画面の下端を
 // visualViewport から求め、盤の bottom をそこへ合わせる。キーボードが消えれば 0 に戻る。
