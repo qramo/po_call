@@ -512,6 +512,48 @@
   .rn-edit .pen{ width:14px; height:14px; margin-left:5px; vertical-align:-1px; color:var(--sub) }
   .sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap }
   .head-actions{ flex-basis:100%; display:flex; gap:8px; justify-content:flex-end }
+  /* 見出しの右上の「シェア」（通話中だけ）。押すとカードが裏返る（下の .flip-back） */
+  .head-right{ flex:none; max-width:62%; margin-left:auto; display:flex; align-items:center; gap:8px; align-self:flex-start }
+  .head-right .peers-line{ max-width:none; min-width:0 }
+  /* 通話中は見出しの 1 行目（点だけの行）の右に固定する。部屋名は 2 行目なので重ならない */
+  body.in-call .status-head{ position:relative }
+  body.in-call .head-right{ position:absolute; top:-6px; right:0 }
+  .share-flip{ display:none; flex:none; width:auto; margin:0; padding:4px 10px 4px 8px; align-items:center; gap:5px; align-self:center;
+    font-size:12px; font-weight:700; border-radius:999px; background:var(--chip); color:var(--chip-fg); border:1px solid var(--border) }
+  .share-flip svg{ width:15px; height:15px }
+  body.in-call .share-flip{ display:inline-flex }
+  /* カードの裏＝招待状。スクショで共有されても映えるよう、昼夜どちらの配色でも同じ紺地にティールの光（ブランドの札） */
+  .flip-box{ transform-origin:50% 30% }
+  /* 通話中は台紙の色を表（#flipFront）が持つ＝回るときに台紙ごと回る（状態カード自身は透明にする） */
+  body.in-call .status{ background:transparent }
+  body.in-call #flipFront{ margin:-14px -14px 0; padding:14px 14px 0; border-radius:10px; background:var(--panel) }
+  body.flipped .lobby-tab{ display:none !important }   /* 裏を出している間は右端のつまみを隠す（スクショに写さない） */
+  .flip-back{ --fb-ink:#eaf6ff; --fb-sub:rgba(234,246,255,.66); position:relative; overflow:hidden; box-sizing:border-box;
+    display:flex; flex-direction:column; margin:-14px -14px 0; padding:16px 16px 20px; border-radius:16px; color:var(--fb-ink);
+    background:
+      radial-gradient(120% 70% at 85% -10%, rgba(0,229,204,.35), transparent 60%),
+      radial-gradient(90% 60% at -10% 110%, rgba(110,90,255,.30), transparent 60%),
+      radial-gradient(rgba(255,255,255,.07) 1px, transparent 1.2px) 0 0 / 14px 14px,
+      linear-gradient(160deg, #13203a, #0a1222 70%);
+    box-shadow:inset 0 0 0 1px rgba(143,233,222,.28), 0 10px 30px rgba(0,0,0,.25) }
+  .flip-back[hidden]{ display:none }
+  .fb-top{ display:flex; align-items:center; gap:8px }
+  .fb-brand{ font-weight:800; font-size:15px; letter-spacing:.5px }
+  .fb-close{ margin-left:auto; flex:none; width:34px; height:34px; padding:0; display:inline-flex; align-items:center; justify-content:center;
+    border-radius:50%; background:rgba(255,255,255,.10); color:var(--fb-ink); border:1px solid rgba(255,255,255,.16) }
+  .fb-close svg{ width:17px; height:17px }
+  .fb-body{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:10px; padding-top:8px }
+  .fb-invite{ font-size:12px; font-weight:700; letter-spacing:3px; color:#8fe9de }
+  .fb-room{ max-width:100%; font-size:22px; font-weight:800; line-height:1.3; overflow-wrap:anywhere }
+  .fb-qr{ width:min(62vw, 220px); aspect-ratio:1; padding:14px; box-sizing:content-box; border-radius:18px; background:#fff; color:#0a1222;
+    display:flex; align-items:center; justify-content:center; font-size:12px;
+    box-shadow:0 0 0 4px rgba(0,229,204,.35), 0 0 34px rgba(0,229,204,.45) }
+  .fb-qr svg{ width:100%; height:100%; display:block }
+  .fb-hint{ font-size:12px; color:var(--fb-sub) }
+  .fb-url{ max-width:100%; font:12px/1.4 ui-monospace,'SF Mono',Menlo,monospace; color:var(--fb-sub); text-decoration:none; word-break:break-all;
+    padding:6px 10px; border-radius:8px; background:rgba(255,255,255,.06) }
+  .fb-copy{ width:auto; margin:2px 0 0; padding:9px 18px; font-size:14px; font-weight:700; border-radius:999px; border:0;
+    background:#00e5cc; color:#05221f }
   .peers-line{ flex:none; max-width:46%; margin-left:auto; display:inline-flex; align-items:center; gap:4px;
     font-size:12px; color:var(--sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
   .peers-line svg{ width:16px; height:16px; flex:none }
@@ -1293,6 +1335,11 @@
   </div></div>
 
   <div class="status" id="statusCard">
+    <!-- 表（#flipFront）と裏（#flipBack）。通話中に見出しの「シェア」を押すと、くるっと裏返って招待の QR と URL が出る
+         （利用者 2026-11-09。スクショで共有されても見栄えがするように）。回すのは #flipBox だけ＝下の操作盤は回らない。
+         止まっている間は transform を残さない（固定の盤や貼り付くタブの基準が変わらないように） -->
+    <div id="flipBox" class="flip-box">
+    <div id="flipFront">
     <!-- ★状態は1行まるごと使う。チップと同じ行に入れると、**部屋名が長いときに
          変なところで折れて不細工になる**（2026-09-13・利用者の指摘）。操作は次の行へ。 -->
     <div class="status-head">
@@ -1304,7 +1351,10 @@
         <!-- 小窓・つなぎ直すは v0.16.25 試作で操作盤の「機能」の段へ（下の #dock .tray） -->
       </div>
       <!-- v0.16.25 試作：人数は見出しの右に小さく。ひとりのあいだは「相手を探しています…」（参加前は行ごと出さない） -->
+      <div class="head-right">
       <div id="countRow" class="peers-line" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5A5 5 0 0 1 21 19.5"/></svg><span class="peers"><span id="count">0</span> 人</span><span id="countAlone" hidden>相手を探しています…</span></div>
+      <button id="shareFlip" class="share-flip" type="button" aria-label="招待の QR コードとリンクを出す"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg><span>シェア</span></button>
+      </div>
     </div>
     <!-- 部屋名を変える欄（v0.16.26 試作）。見出しの部屋名（.rn-edit）を押すと開く。話題タグの欄と同じ形 -->
     <div id="nameForm" class="chat-row" hidden>
@@ -1421,6 +1471,22 @@
     <div id="peerNotice" class="audio-warn" hidden></div>
     <!-- β だけの診断窓（🔬）。既定は隠し、**4本指タップ／版数の長押し**で出し入れする（下の diag 参照） -->
     <div id="diag" class="audio-warn" hidden></div>
+    </div>
+    <div id="flipBack" class="flip-back" hidden>
+      <div class="fb-top">
+        <span class="fb-brand"><span id="fbMark">🫖</span> ぽっと通話</span>
+        <button id="flipClose" class="fb-close" type="button" aria-label="表に戻す"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="fb-body">
+        <div class="fb-invite">いっしょに話そう</div>
+        <div class="fb-room" id="fbRoom"></div>
+        <div class="fb-qr" id="fbQr"></div>
+        <div class="fb-hint">カメラで読み取ると、この部屋に入れます</div>
+        <a class="fb-url" id="fbUrl" href="#"></a>
+        <button id="fbCopy" class="fb-copy" type="button">🔗 招待リンクをコピー</button>
+      </div>
+    </div>
+    </div>
     <!-- 小窓（PiP）の中身。canvas に描いた絵を映像トラックにして、この <video> を PiP に入れる。
          **display:none にしないこと**（消えている要素は PiP に入れられない）。画面外に置く。 -->
     <!-- このアプリが合成する音（BGM・効果音・音量調整を通した相手の声）の出口。
@@ -1456,8 +1522,9 @@
       <button id="leave"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8"/><path d="M14 3v18"/><path d="M18 12h4"/><path d="m19 9 3 3-3 3"/></svg><span>退出</span></button>
     </div>
     <!-- 段（tray）：ミュート／退出の下の 1 段を 4 つの中身で切り替える（利用者の案・2026-11-05）。
-         1 リアクション／2 機能（小窓・つなぎ直す）／3 ひとこと（入力欄）／4 シェア（招待リンク・QR）。
-         切り替えは最下段の 4 つのボタン（.tray-tabs・通話中だけ出る）。参加前はシェアの段だけが普通に流れて出る。 -->
+         1 リアクション／2 機能（小窓・つなぎ直す）／3 ひとこと（入力欄）。シェア（招待リンク・QR）の段は参加前だけ普通に流れて出る。
+         通話中のシェアは見出しの「シェア」→ カードの裏（#flipBack・利用者 2026-11-09 に 4 つから 3 つへ）。
+         切り替えは最下段の 3 つのボタン（.tray-tabs・通話中だけ出る）。 -->
     <div class="tray">
       <div class="tray-pane on" data-pane="react">
         <!-- リアクション。中身は JS が REACTIONS から作る（一覧の定義を1か所に保つ）。どのタブを見ていても押せる -->
@@ -1505,7 +1572,6 @@
       <button type="button" class="tray-tab" data-pane="react" aria-selected="true" aria-label="リアクション"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="13" r="7.5"/><path d="M7.5 15a4 4 0 0 0 6 0"/><path d="M8 10.5h.01M13 10.5h.01"/><path d="M19.5 2.5v5M17 5h5"/></svg><small>リアクション</small></button>
       <button type="button" class="tray-tab" data-pane="fn" aria-selected="false" aria-label="機能"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 6.5a5 5 0 0 1-6.6 4.7l-8.3 8.3a2 2 0 0 1-2.8-2.8l8.3-8.3A5 5 0 0 1 17.3 2l-2.8 2.8 .7 2.8 2.8.7z"/></svg><small>機能</small></button>
       <button type="button" class="tray-tab" data-pane="chat" aria-selected="false" aria-label="ひとこと"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4c4.7 0 8.5 3.1 8.5 7s-3.8 7-8.5 7c-1 0-2-.1-2.9-.4L5 20l1.2-3.5C4.5 15.2 3.5 13.2 3.5 11c0-3.9 3.8-7 8.5-7z"/></svg><small>ひとこと</small></button>
-      <button type="button" class="tray-tab" data-pane="share" aria-selected="false" aria-label="シェア"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13.5a4.5 4.5 0 0 0 6.8.5l2.7-2.7a4.5 4.5 0 0 0-6.4-6.4l-1.5 1.5"/><path d="M14 10.5a4.5 4.5 0 0 0-6.8-.5l-2.7 2.7a4.5 4.5 0 0 0 6.4 6.4l1.5-1.5"/></svg><small>シェア</small></button>
     </div>
     </div>
     </div>
@@ -1929,23 +1995,15 @@ try { new ResizeObserver(([e]) => { if (e.contentRect.height > 0) document.docum
 // 段（tray）の切り替え。ひとことの段を選んだら主タブもひとことにする（打つ→読む の視線が繋がる）。
 // 退出で resetJoinedUI がリアクションに戻す
 // 逆（主タブのひとこと→段）は selectTab が呼ぶ。そのときは入力欄にフォーカスしない（読むだけの人のキーボードを出さない）
-let trayCur = 'react', trayBack = 'react'   // いま開いている段／シェアを閉じたときに戻る段
+let trayCur = 'react'   // いま開いている段
 const trayShow = (n, focus = true) => {
-  if (trayCur === 'share' && n !== 'share') resetQr()   // シェアを離れたら QR も畳む（次は URL の表示から）
-  if (n === 'share' && trayCur !== 'share') trayBack = trayCur
   trayCur = n
   document.querySelectorAll('.tray-pane').forEach(p => p.classList.toggle('on', p.dataset.pane === n))
   document.querySelectorAll('.tray-tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.pane === n)))
   if (n === 'chat' && call.joinedId) { selectTab('chat'); if (focus) { try { $('chatText').focus({ preventScroll: true }) } catch {} } }
 }
-// 選んでいる段のボタンをもう一度押すと畳む＝リアクション（いつもの段）に戻る。シェアだけは開く前の段に戻る（利用者 2026-11-09）
-const trayClose = () => trayShow(trayCur === 'share' ? trayBack : 'react', false)
-document.querySelectorAll('.tray-tab').forEach(t => { t.onclick = () => t.dataset.pane === trayCur ? trayClose() : trayShow(t.dataset.pane) })
-// シェアは一度見せたら終わりの段なので、盤の外を押しても閉じる（押した先の操作はそのまま効く）。
-// ひとこと・機能は閉じない（一覧を触るたびに入力欄が消えると困る）
-document.addEventListener('pointerdown', e => {
-  if (trayCur === 'share' && document.body.classList.contains('in-call') && !$('dock').contains(e.target)) trayClose()
-}, true)
+// 選んでいる段のボタンをもう一度押すと畳む＝リアクション（いつもの段）に戻る（利用者 2026-11-09）
+document.querySelectorAll('.tray-tab').forEach(t => { t.onclick = () => t.dataset.pane === trayCur ? trayShow('react', false) : trayShow(t.dataset.pane) })
 // iPhone の Safari では、キーボードが出ても position:fixed の盤は持ち上がらず、キーボードの裏に隠れる
 // （固定の基準はレイアウトの viewport で、縮むのは見えている viewport のほう）。見えている画面の下端を
 // visualViewport から求め、盤の bottom をそこへ合わせる。キーボードが消えれば 0 に戻る。
@@ -2289,6 +2347,50 @@ const copyLink = async (btn, text = shareUrl()) => {
 }
 $('copyTop').onclick = () => copyLink($('copyTop'))                 // URL だけ（Safari で開くため）
 $('copy').onclick    = () => copyLink($('copy'), shareText())      // 「部屋名 - 名前」＋URL
+// カードの裏（招待の QR と URL）。裏の中身は表を返すたびに作る（部屋名が変わったら syncShare が描き直す）。
+// 回し方：表を 90° まで回す → 中身を入れ替える → 裏を -90° から 0° へ。止まっている間は transform を残さない
+let flipped = false, flipping = false
+const drawBack = async () => {
+  const id = pendingRoom(), url = shareUrl()
+  $('fbMark').textContent = $('brandMark').textContent
+  $('fbRoom').textContent = (isBcRoom(id) ? '📣 ' : '') + pendingRoomName()
+  $('fbUrl').textContent = url; $('fbUrl').href = url
+  const box = $('fbQr')
+  try {
+    const qr = (await loadQR())(0, 'M'); qr.addData(url); qr.make()
+    box.innerHTML = qr.createSvgTag({ cellSize: 6, margin: 0, scalable: true })
+  } catch { box.textContent = '❌ QRの生成に失敗しました' }
+}
+const flipTo = async back => {
+  if (flipping || back === flipped) return
+  flipping = true
+  const fbox = $('flipBox'), front = $('flipFront'), rear = $('flipBack')
+  if (back) drawBack()
+  // 裏は中身の高さ（表と揃えると、スマホでは下の盤の裏に隠れる）。返したら裏が見える所まで送る
+  const swap = () => {
+    front.hidden = back; rear.hidden = !back; flipped = back; document.body.classList.toggle('flipped', back)
+    $('shareFlip').setAttribute('aria-expanded', String(back))
+    const top = fbox.getBoundingClientRect().top - 12
+    if (top < 0 || (back && fbox.getBoundingClientRect().bottom > (document.body.classList.contains('in-call') && $('dock').getClientRects().length ? $('dock').getBoundingClientRect().top : innerHeight))) window.scrollBy({ top, behavior: 'auto' })
+  }
+  const P = 'perspective(1400px) '
+  if (matchMedia('(prefers-reduced-motion:reduce)').matches || !fbox.animate) swap()
+  else {
+    try {
+      await fbox.animate([{ transform: P + 'rotateY(0)' }, { transform: P + 'rotateY(90deg)' }], { duration: 170, easing: 'cubic-bezier(.5,0,.9,.5)' }).finished
+      swap()
+      await fbox.animate([{ transform: P + 'rotateY(-90deg)' }, { transform: P + 'rotateY(0)' }], { duration: 260, easing: 'cubic-bezier(.1,.5,.3,1)' }).finished
+    } catch { swap() }
+  }
+  flipping = false
+}
+// 退出のときは回さずに表へ（join/leave の対称）
+const unflip = () => { flipped = false; flipping = false; document.body.classList.remove('flipped'); $('flipFront').hidden = false; $('flipBack').hidden = true; $('shareFlip').setAttribute('aria-expanded', 'false') }
+$('shareFlip').onclick = () => flipTo(true)
+$('flipClose').onclick = () => flipTo(false)
+$('fbCopy').onclick = () => copyLink($('fbCopy'), shareText())
+$('fbUrl').onclick = e => { e.preventDefault(); copyLink($('fbCopy')) }   // URL を押したら URL だけ
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && flipped) flipTo(false) })
 // 見えているリンクをタップ＝**URL だけ**コピー（v0.14.8・利用者の選択）。アドレスバーに貼る人向け。
 // ボタンは「投稿用の文」のままにして、URL だけが要る人はここから取る（ボタンを増やさない）
 $('share').addEventListener('click', async e => {
@@ -2557,6 +2659,7 @@ const syncShare = () => {
   $('share').textContent = url; $('share').href = url
   $('shareLabel').textContent = '招待リンク' + (call.joinedId ? '' : '（まだ参加していません）') + '（タップで URL だけコピー）：'
   if (qrShown) drawQr()   // QRを開いたまま部屋名を変えたら描き直す
+  if (flipped) drawBack()   // カードの裏も
 }
 
 const syncRoomCount = () => {
@@ -8028,6 +8131,7 @@ const resetJoinedUI = () => {
   $('countRow').hidden = true
   vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false); document.body.classList.remove('in-call'); trayShow('react')
   document.body.classList.remove('lobby-open'); $('lobbyTab').setAttribute('aria-expanded', 'false')   // スマホの部屋のドロワーも畳む
+  unflip()                                                // カードの裏（招待の QR）も表に戻す
   vis('speak', false); $('speak').disabled = false
   vis('sndPeerRow', false)
   vis('sndReactRow', false)
