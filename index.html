@@ -491,6 +491,10 @@
     body.in-call .dock{ max-width:none; border-radius:0; padding-left:max(14px, env(safe-area-inset-left)); padding-right:max(14px, env(safe-area-inset-right)) }
     /* スマホ用の body{padding:0 0 env(...)} より後ろに置く＝下余白はこちらが勝つ */
     body.in-call{ padding-bottom:calc(var(--dock-h, 120px) + env(safe-area-inset-bottom)) }
+    /* 入力中は盤の下（キーボードの上の「＾ ∨ ✓」の帯とアドレスバーの裏）にページの末尾（版・テーマ・アクセス解析の行）が
+       来て、iPhone の透ける帯越しに文字がちらついた（2026-11-09 β 実機）。盤を不透明にして、同じ色を下へ伸ばして隠す（--card は半透明なので、部屋のドロワーと同じく下地 --g2 に重ねる） */
+    body.in-call.typing .dock{ background:linear-gradient(var(--card),var(--card)), var(--g2) }
+    body.in-call.typing .dock::after{ content:''; position:absolute; left:0; right:0; top:100%; height:100vh; background:linear-gradient(var(--card),var(--card)), var(--g2); pointer-events:none }
   }
   /* 入口の案内（お休み中／いま開いています）。注意の枠と同じ温度で */
   .entry-note{ margin-top:12px; padding:10px 12px; border-radius:10px; font-size:13px; line-height:1.6;
