@@ -327,15 +327,7 @@
   .member .m-tap{ cursor:pointer; text-decoration:underline dotted var(--border-faint); text-underline-offset:3px }
   .member .m-tap:hover{ color:var(--link) }
   .member .m-loud{ margin-left:4px; font-size:13px; flex:none }
-  /* 共有アクション：コピーとQRを横並び */
-  .share-actions{ display:flex; gap:8px }
-  .share-actions button{ flex:1; width:auto }
   /* QRコード（参加者リストの下・共有リンクの上にトグル表示）。白背景でスキャンしやすく */
-  .qr-inline{ margin:0 0 12px }
-  .qr-img{ background:#fff; border-radius:12px; padding:14px; display:flex; justify-content:center; align-items:center;
-    min-height:120px; color:#333; font-size:13px }
-  .qr-img svg{ width:min(60vw,200px); height:auto; display:block }
-  .qr-room{ margin-top:8px; text-align:center; font-size:13px; color:var(--body); word-break:break-all }
   label{ display:block; font-size:13px; color:var(--sub); margin:14px 0 6px }
   /* 文字数カウンタ：ラベルの右端に添える。上限超過は色で知らせる（超えた分は参加時に切られるため） */
   .char-count{ font-size:12px; color:var(--note); font-variant-numeric:tabular-nums }
@@ -435,10 +427,6 @@
   .fn-row .retry-btn{ flex:1; justify-content:center; padding:10px 11px; font-size:14px; border-radius:12px }
   .fn-row .retry-btn svg{ width:18px; height:18px }
   body.in-call .dock .chat-row{ margin-top:0 }
-  body.in-call .dock #shareWrap{ margin-top:0 !important }
-  /* QR を開いている間は URL の行を畳む（QR と部屋名があれば足りる・盤が無駄に高くならない。利用者 2026-11-05） */
-  body.in-call .dock #qrBox:not([hidden]) ~ #shareLabel, body.in-call .dock #qrBox:not([hidden]) ~ br,
-  body.in-call .dock #qrBox:not([hidden]) ~ a.share{ display:none }
   /* 入力中（body.typing）は盤を入力欄だけに。畳む順は「盤の中で入力欄以外」 */
   body.in-call.typing .dock .eq, body.in-call.typing .dock .dock-grip, body.in-call.typing .dock .actions, body.in-call.typing .dock .tray-tabs,
   body.in-call.typing .dock #unlock, body.in-call.typing .dock .leave-confirm{ display:none }
@@ -564,8 +552,6 @@
   /* 参加前も同じ（利用者 2026-11-09「同じに揃えましょう」）。出すかどうかは招待リンクを配れるか（syncIdleChrome が hidden を付け外し） */
   .share-flip{ display:inline-flex }
   .share-flip[hidden]{ display:none }
-  /* 前の招待リンクの欄（QR・長い URL・2 つのボタン）は見せない。シェアは見出しの「シェア」→ カードの裏だけ */
-  .tray-pane[data-pane="share"]{ display:none !important }
   /* カードの裏＝招待状。スクショで共有されても映えるよう、昼夜どちらの配色でも同じ紺地にティールの光（ブランドの札） */
   .flip-box{ transform-origin:50% 30% }
   /* 台紙の色は表（#flipFront）が持つ＝回るときに台紙ごと回る（状態カード自身は透明にする）。参加前も同じ */
@@ -631,10 +617,6 @@
   .dot.error{ background:#ff5d5d }   /* 失敗 */
   @keyframes dot-pulse{ 50%{ opacity:.35 } }
   @media (prefers-reduced-motion:reduce){ .dot.busy{ animation:none } }
-  /* 共有リンクは長くなりがちなので既定は1行＋末尾を「…」で省略。コピー時とQR表示中だけ全文に開く */
-  a.share{ display:block; color:var(--link); font-size:13px;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-  a.share.full{ white-space:normal; overflow-wrap:anywhere }
   /* アバター選択（絵文字）。共通の button{width:100%} を打ち消して小さなチップにする */
   .avatars{ display:grid; grid-template-columns:repeat(8,1fr); gap:6px; margin-top:6px }
   .avatar{ width:auto; margin:0; padding:8px 0; font-size:20px; line-height:1;
@@ -1577,9 +1559,9 @@
       <button id="mute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/><line class="mic-slash" x1="4" y1="3" x2="20" y2="21"/></svg><span class="lbl">ミュート</span></button>
       <button id="leave"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8"/><path d="M14 3v18"/><path d="M18 12h4"/><path d="m19 9 3 3-3 3"/></svg><span>退出</span></button>
     </div>
-    <!-- 段（tray）：ミュート／退出の下の 1 段を 4 つの中身で切り替える（利用者の案・2026-11-05）。
-         1 リアクション／2 機能（小窓・つなぎ直す）／3 ひとこと（入力欄）。シェア（招待リンク・QR）の段は参加前だけ普通に流れて出る。
-         通話中のシェアは見出しの「シェア」→ カードの裏（#flipBack・利用者 2026-11-09 に 4 つから 3 つへ）。
+    <!-- 段（tray）：ミュート／退出の下の 1 段を 3 つの中身で切り替える（利用者の案・2026-11-05）。
+         1 リアクション／2 機能（小窓・つなぎ直す）／3 ひとこと（入力欄）。
+         シェア（招待の QR と URL）は参加前も通話中も見出しの「シェア」→ カードの裏（#flipBack・利用者 2026-11-09 に 4 つから 3 つへ）。
          切り替えは最下段の 3 つのボタン（.tray-tabs・通話中だけ出る）。 -->
     <div id="dockMore" class="dock-more"><div>
     <div class="tray">
@@ -1610,19 +1592,6 @@
         <button id="chatSend" type="button">送信</button>
       </div>
       </div>
-      <div class="tray-pane" data-pane="share">
-    <div style="margin-top:10px" id="shareWrap" hidden>
-      <div id="qrBox" class="qr-inline" hidden>
-        <div id="qrImg" class="qr-img">生成中…</div>
-        <div id="qrRoom" class="qr-room"></div>
-      </div>
-      <span id="shareLabel">招待リンク：</span><br><a class="share" id="share" href="#"></a>
-      <div class="share-actions">
-        <button id="copy">🔗 招待リンクをコピー</button>
-        <button id="qr" aria-expanded="false">📱 QRコード</button>
-      </div>
-      </div>
-    </div>
     <!-- 印は泡版（pop_demo/icons.js）の線のアイコン：24×24・currentColor・線幅 2・端は丸め（参加・マイク・退出と同じ流儀）。
          リアクション＝reactplus・ひとこと＝chat・シェア＝link は泡版そのまま。機能のレンチは泡版に無いので同じ流儀で描いた（2026-11-06） -->
     <div class="tray-tabs" role="tablist" aria-label="下の段の切り替え">
@@ -2383,31 +2352,10 @@ const HELP_HIDE_KEY = 'pot-call-hide-help'
 helpDialog.addEventListener('close', () => lsSet(HELP_HIDE_KEY, '1'))
 if (!rejoin && lsGet(HELP_HIDE_KEY) !== '1') openHelp()
 
-// 招待リンクのQRコード（参加中ボード内にトグル表示）。ライブラリは必要時だけ vendor/ から
+// 招待リンクの QR コード（カードの裏・drawBack）。ライブラリは必要時だけ vendor/ から
 // 読み込み、生成はクライアント側＝リンクを外部に送らない。
-let qrLib = null, qrShown = false
+let qrLib = null
 const loadQR = () => (qrLib ??= import('./vendor/qrcode-generator-1.4.4.mjs').then(m => m.default || m).catch(e => { qrLib = null; throw e }))
-const resetQr = () => { qrShown = false; $('qrBox').hidden = true; $('qr').setAttribute('aria-expanded', 'false'); $('qrImg').textContent = ''; $('qrRoom').textContent = ''; $('share').classList.remove('full') }
-$('qr').onclick = async () => {
-  qrShown = !qrShown
-  $('qrBox').hidden = !qrShown
-  $('qr').setAttribute('aria-expanded', String(qrShown))
-  $('share').classList.toggle('full', qrShown)   // QRを出している間は全文を見せる
-  if (!qrShown) return
-  drawQr()
-}
-// 部屋名が変わっても描き直せるよう切り出してある（syncShare から呼ばれる）
-const drawQr = async () => {
-  const img = $('qrImg'), id = pendingRoom()
-  img.textContent = '生成中…'
-  // 表示は名前だけ（指紋はURLの中身なので読めても意味がない。長いだけで邪魔になる）
-  $('qrRoom').textContent = id ? '部屋：' + (isBcRoom(id) ? '📣 ' : '') + pendingRoomName() : ''
-  try {
-    const qrcode = await loadQR()
-    const qr = qrcode(0, 'M'); qr.addData(shareUrl()); qr.make()
-    img.innerHTML = qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true })
-  } catch { img.textContent = '❌ QRの生成に失敗しました' }
-}
 
 // 招待リンクのコピーは**「部屋名 - 名前」＋改行＋URL**（v0.14.7・利用者の提案）。SNS に貼ったときに
 // 何の部屋か・誰の部屋かが見える（OGP は # より後ろがサーバに届かないので部屋名を出せない）。
@@ -2437,25 +2385,19 @@ const copyLink = async (btn, text = shareUrl()) => {
   try {
     await navigator.clipboard.writeText(text)
     btn.textContent = 'コピーしました ✓'
-    $('share').classList.add('full')   // 何をコピーしたか確かめられるよう、この間だけ全文を見せる
-    clearTimeout(btn._revert); btn._revert = setTimeout(() => {
-      btn.textContent = original
-      if (!qrShown) $('share').classList.remove('full')   // QR表示中なら開いたままにする
-    }, 1600)  // 少し後に元へ
+    clearTimeout(btn._revert); btn._revert = setTimeout(() => { btn.textContent = original }, 1600)  // 少し後に元へ
   } catch {
     btn.textContent = '長押しでコピー: ' + shareUrl()  // 失敗時はURLを残す（長押しでコピーできるように）
   }
 }
 $('copyTop').onclick = () => copyLink($('copyTop'))                 // URL だけ（Safari で開くため）
-$('copy').onclick    = () => copyLink($('copy'), shareText())      // 「部屋名 - 名前」＋URL
 // カードの裏（招待の QR と URL）。裏の中身は表を返すたびに作る（部屋名が変わったら syncShare が描き直す）。
 // 回し方：表を 90° まで回す → 中身を入れ替える → 裏を -90° から 0° へ。止まっている間は transform を残さない
 let flipped = false, flipping = false, flipGen = 0   // flipGen：unflip で進める。回している途中の続き（swap）は古い世代なら捨てる
-const drawBack = async () => {
+const drawBack = async () => {   // URL（#fbUrl）は syncShare が部屋が決まるたびに入れている
   const id = pendingRoom(), url = shareUrl()
   $('fbMark').textContent = $('brandMark').textContent
   $('fbRoom').textContent = (isBcRoom(id) ? '📣 ' : '') + pendingRoomName()
-  $('fbUrl').textContent = url; $('fbUrl').href = url
   const box = $('fbQr')
   try {
     const qr = (await loadQR())(0, 'M'); qr.addData(url); qr.make()
@@ -2485,13 +2427,16 @@ const flipTo = async back => {
     if (top < 0 || (back && fbox.getBoundingClientRect().bottom > (document.body.classList.contains('in-call') && $('dock').getClientRects().length ? $('dock').getBoundingClientRect().top : innerHeight))) window.scrollBy({ top, behavior: 'auto' })
   }
   const P = 'perspective(1400px) '
+  // 動きの終わりを待つが、長くても 0.6 秒。裏のタブなどで動きが止まっていると finished が来ず、flipping が立ったまま
+  // 「シェア」が効かなくなる（headless の裏タブで踏んだ）。止まっていた動きは fill 無しなので、あとで動いても見た目に残らない
+  const settle = anim => Promise.race([anim.finished, new Promise(res => setTimeout(res, 600))])
   if (matchMedia('(prefers-reduced-motion:reduce)').matches || !fbox.animate) swap()
   else {
     try {
-      await fbox.animate([{ transform: P + 'rotateY(0)' }, { transform: P + 'rotateY(90deg)' }], { duration: 170, easing: 'cubic-bezier(.5,0,.9,.5)' }).finished
+      await settle(fbox.animate([{ transform: P + 'rotateY(0)' }, { transform: P + 'rotateY(90deg)' }], { duration: 170, easing: 'cubic-bezier(.5,0,.9,.5)' }))
       if (gen !== flipGen) return   // 回している間に退出などで表へ戻された（unflip が後始末済み）
       swap()
-      await fbox.animate([{ transform: P + 'rotateY(-90deg)' }, { transform: P + 'rotateY(0)' }], { duration: 260, easing: 'cubic-bezier(.1,.5,.3,1)' }).finished
+      await settle(fbox.animate([{ transform: P + 'rotateY(-90deg)' }, { transform: P + 'rotateY(0)' }], { duration: 260, easing: 'cubic-bezier(.1,.5,.3,1)' }))
     } catch { if (gen === flipGen) swap() }
   }
   if (gen === flipGen) flipping = false
@@ -2503,17 +2448,6 @@ $('flipClose').onclick = () => flipTo(false)
 $('fbCopy').onclick = () => copyLink($('fbCopy'), shareText())
 $('fbUrl').onclick = e => { e.preventDefault(); copyLink($('fbCopy')) }   // URL を押したら URL だけ
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && flipped) flipTo(false) })
-// 見えているリンクをタップ＝**URL だけ**コピー（v0.14.8・利用者の選択）。アドレスバーに貼る人向け。
-// ボタンは「投稿用の文」のままにして、URL だけが要る人はここから取る（ボタンを増やさない）
-$('share').addEventListener('click', async e => {
-  e.preventDefault()   // 同じ部屋へのリンクなので辿らせない
-  const el = $('share'), lbl = $('shareLabel'), keep = lbl.textContent
-  try { await navigator.clipboard.writeText(shareUrl()); lbl.textContent = 'URL をコピーしました ✓' }
-  catch { lbl.textContent = '長押しでコピーしてください' }
-  el.classList.add('full')
-  clearTimeout(el._revert); el._revert = setTimeout(() => { syncShare(); if (!qrShown) el.classList.remove('full') }, 1600)
-})
-
 // 部屋名は「識別子」なので途中で切ると別の部屋になる（＝ロビーからタップしても相手と繋がらない）。
 // **参加時と受信時で必ず同じ処理を通すこと**。表示上の省略は CSS の text-overflow に任せる（データは削らない）。
 // 上限の根拠は QRコード。日本語1文字はURLエンコードで9文字になるため、実測で
@@ -2763,15 +2697,12 @@ const pendingRoomName = () => call.joinedId ? (call.meta.name || roomBase(call.j
 const shareUrl = () => { const n = pendingRoom(); return n ? roomUrl(n, call.joinedId ? '' : pendingRoomName()) : location.href }
 // 共有欄（リンク・コピー・QR）の表示を今の部屋名に合わせる。部屋名が無ければ隠す。
 const syncShare = () => {
-  const n = pendingRoom(), nm = pendingRoomName()
-  $('shareWrap').hidden = !nm
-  try { syncIdleChrome() } catch {}   // 作る前／通話前は畳んだままにする（上書きされるため後から揃える）
+  const nm = pendingRoomName()
+  try { syncIdleChrome() } catch {}   // 作る前／通話前は「シェア」を畳んだままにする（上書きされるため後から揃える）
   if (!nm) return
   const url = shareUrl()
-  $('share').textContent = url; $('share').href = url
-  $('shareLabel').textContent = '招待リンク' + (call.joinedId ? '' : '（まだ参加していません）') + '（タップで URL だけコピー）：'
-  if (qrShown) drawQr()   // QRを開いたまま部屋名を変えたら描き直す
-  if (flipped) drawBack()   // カードの裏も
+  $('fbUrl').textContent = url; $('fbUrl').href = url   // カードの裏の URL（裏返す前から持っておく＝テストもここを読む）
+  if (flipped) drawBack()   // 裏を出したまま部屋名を変えたら QR も描き直す
 }
 
 const syncRoomCount = () => {
@@ -8210,8 +8141,7 @@ const syncIdleChrome = () => {
   //   ロビーからタップして入るときはトグルを開かないので、閉じたままだと手応えが無くなり、
   //   **失敗の知らせが出る場所ごと消える**。
   $('statusCard').hidden = !(call.joinedId || stateKind !== 'idle' || open)
-  $('shareWrap').hidden = !roomInput.value.trim() || !(call.joinedId || open)
-  $('shareFlip').hidden = $('shareWrap').hidden
+  $('shareFlip').hidden = !roomInput.value.trim() || !(call.joinedId || open)
   if ($('shareFlip').hidden && flipped) unflip()   // 「部屋を作る」を畳んだら裏も表に戻す
 }
 const syncCreateBox = () => {
@@ -8414,7 +8344,6 @@ const leaveCall = () => {
   // ③ 画面を「未参加」に戻す
   setCount(); renderGrow(); renderMembers(); renderLobby(); renderMute(); renderSpeak(); renderBcNote(); renderMailNow()
   syncKindRow()   // 参加中は隠していた「配信部屋／雑談部屋」の2択を戻す
-  resetQr()   // QRトグルを畳んでおく（次の参加で古いリンクを残さない）
   syncShare() // 「共有リンク」→「招待リンク（まだ参加していません）」に戻す
   setState('退出しました', 'idle')
   // つなぎ直しの途中は「未参加の見た目」に戻さない。すぐ入り直すので、入力欄が一瞬開いて閉じたり

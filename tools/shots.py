@@ -127,8 +127,9 @@ def main():
         shot(A, '08-ignore', "document.getElementById('members')")
         A.eval("document.querySelector('#members .m-ig.off').click()")              # 戻す
         # 共有リンクと QR
-        A.eval("document.getElementById('qr').click()"); time.sleep(0.8)
-        shot(A, '09-share', "document.querySelector('.share-box') || document.getElementById('share').parentElement")
+        A.eval("document.getElementById('shareFlip').click()"); time.sleep(1.0)   # カードの裏（招待の QR と URL）
+        shot(A, '09-share', "document.getElementById('flipBack')")
+        A.eval("document.getElementById('flipClose').click()"); time.sleep(0.6)
         # 退出の確認・音の解錠
         A.eval("document.getElementById('leave').click()"); time.sleep(0.3)
         shot(A, '10-leave', "document.getElementById('leaveConfirm')")
