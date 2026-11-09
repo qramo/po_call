@@ -780,6 +780,9 @@
      （2026-08-16 に実際にそうなった）。高さを固定して初めて「入力欄を引いた残り」が決まり、
      溢れた古い行が上へ抜ける。 */
   #panChat{ display:flex; flex-direction:column; justify-content:flex-end; height:var(--panel-min) }
+  /* 入力中は keepLogVisible が欄の高さをキーボードの上に収まるよう縮める。.panel の min-height が残っていると縮まず、
+     下詰めの最新の行が盤の裏に潜った（2026-11-09 β 実機の録画） */
+  body.typing #panChat{ min-height:0 }
   /* おたより。**高さは他のパネルと同じ固定**（理由は上と同じ）。
      枠主のときは集まった投稿が伸びるので、本文だけ内部スクロールにする（吹き出しは無いので切れて困らない）。 */
   #panMail{ display:flex; flex-direction:column; height:var(--panel-min) }
