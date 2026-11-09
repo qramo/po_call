@@ -1041,6 +1041,29 @@
   /* 成長（ブラウザを育てる遊び）の自分向け表示 */
   .grow-note{ margin-top:14px; font-size:13px; color:var(--sub) }
 
+  /* スマホの通話中は、部屋の一覧をページの下に続けず、右から出る全画面のドロワーにする（利用者 2026-11-09。
+     操作盤の下から一覧が出てくるのが不自然）。呼ぶのは右端のつまみ（#lobbyTab）。参加前と PC は今までどおり */
+  .lobby-tab, .lobby-close{ display:none }
+  @media (max-width:560px){
+    body.in-call .lobby{ position:fixed; inset:0; z-index:40; margin:0; overflow-y:auto; overscroll-behavior:contain;
+      border:0; background:linear-gradient(var(--card), var(--card)), var(--g2); padding-top:max(18px, env(safe-area-inset-top)); padding-bottom:max(18px, env(safe-area-inset-bottom));
+      transform:translateX(100%); visibility:hidden; transition:transform .28s cubic-bezier(.2,.8,.2,1), visibility 0s .28s }
+    body.in-call.lobby-open .lobby{ transform:none; visibility:visible; transition:transform .28s cubic-bezier(.2,.8,.2,1) }
+    body.in-call.lobby-open{ overflow:hidden }
+    body.in-call .lobby-list{ max-height:none; overflow:visible }
+    body.in-call .lobby-close{ display:inline-flex; align-items:center; justify-content:center; flex:none; width:36px; height:36px;
+      margin:0; padding:0; border-radius:50%; background:var(--chip); color:var(--chip-fg) }
+    body.in-call .lobby-close svg{ width:18px; height:18px }
+    body.in-call .lobby-tab{ display:flex; background:var(--panel) !important; flex-direction:column; align-items:center; gap:6px; position:fixed; right:0; z-index:25;
+      top:calc((100dvh - var(--dock-h, 120px)) / 2); transform:translateY(-50%); width:auto; margin:0; padding:12px 6px 10px;
+      border-radius:12px 0 0 12px; border:1px solid var(--card-border); border-right:0; color:var(--link);
+      font-size:12px; font-weight:700; box-shadow:-4px 0 14px rgba(0,0,0,.12) }
+    body.in-call .lobby-tab .lt-label{ writing-mode:vertical-rl; letter-spacing:2px }
+    body.in-call .lobby-tab .lt-n{ min-width:20px; padding:1px 5px; border-radius:999px; background:var(--accent-dim); font-size:11px; text-align:center }
+    body.in-call .lobby-tab .lt-n:empty{ display:none }
+  }
+  @media (prefers-reduced-motion:reduce){ body.in-call .lobby{ transition:none !important } }
+
   /* --- スマホ：枠に横幅を使うのがもったいないので、カードを画面いっぱいに広げる ---
      body余白24＋カード余白28＋境界線1＝左右で106px（390px幅の27%）が枠に消えていた。
      左右の境界線と角丸を落として全幅にし、内側の余白だけ残す。ノッチ/ホームバーは
@@ -1505,10 +1528,11 @@
   </div>
 </div>
 
-<aside class="lobby">
+<aside class="lobby" id="lobbyBox">
   <div class="lobby-head">
     <h2>☎️ 通話中の部屋</h2>
     <button id="lobbyRefresh" class="retry-btn" type="button">🔄 更新</button>
+    <button id="lobbyClose" class="lobby-close" type="button" aria-label="部屋の一覧を閉じる"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
   <div class="lobby-status" id="lobbyStatus">🛰 ロビーに接続中…</div>
   <div class="lobby-list" id="lobbyList"></div>
@@ -1518,6 +1542,8 @@
   <div class="lobby-viewers" id="lobbyViewers"></div>
 </aside>
 </div>
+<!-- スマホの通話中だけ：画面の右端のつまみ。押すと部屋の一覧（.lobby）が右から全画面で出る（利用者 2026-11-09） -->
+<button id="lobbyTab" class="lobby-tab" type="button" aria-controls="lobbyBox" aria-expanded="false"><span class="lt-label">通話中の部屋</span><span class="lt-n" id="lobbyTabN"></span></button>
 
 <footer class="legal">
   アクセス数だけ <a href="https://www.cloudflare.com/web-analytics/" target="_blank" rel="noopener">Cloudflare Web Analytics</a> で測っています（Cookie なし）。
@@ -8001,6 +8027,7 @@ $('mute').onclick = toggleMute
 const resetJoinedUI = () => {
   $('countRow').hidden = true
   vis('join', true); vis('mute', false); vis('leave', false); vis('unlock', false); document.body.classList.remove('in-call'); trayShow('react')
+  document.body.classList.remove('lobby-open'); $('lobbyTab').setAttribute('aria-expanded', 'false')   // スマホの部屋のドロワーも畳む
   vis('speak', false); $('speak').disabled = false
   vis('sndPeerRow', false)
   vis('sndReactRow', false)
@@ -8534,6 +8561,21 @@ const lobbyRankApply = (base, own, boost) => {
 window.__potLobbyRank = { score: lobbyScore, base: lobbyRankBase, apply: lobbyRankApply }   // テスト用（T86）
 const lobbyTouched = () => { lobbyTouchAt = Date.now() }
 ;['pointerdown', 'pointermove', 'touchstart', 'wheel', 'scroll'].forEach(ev => $('lobbyList').addEventListener(ev, lobbyTouched, { passive: true }))
+// スマホの通話中のドロワー（CSS の body.lobby-open）。開くと履歴を 1 つ積み、ブラウザの「戻る」で閉じる
+// （Android の戻るで通話のページごと離れない）。× で閉じるときは積んだぶんを戻して消す。
+// 部屋を移る・退出するときは履歴に触らずに畳む（参加で location.hash が履歴を足すので、戻すと食い違う）
+const lobbyDrawer = () => matchMedia('(max-width:560px)').matches && document.body.classList.contains('in-call')
+const lobbyOpen = on => {
+  const was = document.body.classList.contains('lobby-open')
+  if (on === was) return
+  document.body.classList.toggle('lobby-open', on)
+  $('lobbyTab').setAttribute('aria-expanded', String(on))
+  if (on) { $('lobbyBox').scrollTop = 0; try { history.pushState({ potLobby: 1 }, '') } catch {} }
+  else lobbyAskClear(), pttAskClear()
+}
+$('lobbyTab').onclick = () => lobbyOpen(true)
+$('lobbyClose').onclick = () => { if (history.state && history.state.potLobby) history.back(); else lobbyOpen(false) }
+addEventListener('popstate', () => lobbyOpen(false))
 
 // ─ ぽちっと通話の部屋（上の pttRooms）─ 部屋 → {people:[{name, talking}], tag}。失効したものは数えない
 const pttLive = () => {
@@ -8561,16 +8603,17 @@ const askOver = (list, btn, ask, key) => {
     const lb = list.getBoundingClientRect().bottom, over = wrap.getBoundingClientRect().bottom - lb
     if (list.scrollHeight > list.clientHeight && over > 0) list.scrollTop += over + 4
     const vv = window.visualViewport, vb = vv ? vv.offsetTop + vv.height : innerHeight, dock = $('dock')
-    const bottom = (document.body.classList.contains('in-call') && dock.getClientRects().length ? Math.min(dock.getBoundingClientRect().top, vb) : vb) - 8
+    const drawer = lobbyDrawer()   // ドロワーの中は盤が隠れているので、ドロワー自身を送る
+    const bottom = (!drawer && document.body.classList.contains('in-call') && dock.getClientRects().length ? Math.min(dock.getBoundingClientRect().top, vb) : vb) - 8
     const d = wrap.getBoundingClientRect().bottom - bottom
-    if (d > 0) window.scrollBy({ top: d, behavior: 'smooth' })
+    if (d > 0) (drawer ? $('lobbyBox') : window).scrollBy({ top: d, behavior: 'smooth' })
   })
 }
 let pttAsk = null, pttAskTimer = null, pttOrder = []
 const pttAskClear = () => { clearTimeout(pttAskTimer); askSlid = null; if (pttAsk) { pttAsk = null; renderLobby() } }
 const pttFmt = ch => ch.slice(0, 4).toUpperCase() + '·' + ch.slice(4).toUpperCase()   // 向こうの fmt() と同じ
 const pttGo = ch => {
-  pttAskClear()
+  pttAskClear(); lobbyOpen(false)
   const was = !!call.joinedId
   if (was) leaveCall()   // 退出の知らせ（room: null）が出る間だけ待ってから移る
   setTimeout(() => { location.href = 'ptt/?r=' + ch }, was ? 300 : 0)
@@ -8828,6 +8871,7 @@ const renderLobby = () => {
     }
   })
   renderPttRooms(list, ptt)
+  $('lobbyTabN').textContent = (names.length + ptt.size) || ''   // 右端のつまみの部屋数（自分の部屋も数える）
   // 省略したぶんは黙って消さずに件数だけ知らせる（「全部出ている」と誤解させないため）
   if (names.length > LOBBY_MAX_ROOMS) {
     const more = document.createElement('div')
@@ -8862,7 +8906,7 @@ const roomHow = room => {
 const selectRoom = (room, name) => {
   if (room === call.joinedId) return
   name = name || roomLabel(room)
-  lobbyAskClear()
+  lobbyAskClear(); lobbyOpen(false)
   if (call.joinedId) leaveCall()   // 今の部屋を退出（非同期の後片付けは leaving が保持し、次の参加で待たれる）
   entryCancel()   // ロビーから来た＝開いている部屋だと分かっている
   // **ハッシュも指紋も一緒に持っていく**（名前だけ渡すと、同じ名前の別の部屋を作って誰にも会えない）
