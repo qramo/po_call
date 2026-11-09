@@ -346,6 +346,9 @@
      ピンチ操作は残る）。素早く2回押せるボタン（リアクション等）で、2回目がズームに
      化けるのを防ぐ。ボタンは元々ズームの対象ではないので全部に効かせてよい。
      ※ viewport の user-scalable=no は使わないこと（拡大できないと困る人がいる） */
+  /* 通話中はページ全体でダブルタップのズームを止める。ひとことの入力中に上のほうを続けて押すと（キーボードを
+     閉じようとして等）拡大されてしまった（2026-11-09 β 実機・iPhone）。ピンチでの拡大はそのまま使える */
+  body.in-call{ touch-action:manipulation }
   button{ width:100%; margin-top:12px; padding:14px; border:0; border-radius:12px; font-size:16px;
     font-weight:700; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent }
   #join{ background:var(--join-bg); color:var(--join-fg); display:flex; align-items:center; justify-content:center; gap:9px }
@@ -2118,7 +2121,9 @@ window.visualViewport?.addEventListener('resize', tabsStuck)
 $('chatText').addEventListener('focus', () => { if (window.innerWidth <= 560) document.body.classList.add('typing') })
 // 盤を元の形に戻すのは**少し待ってから**：送信を押すと、click より先に入力欄の blur が来る。すぐ戻すと
 // 送信ボタンが動いて click が空振りする（iPhone で「送信を押すとキーボードが引っ込むだけ」になった・2026-11-05）
-$('chatText').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('chatText')) { document.body.classList.remove('typing'); $('panChat').style.height = '' } }, 450))
+// 入力をやめると盤にレベルメーター・引き手・ボタンが戻って高くなり、最後の行がその裏に潜る（2026-11-09 β 実機）
+// → 盤の形が落ち着いてから、最後の行を盤の上へ合わせ直す
+$('chatText').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('chatText')) { document.body.classList.remove('typing'); $('panChat').style.height = ''; raf2(showChatLatest) } }, 450))
 // localStorage は**必ずここを通す**。Safari のプライベートモードやストレージ拒否の環境では
 // getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
 const lsGet = (k, d = null) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
