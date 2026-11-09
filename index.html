@@ -460,6 +460,15 @@
   .dock:not(.open) .dock-grip{ animation:gripHint 2.4s ease-in-out 3 }   /* しまっている間は最初に 3 回だけ軽く浮いて気づかせる */
   @keyframes gripHint{ 0%, 60%, 100%{ translate:0 0 } 75%{ translate:0 -3px } 90%{ translate:0 1px } }
   @media (prefers-reduced-motion:reduce){ .dock:not(.open) .dock-grip{ animation:none } }
+  /* PC（561 以上）は盤が固定でなくカードの底板で、開くとカードが**下に**伸びる。∧ だと「たたむ」に見えて逆
+     （利用者 2026-11-10）ので、しまっている間は ∨（下に開く）、開いている間は ∧（たたむ）。浮く向きも下へ */
+  @media (min-width:561px){
+    .dg-l{ transform:rotate(14deg) }
+    .dg-r{ transform:rotate(-14deg) }
+    .dock.open .dg-l{ transform:rotate(-14deg) }
+    .dock.open .dg-r{ transform:rotate(14deg) }
+    @keyframes gripHint{ 0%, 60%, 100%{ translate:0 0 } 75%{ translate:0 3px } 90%{ translate:0 -1px } }
+  }
   body.in-call .dock .eq{ cursor:pointer; touch-action:none }   /* レベルメーターのあたりを押しても開け閉め */
   body.in-call .dock-more{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .3s cubic-bezier(.2,.8,.2,1) }
   body.in-call .dock.slow .dock-more{ transition-duration:.8s }   /* 入室のときに見せてから引っ込めるのは、目で追えるようにゆっくり */
