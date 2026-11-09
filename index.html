@@ -465,7 +465,7 @@
   body.in-call .dock-more{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .3s cubic-bezier(.2,.8,.2,1) }
   body.in-call .dock.open .dock-more{ grid-template-rows:1fr }
   /* はみ出しは切る（しまっている間に見えない）。ボタンの影が切れないよう、内側に少し余白を持たせて外へ打ち消す */
-  body.in-call .dock-more > div{ min-height:0; overflow:hidden; padding:0 4px 4px; margin:0 -4px -4px }
+  body.in-call .dock-more > div{ min-height:0; overflow:hidden; padding:4px; margin:-4px }   /* 上も 4px：入力欄の光る枠が切れない（2026-11-09 iPhone） */
   body.in-call .dock:not(.open) .dock-more > div{ visibility:hidden; transition:visibility 0s .3s }
   @media (prefers-reduced-motion:reduce){ body.in-call .dock-more{ transition:none } }
   .tray-tabs{ display:none; gap:4px; margin-top:8px; padding-top:6px; border-top:1px solid var(--border) }
