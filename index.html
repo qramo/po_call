@@ -2461,10 +2461,11 @@ const flipTo = async back => {
 // 退出のときは回さずに表へ（join/leave の対称）
 const unflip = () => { flipGen++; try { flipAnim?.cancel() } catch {} flipAnim = null; copyReset($('fbCopy')); flipped = false; flipping = false; document.body.classList.remove('flipped'); $('flipFront').hidden = false; $('flipBack').hidden = true; $('flipBack').style.height = ''; $('shareFlip').setAttribute('aria-expanded', 'false') }
 $('shareFlip').onclick = () => flipTo(true)
-$('flipClose').onclick = () => flipTo(false)
+const closeShare = () => flipping ? unflip() : flipTo(false)
+$('flipClose').onclick = closeShare
 $('fbCopy').onclick = () => copyLink($('fbCopy'), shareText())
 $('fbUrl').onclick = e => { e.preventDefault(); copyLink($('fbCopy')) }   // URL を押したら URL だけ
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && flipped) flipTo(false) })
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && (flipped || flipping)) closeShare() })
 // 部屋名は「識別子」なので途中で切ると別の部屋になる（＝ロビーからタップしても相手と繋がらない）。
 // **参加時と受信時で必ず同じ処理を通すこと**。表示上の省略は CSS の text-overflow に任せる（データは削らない）。
 // 上限の根拠は QRコード。日本語1文字はURLエンコードで9文字になるため、実測で
@@ -7861,6 +7862,7 @@ const wireRoom = () => {
   call.room.onPeerLeave = id => {
     call.peerGone.set(id, Date.now())   // 「つながり中」に出さない（在室がしばらく残るため）
     call.ttsAnnEarly?.delete(id)        // 取っておいた読み上げの案内も捨てる（v0.15.25）
+    call.nameEarly.delete(id)           // 本人確認前の名前も接続終了で捨てる（同じpeerIdの別接続へ持ち越さない）
     call.heard.delete(id)
     // 'bye' が来ていなければ異常な切断。本物の回線障害でも出るが、**理由は分からなくても
     // 「何かおかしい」と分かる**ほうがよい（自分の回線のせいだと思い込まないため）。
@@ -8252,6 +8254,7 @@ const doReconnect = async ({ auto = false } = {}) => {
   try { sessionStorage.setItem(REJOIN_KEY, JSON.stringify({ room: call.joinedId, name: call.meta.name, nameAt: call.meta.nameAt, nameBy: call.meta.nameBy, muted: call.muted, tts: sndTts, at: Date.now() })) } catch {}   // tts＝読み上げのオンを引き継ぐ（v0.14.54）
   // 先に退出を伝えてからリロードする。相手がこちらの離脱を早く知るほど、戻ったときに
   // すんなり繋ぎ直してもらえる。ただし完了を待ち続けない（届かなくてもリロードは進める）。
+  await settleLobbyHistory()   // reload は history.state も保つため、ドロワー用の履歴を先に片づける
   leaveCall()
   try { await Promise.race([call.leaving, new Promise(r => setTimeout(r, 1200))]) } catch {}
   ssDel(TTS_LIVE_KEY)   // 自前の再読み込みは「落ちた」に数えない
@@ -8750,7 +8753,11 @@ const lobbyTouched = () => { lobbyTouchAt = Date.now() }
 const lobbyDrawer = () => matchMedia('(max-width:560px)').matches && document.body.classList.contains('in-call')
 const lobbyOpen = on => {
   const was = document.body.classList.contains('lobby-open')
-  if (on === was) return
+  if (on === was) {
+    // reload 後は画面が閉じていても履歴 marker だけ残ることがある。退出時はこれも戻す。
+    if (!on && history.state && history.state.potLobby) try { history.back() } catch {}
+    return
+  }
   document.body.classList.toggle('lobby-open', on)
   $('lobbyTab').setAttribute('aria-expanded', String(on))
   if (on) { $('lobbyBox').scrollTop = 0; try { history.pushState({ potLobby: 1 }, '') } catch {} }
@@ -8764,7 +8771,32 @@ const lobbyOpen = on => {
 $('lobbyTab').onclick = () => lobbyOpen(true)
 $('lobbyClose').onclick = () => lobbyOpen(false)
 addEventListener('popstate', () => lobbyOpen(false))
-
+// リロードをまたいでもドロワー専用の履歴が残らないよう、再接続前にその項目を戻し切る。
+// 画面が閉じていても marker が残っていれば（復元・中断時など）同じように同期する。
+const settleLobbyHistory = async () => {
+  const open = document.body.classList.contains('lobby-open')
+  const marked = !!(history.state && history.state.potLobby)
+  if (!open && !marked) return
+  if (!marked) { if (open) lobbyOpen(false); return }
+  await new Promise(resolve => {
+    let timer, settled = false
+    const done = () => {
+      if (settled) return
+      settled = true; clearTimeout(timer); removeEventListener('popstate', done); resolve()
+    }
+    addEventListener('popstate', done, { once: true })
+    timer = setTimeout(() => {
+      if (history.state && history.state.potLobby) {
+        const state = history.state && typeof history.state === 'object' ? { ...history.state } : {}
+        delete state.potLobby
+        try { history.replaceState(Object.keys(state).length ? state : null, '', location.href) } catch {}
+      }
+      done()
+    }, 500)
+    if (open) lobbyOpen(false)
+    else { try { history.back() } catch { done() } }
+  })
+}
 // ─ ぽちっと通話の部屋（上の pttRooms）─ 部屋 → {people:[{name, talking}], tag}。失効したものは数えない
 const pttLive = () => {
   const out = new Map(), cut = Date.now() - PTT_EXPIRE_MS
