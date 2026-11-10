@@ -460,15 +460,14 @@
   .dock:not(.open) .dock-grip{ animation:gripHint 2.4s ease-in-out 3 }   /* しまっている間は最初に 3 回だけ軽く浮いて気づかせる */
   @keyframes gripHint{ 0%, 60%, 100%{ translate:0 0 } 75%{ translate:0 -3px } 90%{ translate:0 1px } }
   @media (prefers-reduced-motion:reduce){ .dock:not(.open) .dock-grip{ animation:none } }
-  /* PC（561 以上）は盤が固定でなくカードの底板で、開くとカードが**下に**伸びる。∧ だと「たたむ」に見えて逆
-     （利用者 2026-11-10）ので、しまっている間は ∨（下に開く）、開いている間は ∧（たたむ）。浮く向きも下へ */
-  @media (min-width:561px){
-    .dg-l{ transform:rotate(14deg) }
-    .dg-r{ transform:rotate(-14deg) }
-    .dock.open .dg-l{ transform:rotate(-14deg) }
-    .dock.open .dg-r{ transform:rotate(14deg) }
-    @keyframes gripHint{ 0%, 60%, 100%{ translate:0 0 } 75%{ translate:0 3px } 90%{ translate:0 -1px } }
-  }
+  /* 盤が**下に**伸びるとき（.down・JS の dockDir が付ける）は逆向き：しまっている間は ∨（下に開く）、開いている間は ∧（たたむ）。
+     浮く向きも下へ。PC で盤がカードの底板のまま下に余地があるときだけ（利用者 2026-11-10） */
+  .dock.down .dg-l{ transform:rotate(14deg) }
+  .dock.down .dg-r{ transform:rotate(-14deg) }
+  .dock.down.open .dg-l{ transform:rotate(-14deg) }
+  .dock.down.open .dg-r{ transform:rotate(14deg) }
+  .dock.down:not(.open) .dock-grip{ animation-name:gripHintDown }
+  @keyframes gripHintDown{ 0%, 60%, 100%{ translate:0 0 } 75%{ translate:0 3px } 90%{ translate:0 -1px } }
   body.in-call .dock .eq{ cursor:pointer; touch-action:none }   /* レベルメーターのあたりを押しても開け閉め */
   body.in-call .dock-more{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .3s cubic-bezier(.2,.8,.2,1) }
   body.in-call .dock.slow .dock-more{ transition-duration:.8s }   /* 入室のときに見せてから引っ込めるのは、目で追えるようにゆっくり */
@@ -2056,7 +2055,24 @@ const dockOpen = (on, save = true) => {
   $('dockGrip').setAttribute('aria-expanded', String(on))
   $('dockGrip').setAttribute('aria-label', on ? 'リアクションなどをしまう' : 'リアクションなどを出す')
   if (save) lsSet(DOCK_OPEN_KEY, on ? '1' : '')
+  dockDir()
 }
+// 引き手の向きと払う向き（.down＝盤が下へ伸びる：∨ で開く・下へ払うと開く）。下へ伸びて見えるのは、PC で盤が
+// カードの底板のまま、画面の下に伸びる余地があるときだけ。スマホ（下に固定）と、低い画面で盤が画面の下端に
+// 貼り付いているとき（sticky）は上へ伸びる（利用者 2026-11-10：画面の低いノートでは逆に感じた）。
+// しまっている間：中身の高さぶんの余地が画面の下にあれば下へ。開いている間：貼り付いていなければ下へ（たたむと底が上がる）
+function dockDir() {
+  const d = $('dock')
+  if (!document.body.classList.contains('in-call') || !matchMedia('(min-width:561px)').matches) { d.classList.remove('down'); return }
+  const r = d.getBoundingClientRect()
+  d.classList.toggle('down', d.classList.contains('open')
+    ? $('statusCard').getBoundingClientRect().bottom - r.bottom <= 1      // 本来の位置（カードの底）にある＝貼り付いていない
+    : innerHeight - r.bottom >= $('dockMore').firstElementChild.scrollHeight)
+}
+addEventListener('scroll', dockDir, { passive: true })
+addEventListener('resize', dockDir)
+$('dock').addEventListener('transitionend', dockDir)
+try { new ResizeObserver(() => dockDir()).observe(document.body) } catch {}
 // 入室したら、しまってあっても一度リアクションなどを見せてから、ゆっくり引っ込める＝引き手から出せると分かる
 // （利用者 2026-11-09）。その間に盤を触ったら引っ込めない
 const dockPeek = () => {
@@ -2075,8 +2091,8 @@ for (const g of [$('dockGrip'), $('eq')]) {
   g.addEventListener('pointermove', e => {
     if (y0 == null || swiped) return
     const dy = e.clientY - y0
-    // 開く向きに払うと開く：スマホは画面の下から上へ伸びる、PC はカードの底板で下へ伸びる（引き手の ∧∨ と同じ・2026-11-10）
-    if (Math.abs(dy) > 18) { swiped = true; dockOpen(matchMedia('(min-width:561px)').matches ? dy > 0 : dy < 0) }
+    // 開く向きに払うと開く：盤が伸びる向き（引き手の ∧∨・上の dockDir）と同じ
+    if (Math.abs(dy) > 18) { swiped = true; dockOpen($('dock').classList.contains('down') ? dy > 0 : dy < 0) }
   })
   // 払いの印は指を離したあとで消す。click は pointerup の直後（同じ処理の中）に来るので、消すのはその後（setTimeout 0）。
   // スマホでは指が動いた後の click は来ないので、click の中で消すと次のタップが空振りした

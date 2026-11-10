@@ -2887,7 +2887,8 @@ def dock_drag(t, dy):
 
 def T91(r, room):
     """盤の開閉（2026-11-10 レビュー）。入室したら一度見せてから引っ込める・キーボードで触ったら引っ込めない。
-    払う向きは引き手の矢印と同じ：PC（盤はカードの底板で下へ伸びる）は下へ払うと開く、スマホ（下に固定で上へ伸びる）は上へ。
+    払う向きは引き手の矢印と同じ：PC で盤がカードの底板のまま下に余地があれば下へ払うと開く。画面の低いノートで盤が画面の下端に
+    貼り付いているときと、スマホ（下に固定）は上へ伸びるので上へ。
     PC で矢印だけ反転して払う向きが逆のままだった。払ったあとの click で開閉が戻らないことも見る"""
     a = r.open_tab()
     a.call('Emulation.setDeviceMetricsOverride', width=1000, height=900, deviceScaleFactor=1, mobile=False)
@@ -2903,16 +2904,24 @@ def T91(r, room):
     a.eval("document.activeElement.blur(); document.getElementById('dockGrip').click()")   # 押して閉じる
     time.sleep(0.4)
     tap = a.eval(OPEN) is False
+    DOWN = "document.getElementById('dock').classList.contains('down')"
+    a.eval("window.scrollTo(0, 0)"); time.sleep(0.3)
+    tall_down = a.eval(DOWN) is True                 # 下に余地がある＝下へ伸びる
     pc = [dock_drag(a, 60), dock_drag(a, -60)]       # 下で開く・上で閉じる
+    # 画面の低いノート：盤が画面の下端に貼り付く＝上へ伸びる（2026-11-10 利用者）
+    a.call('Emulation.setDeviceMetricsOverride', width=1000, height=420, deviceScaleFactor=1, mobile=False)
+    time.sleep(0.6)
+    short_up = a.eval(DOWN) is False
+    short = [dock_drag(a, -60), dock_drag(a, 60)]    # 上で開く・下で閉じる
     a.call('Emulation.setDeviceMetricsOverride', width=390, height=844, deviceScaleFactor=2, mobile=True)
     time.sleep(0.5)
     phone = [dock_drag(a, -60), dock_drag(a, 60)]    # 上で開く・下で閉じる
     a.call('Emulation.clearDeviceMetricsOverride')
     a.call('Page.navigate', url='about:blank')       # 部屋とロビーから抜ける（残すと後ろの 2 タブのテストの相手探しが重くなる）
-    ok = joined and peek and kept and tap and pc == [True, False] and phone == [True, False]
+    ok = joined and peek and kept and tap and tall_down and pc == [True, False] and short_up and short == [True, False] and phone == [True, False]
     r.check('T91', '盤の開閉（入室で見せる・キーボードで止まる・払う向きが矢印と同じ）', ok, 'pass',
-            '参加=%s / 入室で見せる=%s / フォーカス=%s / キーボードで触ると残る=%s / 押して閉じる=%s / PC 下・上=%s / スマホ 上・下=%s'
-            % (joined, peek, focused, kept, tap, pc, phone))
+            '参加=%s / 入室で見せる=%s / フォーカス=%s / キーボードで触ると残る=%s / 押して閉じる=%s / PC 高い窓は下向き=%s・下・上=%s / 低い窓は上向き=%s・上・下=%s / スマホ 上・下=%s'
+            % (joined, peek, focused, kept, tap, tall_down, pc, short_up, short, phone))
 
 
 def T92(r, room):
