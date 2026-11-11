@@ -17,6 +17,7 @@
   <link rel="icon" href="favicon.png" type="image/png" sizes="96x96">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta name="theme-color" content="#1a1e24">
+  <meta name="color-scheme" content="dark">
   <meta name="description" content="ボタンを押している間だけ話せる、トランシーバー風のグループ通話アプリ（α版）">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="ぽちっと通話">
@@ -32,6 +33,7 @@
   <meta name="twitter:image" content="https://potalk.app/ptt/og.png">
   <title>ぽちっと通話 α版 - ボタンを押して話すトランシーバー</title>
   <style>
+    html { background-color: #1a1e24; color-scheme: dark; }
     :root {
       --bg-color: #1a1e24;
       --card-bg: #252b36;
@@ -59,6 +61,7 @@
       align-items: center;
       justify-content: center;
       min-height: 100vh;
+      min-height: 100dvh; /* iPhone の Safari では、100vh は、見える高さより大きく、中身が収まっていても、動いてしまう */
       padding: 16px;
     }
     .walkie-talkie {
@@ -153,6 +156,8 @@
       box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
     }
     .peer-tag.me { background: #172554; color: #bfdbfe; }
+    /* 一覧には在室しているのに、つながっていない人: 赤いチップ */
+    .peer-tag.miss { background: #450a0a; color: #fecaca; border: 1px solid #ef4444; }
     .peer-tag.me.sending { background: #7f1d1d; color: #fecaca; box-shadow: 0 0 8px rgba(239, 68, 68, 0.35); }
     .ptt-container { display: flex; flex-direction: column; align-items: center; gap: 14px; margin: 6px 0; }
     .ptt-btn {
@@ -264,16 +269,21 @@
     .app-version { width: 100%; max-width: 400px; text-align: center; font-size: 0.7rem; color: var(--muted-color); opacity: .6; margin: 12px 0 4px; user-select: text; -webkit-user-select: text; }
     .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #111827; color: #fff; border: 1px solid #fbbf24; border-radius: 12px; padding: 10px 16px; font-size: 0.85rem; z-index: 50; max-width: 90%; text-align: center; box-shadow: 0 6px 18px rgba(0,0,0,0.5); }
     /* 部屋を探すダイヤル（ラジオのチューニング風）。3部屋ぶんが見えて、上下に回し、赤い線に合わせた部屋をタップすると入る */
-    .rdial-wrap { --rdial-row: 84px; position: relative; height: calc(var(--rdial-row) * 3); border-radius: 14px; background: #0f1419; border: 1px solid #2d3748; overflow: hidden; box-shadow: inset 0 2px 10px rgba(0,0,0,0.6); }
+    .rdial-wrap { --rdial-row: 132px; position: relative; height: calc(var(--rdial-row) * 3); border-radius: 14px; background: #0f1419; border: 1px solid #2d3748; overflow: hidden; box-shadow: inset 0 2px 10px rgba(0,0,0,0.6); }
     .rdial { position: relative; z-index: 1; height: 100%; overflow-y: auto; padding: var(--rdial-row) 0; box-sizing: border-box; scroll-snap-type: y mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; outline: none; }
     .rdial::-webkit-scrollbar { display: none; }
     .rdial:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-color); border-radius: 14px; }
-    .rdial-item { height: var(--rdial-row); box-sizing: border-box; padding: 9px 16px 0; scroll-snap-align: center; scroll-snap-stop: always; display: flex; flex-direction: column; justify-content: flex-start; gap: 1px; cursor: pointer; color: var(--text-color); border-left: 3px solid transparent; will-change: transform, opacity; user-select: none; -webkit-user-select: none; }
+    .rdial-item { height: var(--rdial-row); box-sizing: border-box; padding: 33px 16px 0; scroll-snap-align: center; scroll-snap-stop: always; display: flex; flex-direction: column; justify-content: flex-start; gap: 1px; cursor: pointer; color: var(--text-color); border-left: 3px solid transparent; will-change: transform, opacity; user-select: none; -webkit-user-select: none; }
+    .rdial-item { position: relative; transform-origin: 50% 50%; background: none; }
+    /* ドラム本体は動かない（背景は固定）。部屋の文字だけが、ドラムの面に印刷されて、回る */
+    .rdial-wrap::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: var(--rdial-row); transform: translateY(-50%); pointer-events: none; z-index: 0; background: linear-gradient(180deg, rgba(148,163,184,0) 0%, rgba(148,163,184,0.07) 50%, rgba(148,163,184,0) 100%); }
     .rdial-item > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-    /* 赤い線は、1行目（部屋の番号）と、2行目（タグや名前）の、すきまを通る */
+    /* 赤い線は、1行目（部屋の番号）と、2行目（タグや名前）の、すきまを通る（1行の高さ132pxの中央＝66px。番号の高さ26px、すきま13pxのまん中が66pxになるよう、上の余白は33px） */
     .rdial-item > div:nth-child(2) { margin-top: 12px; }
     .rdial-item .chip-tag, .rdial-item .chip-who { margin-top: 0; max-width: 100%; font-size: 0.74rem; }
-    .rdial-item.on-line { background: rgba(59,130,246,0.10); }
+    /* 在室の人は、全員の名前を出す（長くなったら、「、」の後で折り返す。省略しない） */
+    .rdial-item > div.chip-who { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.25; }
+    .rdial-item.on-line { color: #fff; }
     /* 円柱の両端の、目盛りの溝。回すと流れ、上下に行くほど、間隔が詰まる */
     .rdial-rail { position: absolute; top: 0; bottom: 0; width: 13px; pointer-events: none; z-index: 3; }
     .rdial-rail.left { left: 0; background: linear-gradient(90deg, rgba(255,255,255,0.07), rgba(255,255,255,0)); }
@@ -281,19 +291,19 @@
     .rdial-ridges { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
     .rdial-ridge { position: absolute; left: 0; right: 0; top: 50%; height: 1px; margin-top: -0.5px; background: rgba(148,163,184,0.16); will-change: transform, opacity; }
     .rdial-tick { position: absolute; left: 2px; right: 2px; top: 50%; height: 2px; margin-top: -1px; border-radius: 1px; background: rgba(203,213,225,0.6); will-change: transform, opacity; }
-    .rdial-item.me { background: rgba(23,37,84,0.55); }
+    .rdial-item.me > div:first-child { color: #93c5fd; }
     .rdial-item.bot { border-left-color: #34d399; }
     .rdial-item.invited { border-left-color: #fbbf24; }
     .rdial-item.air { border-left-color: var(--tx-color); }
     .rdial-item.full { filter: grayscale(0.7); }
     .rdial-empty { height: var(--rdial-row); display: flex; align-items: center; justify-content: center; color: var(--muted-color); font-size: 0.82rem; text-align: center; padding: 0 16px; scroll-snap-align: center; }
-    .rdial-line { position: absolute; left: 6px; right: 6px; top: 50%; height: 2px; transform: translateY(-1px); background: #ef4444; box-shadow: 0 0 8px #ef4444; pointer-events: none; border-radius: 1px; z-index: 0; }
+    .rdial-line { position: absolute; left: 6px; right: 6px; top: 50%; height: 2px; transform: translateY(-1px); background: #ef4444; box-shadow: 0 0 8px #ef4444; pointer-events: none; border-radius: 1px; z-index: 2; } /* 赤い線は、部屋の文字（絵文字の 💾 を含む）より手前に出す */
     .rdial-line::before, .rdial-line::after { content: ''; position: absolute; top: -4px; border: 5px solid transparent; }
     .rdial-line::before { left: -2px; border-left-color: #ef4444; }
     .rdial-line::after { right: -2px; border-right-color: #ef4444; }
-    .rdial-fade { position: absolute; left: 0; right: 0; height: 34%; pointer-events: none; z-index: 2; }
-    .rdial-fade.top { top: 0; background: linear-gradient(180deg, #0f1419 0%, rgba(15,20,25,0) 100%); }
-    .rdial-fade.bottom { bottom: 0; background: linear-gradient(0deg, #0f1419 0%, rgba(15,20,25,0) 100%); }
+    .rdial-fade { position: absolute; left: 0; right: 0; height: 22%; pointer-events: none; z-index: 2; }
+    .rdial-fade.top { top: 0; background: linear-gradient(180deg, rgba(15,20,25,.8) 0%, rgba(15,20,25,0) 100%); }
+    .rdial-fade.bottom { bottom: 0; background: linear-gradient(0deg, rgba(15,20,25,.8) 0%, rgba(15,20,25,0) 100%); }
     .chan-chip.bot { border-color: #34d399; box-shadow: 0 0 8px rgba(52,211,153,0.35); }
     .chan-chip.full { opacity: .55; }
     .chan-chip.invited { border-color: #fbbf24; box-shadow: 0 0 8px rgba(251,191,36,0.35); }
@@ -330,9 +340,12 @@
     .lcd-ch { font-family: monospace; font-size: 0.8rem; color: var(--muted-color); letter-spacing: 3px; }
     .lcd-freq { font-family: "Courier New", monospace; font-size: 2.3rem; font-weight: 900; color: #38bdf8; text-shadow: 0 0 14px rgba(56,189,248,0.55); letter-spacing: 2px; line-height: 1.1; transition: opacity .1s; }
     .lcd-freq small { font-size: 0.9rem; letter-spacing: 1px; margin-left: 6px; opacity: .8; }
+    /* 英数字だけを出す場所（部屋の番号、モールスの文字、キー）は、端末標準の等幅フォントにする。どれも 0 に斜線か点が入っていて、O と見分けがつく
+       （iPhone は SF Mono、Mac は Menlo、Windows は Consolas、Android は Roboto Mono など） */
+    .mono0 { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Roboto Mono", "DejaVu Sans Mono", monospace; font-variant-numeric: slashed-zero; font-feature-settings: "zero" 1; }
     .lcd-freq.tuning { opacity: .45; animation: blink .35s steps(2) infinite; }
     @keyframes blink { 50% { opacity: .9; } }
-    .lcd-sub { font-size: 0.72rem; color: var(--muted-color); min-height: 1em; white-space: nowrap; overflow: hidden; }
+    .lcd-sub { font-size: 0.72rem; color: var(--muted-color); line-height: 1.5; height: 1.5em; white-space: nowrap; overflow: hidden; } /* 日本語を出したときの高さに固定（文字によって LCD の高さが変わらないように） */
     .fax-paper { width: 100%; image-rendering: pixelated; background: #f8f8f2; border-radius: 4px; display: block; margin-top: 6px; }
     .tuner { display: flex; flex-direction: column; gap: 10px; }
     .dial-row { display: flex; align-items: center; gap: 8px; }
@@ -386,6 +399,106 @@
     }
     button.btn-sub:hover { background: #4b5563; }
     .sound-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--muted-color); font-size: 0.8rem; }
+    /* 通信の診断パネル: 広い画面では右側に固定して、操作画面と重ならないようにする。狭い画面では、下に出して、操作画面は、その分だけ、上へスクロールできる */
+    #diagPanel { display: none; position: fixed; left: 8px; right: 8px; bottom: 8px; max-height: 36vh; overflow: auto; z-index: 50; padding: 8px 10px; border-radius: 10px; background: rgba(2,6,23,.96); border: 1px solid #334155; font-size: 0.72rem; line-height: 1.55; word-break: break-all; }
+    #diagPanel.on { display: block; }
+    body.diag-on { padding-bottom: 40vh; }
+    @media (min-width: 900px) {
+      #diagPanel { left: auto; top: 0; right: 0; bottom: 0; width: 400px; max-height: none; border-radius: 0; border-width: 0 0 0 1px; }
+      body.diag-on { padding-bottom: 16px; padding-right: 416px; }
+    }
+    #reconnectBtn:disabled { opacity: .45; cursor: wait; }
+
+    /* スマホ（幅700px以下）: ダイヤルは、左端のドロワーに入れる。画面の左端の帯が、ドロワーを開くボタン */
+    .dial-tab, .dial-scrim { display: none; }
+    .dial-tab-close { display: none; }
+    .dial-detail { display: none; }
+    @media (max-width: 700px) {
+      body { padding-left: 28px; padding-right: 10px; padding-top: 8px; padding-bottom: 8px; justify-content: flex-start; }
+      /* スマホは、縦に詰めて、スクロールをなるべく無くす */
+      .walkie-talkie { padding: 14px 14px; gap: 10px; }
+      .controls-info { display: none; }
+      .ptt-container { gap: 6px; margin: 0; }
+      .ptt-wrap { margin-bottom: 18px; } /* VOXボタンが、下にはみ出す分 + 12px */
+      .ptt-btn { width: 150px; height: 150px; }
+      .display { gap: 8px; }
+      .header .brand { font-size: 0.95rem; white-space: nowrap; gap: 4px; }
+      .header .brand span { white-space: nowrap; }
+      .header .alpha-badge { font-size: 0.6rem; padding: 1px 5px; }
+      .header .btn-sub { padding: 4px 8px !important; white-space: nowrap; font-size: 0.78rem; }
+      /* 左端の全体が、押せる範囲（見えない）。見えるのは、端から出ている、丸みのあるタブだけ */
+      .dial-tab { display: flex; position: fixed; left: 0; top: 0; bottom: 0; width: 38px; z-index: 45; align-items: center; justify-content: flex-start; border: 0; background: transparent; padding: 0; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+      .dial-tab-body { writing-mode: vertical-rl; display: flex; align-items: center; justify-content: center; height: min(430px, 78vh); padding: 0 7px; background: #1f2937; border: 1px solid #374151; border-left: 0; border-radius: 0 14px 14px 0; box-shadow: 2px 0 8px rgba(0,0,0,.45); color: #cbd5e1; font-size: 0.85rem; font-weight: 700; letter-spacing: 3px; }
+      .dial-tab:active .dial-tab-body { background: #374151; }
+      .dial-tab.dial-tab-close { display: none; }
+      #dialCard { position: fixed; left: 0; top: 0; bottom: 0; width: min(88vw, 400px); max-width: none; margin: 0 !important; z-index: 60; overflow-y: auto; border-radius: 0 20px 20px 0; transform: translateX(-105%); transition: transform .25s ease; }
+      body.dial-open #dialCard { transform: none; }
+      /* ドロワーを開いている間は、その右端に、「閉じる」タブが出る */
+      body.dial-open .dial-tab.dial-tab-close { display: flex; left: min(88vw, 400px); z-index: 61; width: 40px; pointer-events: none; }
+      body.dial-open .dial-tab-close .dial-tab-body { pointer-events: auto; }
+      body.dial-open .dial-tab:not(.dial-tab-close) { display: none; }
+      /* ドロワーの下の空きに、赤い線に合わせた部屋の詳しい情報と、入るボタンを出す */
+      .dial-detail { display: flex; flex-direction: column; gap: 8px; padding: 12px 4px 4px; border-top: 1px solid #374151; margin-top: 4px; }
+      .dial-detail .dd-title { font-family: monospace; font-size: 1.15rem; font-weight: 800; color: #93c5fd; letter-spacing: 1px; }
+      .dial-detail .dd-tag { font-size: 0.85rem; color: #93c5fd; }
+      .dial-detail .dd-count { font-size: 0.8rem; color: var(--muted-color); }
+      .dial-detail .dd-names { display: flex; flex-wrap: wrap; gap: 6px; }
+      .dial-detail .dd-names span { background: #1f2937; border: 1px solid #374151; border-radius: 999px; padding: 3px 10px; font-size: 0.82rem; }
+      .dial-detail button { margin-top: 6px; }
+      .dial-scrim { position: fixed; inset: 0; z-index: 55; background: rgba(0,0,0,.5); }
+      body.dial-open .dial-scrim { display: block; }
+      .morse-drawer { left: 0; }
+    }
+
+    /* 広い画面: 左に本体、右にダイヤル。ダイヤルの下に、操作ボタンの別カード */
+    body.wide { display: grid; grid-template-columns: repeat(2, minmax(0, 400px)); grid-template-rows: auto auto auto auto; column-gap: 24px; justify-content: center; align-content: start; align-items: start; }
+    body.wide > #homeView { grid-column: 1 / -1; grid-row: 1; width: 100%; max-width: 400px; justify-self: center; }
+    body.wide > #radioView { grid-column: 1; grid-row: 2 / span 2; align-self: start; }
+    body.wide > #dialCard { grid-column: 2; grid-row: 2; margin-top: 0 !important; }
+    body.wide > #homeCard, body.wide > #ctrlCard { grid-column: 2; grid-row: 3; align-self: end; }
+    body.wide > .app-version { grid-column: 1 / -1; grid-row: 4; max-width: 100%; justify-self: stretch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* 広い画面では、二つの列の真ん中に、1行で出す */
+    #ctrlCard { width: 100%; max-width: 400px; margin-top: 16px; background: var(--card-bg); border: 2px solid #374151; border-radius: 20px; padding: 16px; display: none; flex-direction: column; gap: 10px; }
+    body.wide #ctrlCard:not(.hidden) { display: flex; }
+    #ctrlCard .ctrl-row { display: flex; gap: 8px; }
+    #ctrlCard .ctrl-row button { flex: 1; font-size: 0.8rem; padding: 8px 6px; }
+    #ctrlCard #qrBtn, #ctrlCard #speakerBtn { flex: none; width: 64px; padding: 6px 0; line-height: 1; display: flex; align-items: center; justify-content: center; }
+    .tune-actions:empty { display: none; }
+    /* 招待URLで開いたとき: 本体に、その部屋の情報を出し、PTTボタンが「入室」ボタンになる */
+    .walkie-talkie.invite { opacity: 1; filter: none; pointer-events: none; }
+    .walkie-talkie.invite .ptt-btn, .walkie-talkie.invite .invite-links, .walkie-talkie.invite .invite-links * { pointer-events: auto; }
+    .walkie-talkie.invite #tagEdit { visibility: hidden; }
+    .walkie-talkie.invite .header button, .walkie-talkie.invite #tuneBar, .walkie-talkie.invite .vox-btn { opacity: .4; }
+    #tuneBar:has(.tune-actions:empty) { display: none; }
+    /* トップページでは、本体は表示するだけ（操作はできない） */
+    .walkie-talkie.idle { pointer-events: none; }
+    .walkie-talkie.idle .header, .walkie-talkie.idle .display, .walkie-talkie.idle .vox-btn, .walkie-talkie.idle .controls-info, .walkie-talkie.idle #tuneBar { opacity: .42; filter: grayscale(.7); }
+    .walkie-talkie.idle .ptt-btn { pointer-events: auto; }
+    #emptyBtn { display: none; }
+    #nameBox input { width: 100%; box-sizing: border-box; }
+    body.wide #homeCard { padding: 10px 16px; gap: 4px; }
+    body.wide #homeCard #settingsBtn { padding: 4px 8px; }
+    body.wide #homeCard #nameInput { padding-top: 5px; padding-bottom: 5px; }
+    body.wide #homeCard .field-label { line-height: 1.1; margin-bottom: 2px; }
+    .field-label { display: block; font-size: 0.72rem; color: var(--muted-color); margin: 0 0 4px 2px; }
+    #idleSlot { display: none; flex-direction: column; gap: 10px; pointer-events: auto; }
+    .walkie-talkie.slot-on #tuneBar { display: none; }
+    .walkie-talkie.slot-on #idleSlot { display: flex; }
+    #homeCard:not(:has(#nameInput)) { display: none; }
+    .morse-toggle { flex: none; padding: 5px 14px; border-radius: 999px; background: #374151; border: 1px solid #4b5563; color: #e5e7eb; font-weight: 700; font-size: 0.85rem; }
+    #settingsBtn { background: #334155; border: 1px solid #64748b; color: #f1f5f9; font-weight: 700; }
+    #settingsBtn:hover { background: #475569; }
+    #frontFace .config-panel:not(:has(.vox-panel:not(.hidden))) { display: none; }
+    /* スマホ: 画面下のドロワーに、QWERTYのモールスキーボード（スペースなし）。PTTボタンに、かぶってよい */
+    .morse-drawer { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: #252b36; border-top: 1px solid #374151; border-radius: 14px 14px 0 0; box-shadow: 0 -6px 20px rgba(0,0,0,.5); padding-bottom: env(safe-area-inset-bottom); }
+    .morse-handle { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background: none; border: 0; border-bottom: 1px solid #1f2937; color: var(--text-color); font-size: 0.9rem; cursor: pointer; gap: 8px; }
+    .morse-queue { font-family: monospace; color: #38bdf8; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .morse-body { display: none; padding: 2px 6px 12px; }
+    .morse-drawer.open .morse-body { display: block; }
+    .mk-row { display: flex; gap: 4px; justify-content: center; margin: 4px 0; }
+    .mk { flex: 1; max-width: 38px; height: 42px; border-radius: 8px; background: #1f2937; color: #e5e7eb; border: 1px solid #374151; font-size: 1rem; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+    .mk:active { background: #2563eb; }
+    .mk.wide { max-width: 64px; flex: 1.7; font-size: 0.8rem; }
+    @media (hover: none) and (pointer: coarse), (max-width: 480px) { .morse-drawer:not(.hidden) { display: block; } }
     .potalk-back { align-self: flex-start; color: #93c5fd; font-size: 0.85rem; text-decoration: none; padding: 4px 2px; }
   </style>
 </head>
@@ -402,12 +515,6 @@
         <button class="linklike" id="inviteAbout" type="button">使い方・プライバシー</button>
       </div>
     </section>
-    <section class="room-panel">
-      <div class="brand"><span>🔘</span><span>ぽちっと通話</span><span class="alpha-badge">α版</span></div>
-      <input type="text" id="nameInput" placeholder="ハンドルネーム" maxlength="12" autocomplete="off">
-      <button class="btn-sub" id="emptyBtn" type="button">新しい部屋を作る</button>
-      <button class="btn-sub" id="settingsBtn" type="button" style="background:#1e293b">⚙ 設定（マイク・このアプリについて）</button>
-    </section>
   </div>
 
   <div class="sticky-bar hidden" id="stickyBar">
@@ -415,11 +522,11 @@
     <button class="btn-sub" id="leaveBtn2" type="button" style="padding:4px 10px">退出</button>
   </div>
 
-  <main class="walkie-talkie hidden" id="radioView">
+  <main class="walkie-talkie idle" id="radioView">
     <div id="frontFace">
     <header class="header">
       <div class="brand"><span>🔘</span><span>ぽちっと通話</span><span class="alpha-badge">α版</span></div>
-      <div style="display:flex;gap:6px;align-items:center">
+      <div id="headerBtns" style="display:flex;gap:6px;align-items:center">
         <button class="btn-sub" id="reconnectBtn" type="button" style="padding:4px 10px">再接続</button>
         <button class="btn-sub" id="leaveBtn" type="button" style="padding:4px 10px">退出</button>
       </div>
@@ -451,12 +558,13 @@
         <div class="status-text" id="statusLabel">STANDBY</div>
       </div>
       <div class="peers-list" id="peersList"><span class="peers-empty">待機中（参加者なし）</span></div>
+      <div id="peerCount" style="text-align:right;font-size:0.72rem;opacity:.9;margin-top:2px;line-height:1.4;min-height:1.4em"></div>
     </section>
     <section class="ptt-container">
       <div class="ptt-wrap">
         <button class="ptt-btn" id="pttBtn" type="button">
-          <span class="ptt-main">PUSH</span>
-          <span class="ptt-sub">TO TALK</span>
+          <span class="ptt-main">NEW</span>
+          <span class="ptt-sub">新しい部屋</span>
         </button>
         <button class="vox-btn" id="voxBtn" type="button" aria-pressed="false" title="VOX（声を拾って自動で送信）">
           <span class="vox-btn-main">VOX</span>
@@ -464,16 +572,16 @@
         </button>
       </div>
       <div class="controls-info">
-        <span class="pc-only"><kbd class="key-badge">Space</kbd> キーでも話せます</span>
-        <br><span class="pc-only">文字キーを打つと、その文字のモールス符号を送信します（受信したモールスは文字に直して液晶下に表示します）</span>
+        <span class="pc-only"><kbd class="key-badge">スペース</kbd> キーで PTT</span>
+        <br><span class="pc-only">キータイプでモールス</span>
+      </div>
+      <div class="invite-links hidden" id="inviteLinks" style="justify-content:center;flex-wrap:wrap;gap:6px 14px;margin-top:6px">
+        <button class="linklike" id="inviteLater2" type="button">あとで</button>
+        <button class="linklike" id="inviteNew2" type="button">新しい部屋を作る</button>
+        <button class="linklike" id="inviteAbout2" type="button">使い方・プライバシー</button>
       </div>
     </section>
     <footer class="config-panel">
-      <div class="tune-actions">
-        <button class="btn-sub" id="shareBtn" type="button">招待URLをコピー</button>
-        <button class="btn-sub" id="qrBtn" type="button" title="QRコードで招待" aria-label="QRコードで招待"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM19 14h2v2h-2zM14 19h2v2h-2zM18 18h3v3h-3z" fill="currentColor" stroke="none"/></svg></button>
-        <button class="btn-sub" id="speakerBtn" type="button" title="スピーカーのミュート切り替え" aria-label="スピーカーのミュート切り替え">🔈</button>
-      </div>
       <div class="vox-panel hidden" id="voxPanel">
         <div class="vox-meter"><div class="vox-fill" id="voxFill"></div><div class="vox-thr" id="voxThr"></div></div>
         <label class="vox-sens"><span>しきい値</span><input type="range" id="voxSens" min="1" max="10" step="1" value="6"></label>
@@ -483,16 +591,23 @@
     <div class="back-face hidden" id="backFace">
       <div class="back-head">
         <strong>招待 QR</strong>
-        <button class="btn-sub" id="qrBack" type="button" style="padding:4px 12px">もどる</button>
       </div>
       <div class="qr-sticker"><div class="qr-box" id="qrBox">読み込み中…</div></div>
       <div class="back-room" id="qrRoom">----·----</div>
       <p class="back-note">このコードを読み取ると、同じ部屋に入れます。</p>
       <div class="back-url" id="qrUrl"></div>
     </div>
+    <footer class="config-panel" id="tuneBar">
+      <div class="tune-actions" id="tuneActions">
+        <button class="btn-sub" id="shareBtn" type="button">招待URLをコピー</button>
+        <button class="btn-sub" id="qrBtn" type="button" title="QRコードで招待" aria-label="QRコードで招待"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM19 14h2v2h-2zM14 19h2v2h-2zM18 18h3v3h-3z" fill="currentColor" stroke="none"/></svg></button>
+        <button class="btn-sub" id="speakerBtn" type="button" title="スピーカーのミュート切り替え" aria-label="スピーカーのミュート切り替え">🔈</button>
+      </div>
+    </footer>
+    <div id="idleSlot"></div>
   </main>
 
-  <section class="room-panel" style="margin-top:16px">
+  <section class="room-panel" id="dialCard" style="margin-top:16px">
       <div class="scan-title"><span>いまある部屋（赤い線でタップ）</span><span id="onlineCount" style="white-space:nowrap"></span></div>
       <input type="text" id="searchInput" placeholder="🔍 URL・ハッシュ・名前・話題で絞り込み" autocomplete="off" style="width:100%;flex:none">
       <div class="rdial-wrap" id="dialWrap">
@@ -502,13 +617,38 @@
         <div class="rdial-rail left" id="railL"></div><div class="rdial-rail right" id="railR"></div>
         <div class="rdial-fade top"></div><div class="rdial-fade bottom"></div>
       </div>
+      <div class="dial-detail" id="dialDetail"></div>
   </section>
 
+    <section class="room-panel" id="homeCard" style="margin-top:16px">
+      <div id="nameBox"><label class="field-label" for="nameInput">ハンドルネーム（みんなに見える、あなたの名前）</label>
+      <input type="text" id="nameInput" placeholder="ハンドルネーム" maxlength="12" autocomplete="off"></div>
+      <button class="btn-sub" id="emptyBtn" type="button">新しい部屋を作る</button>
+      <button class="btn-sub" id="settingsBtn" type="button">⚙ 設定（マイク・このアプリについて）</button>
+    </section>
 
-  <div class="app-version" id="appVersion">版 2026-11-08-g（Trystero 0.25.4）・potalk.app/ptt</div>
+  <section id="ctrlCard" class="hidden" aria-label="操作ボタン">
+    <div class="ctrl-row" id="ctrlRow1"></div>
+    <div class="ctrl-row" id="ctrlRow2"></div>
+  </section>
+
+  <div class="morse-drawer hidden" id="morseDrawer">
+    <button class="morse-handle" id="morseHandle" type="button" aria-expanded="false"><span>⌨ モールスで送る</span><span class="morse-queue" id="morseQueueView"></span><span class="morse-toggle" id="morseToggle">▲ 開く</span></button>
+    <div class="morse-body" id="morseBody"></div>
+  </div>
+
+  <button class="dial-tab" id="dialTab" type="button" aria-label="部屋を探す（ダイヤルを開く）" aria-expanded="false"><span class="dial-tab-body">部屋を探す ▶</span></button>
+  <button class="dial-tab dial-tab-close" id="dialCloseTab" type="button" aria-label="ダイヤルを閉じる"><span class="dial-tab-body">◀ 閉じる</span></button>
+  <div class="dial-scrim" id="dialScrim"></div>
+
+  <div class="app-version" id="appVersion">版 2026-11-10-z12q41（Trystero 0.25.4 公開版）・potalk.app/ptt</div>
 
   <div class="toast hidden" id="toast" role="status"></div>
 
+  <div id="diagPanel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><strong>通信の診断</strong><span><button class="btn-sub" id="diagCopy" type="button" style="padding:2px 12px;margin-right:6px">コピー</button><button class="btn-sub" id="diagClose" type="button" style="padding:2px 12px">閉じる</button></span></div>
+    <div id="diagBox"></div>
+  </div>
   <dialog id="settingsDialog">
     <div class="about">
       <div class="about-head">
@@ -536,6 +676,15 @@
         <h3>効果音</h3>
         <label class="vox-sens" style="margin:10px 0"><span>音量</span><input type="range" id="sfxVol" min="0" max="150" step="5" value="100"><span class="gain-val" id="sfxVolVal">100%</span></label>
         <p style="opacity:.8;font-size:0.75rem">スライダーを離すと、試しに「ガッ」と鳴ります。効果音を消したいときは、音量を 0% にしてください。</p>
+        <h3>通信の診断</h3>
+        <p style="font-size:0.8rem;opacity:.85;margin-bottom:6px">うまくつながらないときに使います。ボタンを押すと、設定が閉じて、メイン画面の下に診断が出ます。部屋に入ったまま、相手ごとの接続の状態を見られます。画面を撮って送ると、原因を調べやすくなります。</p>
+        <button class="btn-sub" id="diagBtn" type="button" style="width:100%">診断を、メイン画面に表示する</button>
+        <label class="sound-toggle" style="margin-top:8px"><input type="checkbox" id="diagAlways"> 診断を、常に表示する（広い画面では右側、狭い画面では下）</label>
+        <label class="sound-toggle" style="margin-top:8px"><input type="checkbox" id="logMode"> 通信の記録を、この端末に残す（試験用。標準はオフ。オフのときは、読み込み直すと記録は消えます）</label>
+        <label class="sound-toggle" style="margin-top:8px"><input type="checkbox" id="notifyRoom"> 新しい部屋ができたら、音で知らせる（このアプリを開いている間だけ。標準はオフ。効果音がオフのときは鳴りません）</label>
+        <label class="sound-toggle" style="margin-top:8px"><input type="checkbox" id="autoReconnect"> 自動で再接続する（標準はオフ。画面に戻ったときや、回線が戻ったときなど）</label>
+        <label class="sound-toggle" style="margin-top:8px"><input type="checkbox" id="relayOnly"> 通信を、中継（TURN）経由のみにする（標準はオン。直接つなぎたいときだけ、オフ）</label>
+        <p style="opacity:.8;font-size:0.75rem">切り替えると、ページを読み込み直します。部屋のみんなが同じ設定である必要はありません。</p>
         <h3>初回案内</h3>
         <label class="sound-toggle"><input type="checkbox" id="welcomeAgain2"> 開いたときに初回案内を表示する</label>
         <h3>ソース・ライセンス</h3>
@@ -546,7 +695,10 @@
         <p style="opacity:.8;font-size:0.75rem">使用ライブラリ: <a href="https://github.com/dmotz/trystero" target="_blank" rel="noopener noreferrer">Trystero</a>（MIT License）</p>
         <h3>このアプリについて</h3>
         <button class="btn-sub" id="aboutBtn" type="button" style="width:100%">使い方・プライバシーを見る</button>
-        <p style="opacity:.55;font-size:0.7rem;margin-top:10px">版: 2026-11-08-g（Trystero 0.25.4）・potalk.app/ptt</p>
+        <h3>うまくつながらないとき</h3>
+        <p style="opacity:.8;font-size:0.78rem;margin:6px 0">ぽちっと通話の保存データ（ハンドルネームや設定）を消して、読み込み直します。ぽっと通話の保存データは消えません。ブラウザの履歴は消えません。</p>
+        <button class="btn-sub" id="resetDataBtn" type="button" style="width:100%">保存データを消して、読み込み直す</button>
+        <p style="opacity:.55;font-size:0.7rem;margin-top:10px">版: 2026-11-10-z12q41（Trystero 0.25.4 公開版）・potalk.app/ptt</p>
       </div>
     </div>
   </dialog>
@@ -564,8 +716,9 @@
         <h3>2. このアプリについて読む</h3>
         <p>使い方と、プライバシー（見える情報、保存されるもの）を説明しています。</p>
         <button class="btn-sub" id="welcomeAboutBtn" type="button" style="width:100%;margin-top:6px">このアプリについて</button>
-        <label class="sound-toggle" style="margin-top:16px"><input type="checkbox" id="welcomeAgain" checked> 次回も表示する</label>
-        <button class="btn-sub" id="welcomeClose" type="button" style="width:100%;margin-top:12px;background:#2563eb">はじめる</button>
+        <label class="sound-toggle" style="margin-top:16px;align-items:flex-start;gap:8px"><input type="checkbox" id="termsAgree" style="margin-top:4px"> <span>「このアプリについて」を読み、次のことを了解しました。個人が作ったα版で、動作や安全性の保証はありません。部屋は公開で、知らない人にも声が聞こえます。人数が多いと、つながりにくくなることがあります。<b>自己責任で使います。</b></span></label>
+        <label class="sound-toggle" style="margin-top:12px"><input type="checkbox" id="welcomeAgain" checked> 次回も表示する</label>
+        <button class="btn-sub" id="welcomeClose" type="button" disabled style="width:100%;margin-top:12px;background:#2563eb;opacity:.45">はじめる</button>
       </div>
     </div>
   </dialog>
@@ -589,8 +742,9 @@
         <li>誰かが話している間は話せません（話中）。同時に押すと混線して、どちらも送信が切れます。</li>
         <li>部屋の中のQRボタンを押すと、無線機が裏返って、招待URLのQRコードが出ます。友達がスマホで読み取ると、同じ部屋に入れます。「もどる」で表に戻ります。</li>
         <li>部屋の中では、「話題タグ」をつけられます（30文字まで）。誰でも変えられ、付けた人の名前が添えられます。部屋の一覧にも表示されます。</li>
-        <li>相手が見つからない、声が届かなくなったときは、「再接続」を押すと、部屋に入ったまま接続をやり直します。回線が戻ったときや、画面を離れて（バックグラウンドに回って）戻ったときは、自動でやり直します。iPhone は、画面を消したりほかのアプリに切り替えたりすると通話が止まるので、アプリに戻ってください。</li>
-        <li>部屋の一覧の人数と、実際につながっている人数が、10秒以上合わないときは、画面に知らせが出ます。25秒たっても合わないときは、自動でつなぎ直します。相手が、ブラウザを突然閉じたときは、一覧の表示が、20秒ほど残ります。それでも合わないときは、「再接続」を押してください。</li>
+        <li>相手が見つからない、声が届かなくなったときは、「再接続」を押すと、部屋に入ったまま接続をやり直します。自動でやり直したいときは、設定の「自動で再接続する」をオンにします（標準はオフ）。iPhone は、画面を消したりほかのアプリに切り替えたりすると通話が止まるので、アプリに戻ってください。</li>
+        <li>部屋の一覧の人数と、実際につながっている人数が、10秒以上合わないときは、画面に知らせが出ます。自動で再接続をオンにしていれば、25秒たっても合わないときに、つなぎ直します。相手が、ブラウザを突然閉じたときは、一覧の表示が、20秒ほど残ります。それでも合わないときは、「再接続」を押してください。</li>
+        <li>1人で待っているとき、約10分ごとに、画面を自動で読み込み直します（部屋には、そのまま戻ります）。待っている間に、つながりにくくなるのを防ぐためです。話している間や、誰かとつながっている間は、読み込み直しません。</li>
         <li>1つの部屋は、8人までです。満員の部屋には、入れません。同時に入って超えたときは、あとから入った人が、自動で退出します。</li>
       </ul>
 
@@ -608,14 +762,18 @@
       <ul>
         <li>音声は、通常、端末どうしで直接送られます。直接つながれない場合だけ、CloudflareのTURNサーバーを中継して送られます。通信はWebRTCの標準の暗号化がかかるため、中継サーバーが内容を聞くことはできません。TURNが使えないときは、端末どうしの直接通信に切り替わります。</li>
         <li>このアプリの運営側は、音声を受け取らず、録音も保存もしません（そもそも運営側のサーバーに届きません）。</li>
+        <li><b>おうむ返しの部屋</b>では、ボット（このアプリの運営側が動かしている端末のページ）が、あなたの声を、返事を返すために、そのページのメモリの中だけで、一時的に録音します。返事を返したあとは使わず、ファイルへの保存も、外部への送信も、文字への書き起こしも、しません。ボットは、話した内容を覚えていません。</li>
         <li>VOX（声で自動送信）をオンにすると、声を検出するために端末の中でマイクの音量を監視します。この監視用の音は送信も保存もされず、声を検出したときだけ送信が始まります。同じ理由で、マイクが使える状態の間は、画面のレベル表示のためにも端末の中で音量を測っています。ホーム画面の「マイクテスト」は、入力レベルとメーターの確認のためにマイクを使いますが、音声は送信も保存もされません。VOX自体は、ページを開き直すとオフに戻ります（しきい値の設定だけ、端末に保存されます）。</li>
         <li>マイクは、部屋に入るときに許可を求めます（許可しなかった場合は、話すボタンを押したときにもう一度確認します）。許可後は、部屋に入っている間マイクを確保しますが、ボタンを押していない間は音声を送りません（ブラウザのマイク使用中の表示は出たままになります）。部屋を退出すると、マイクを解放します。</li>
       </ul>
 
       <h4>あなたの端末に保存されるもの</h4>
       <ul>
+        <li><b>通信の記録</b>: 標準では、端末に保存しません（診断画面のために、画面の中だけで一時的に持ち、読み込み直すと消えます）。設定で「通信の記録を、この端末に残す」をオンにしたときだけ、直近の出来事（時刻、相手のハンドルネーム、通信の状態、中継サーバーのアドレスなど）を、最大300行、localStorage（キー名 pochitalk_log_v1）に保存します。外部へは送信しません。オフにすると消えます。記録を残しているあいだは、あなたのハンドルネームの前に 💾 が付き、同じ部屋の人や一覧にも見えます。</li>
         <li><b>ハンドルネーム</b>: ブラウザの localStorage（キー名 pochitalk_ptt_name）に保存されます。次回開いたときに入力済みになります。この端末のブラウザの中だけにあり、運営側には送られません。ブラウザのサイトデータを消すと削除されます。</li>
         <li><b>URLの「?r=…」</b>: 今いる部屋のハッシュ値がアドレスに入ります。ブラウザの履歴に残ることがあります。</li>
+        <li><b>新しい部屋の音</b>: 設定で「新しい部屋ができたら、音で知らせる」をオンにしたときだけ、その旨を localStorage（キー名 pochitalk_notify_room）に保存します。このアプリを開いている間だけ、新しい部屋ができたときに、この端末の中で、音を鳴らします。画面の知らせや、ブラウザの通知は出しません。運営側のサーバーから何かが送られることもありません。</li>
+        <li><b>規約に同意した記録</b>: 初回案内で、利用上の注意に同意したとき、その版の番号（日付）を、localStorage（キー名 pochitalk_terms）に保存します。この端末のブラウザの中だけに残り、外部へは送信しません。規約を大きく変えたときだけ、もう一度、同意をお願いします。</li>
         <li><b>初回案内の表示設定</b>: 初回の案内で「次回も表示する」をオフにしたときだけ、その旨を localStorage（キー名 pochitalk_welcome）に保存します。この端末のブラウザの中だけにあり、運営側には送られません。</li>
         <li><b>話すボタンの位置</b>: 左または右にしたときだけ、その旨を localStorage（キー名 pochitalk_ptt_pos）に保存します。この端末のブラウザの中だけにあり、運営側には送られません。</li>
         <li><b>左手用の設定</b>: ONにしたときだけ、その旨を localStorage（キー名 pochitalk_lefty）に保存します。この端末のブラウザの中だけにあり、運営側には送られません。</li>
@@ -628,6 +786,7 @@
 
       <h4>サーバー側に保存されるもの</h4>
       <ul>
+        <li><b>おうむ返しボット</b>は、動かしている端末のページに、直近60行までの出来事の記録（参加した人のIDの先頭5文字、退出した人のハンドルネーム、エラー、読み込み直しの理由）を表示します。ページの中だけにあり、読み込み直すと消えます。声の内容は、記録に含みません。</li>
         <li>このアプリの運営側には、データベースや保存領域がなく、ユーザーの名前・部屋・音声・通話履歴を保存していません。</li>
         <li>ただし、ページを配信している GitHub Pages には、一般的なアクセス情報（IPアドレスなど）が、同社の方針に沿って記録されることがあります。</li>
       </ul>
@@ -651,8 +810,107 @@
     </div>
   </dialog>
 
+  <script>
+    // 診断用: 通話の接続（RTCPeerConnection）の、作成・状態の変化・TURN のエラーを、短く記録する（画面の診断に出す）
+    (function () {
+      const Orig = window.RTCPeerConnection;
+      if (!Orig) return;
+      window.pcLog = [];
+      window.pcPrevLog = [];
+      // 通信の記録を端末に残すのは、「記録を残すモード」をオンにしたときだけ（標準はオフ。オフのときは、保存済みの記録も消す）
+      try { window.pcLogMode = localStorage.getItem('pochitalk_logmode') === '1'; } catch (_) { window.pcLogMode = false; }
+      try {
+        if (window.pcLogMode) {
+          const old = JSON.parse(localStorage.getItem('pochitalk_log_v1') || 'null');
+          if (old && Array.isArray(old.lines) && Date.now() - (old.at || 0) < 6 * 3600 * 1000) { window.pcPrevLog = old.lines.slice(-80); window.pcPrevAt = old.at; }
+        } else { localStorage.removeItem('pochitalk_log_v1'); }
+      } catch (_) {}
+      let logDirty = false;
+      window.pcSaveLog = function () {
+        if (!logDirty || !window.pcLogMode) return;
+        logDirty = false;
+        try { localStorage.setItem('pochitalk_log_v1', JSON.stringify({ at: Date.now(), lines: window.pcLog.slice(-300) })); } catch (_) {}
+      };
+      setInterval(window.pcSaveLog, 10000);
+      window.pcCount = { created: 0, closed: 0, failed: 0 };
+      window.pcLive = new Set(); // まだ閉じていない接続（退出時に、使った接続を実際に閉じるために使う）
+      window.pcClock = function () { const d = new Date(); return d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2); };
+      function t() { return window.pcClock(); }
+      function add(s) { window.pcLog.push(t() + ' ' + s); if (window.pcLog.length > 300) window.pcLog.shift(); logDirty = true; }
+      window.pcLogAdd = add;
+      function P(cfg, c) {
+        const pc = new Orig(cfg, c);
+        const n = ++window.pcCount.created;
+        const t0 = Date.now();
+        add('#' + n + ' 作成（経路 ' + ((cfg && cfg.iceTransportPolicy) || 'all') + ' / ICEサーバー ' + ((cfg && cfg.iceServers && cfg.iceServers.length) || 0) + '）');
+        window.pcLive.add(pc);
+        const candCount = { host: 0, srflx: 0, relay: 0 }; const relayAddrs = []; // 失敗の原因を探すため、集まった候補の種類を数える（relay が 0 なら、TURN を使えていない）
+        pc.addEventListener('icecandidate', function (e) { if (e && e.candidate && e.candidate.type && candCount[e.candidate.type] !== undefined) { candCount[e.candidate.type]++; if (e.candidate.type === 'relay' && relayAddrs.length < 4) relayAddrs.push((e.candidate.protocol || '?') + ' ' + (e.candidate.address || '?')); } });
+        // 届いた音声トラックを、通話の部品（Trystero）を通さずにアプリへ渡す。Trystero は「相手側のストリーム id」で同じ物と見なすので、
+        // 相手が同じストリームを入れ直したときの新しいトラックを知らせてくれないことがある（ぽっと通話 v0.14.20 と同じ回避）
+        pc.addEventListener('track', function (e) { try { if (window.pochiTrack) window.pochiTrack(pc, e); } catch (_) {} });
+        let seenIce = '', seenConn = '';
+        pc.addEventListener('iceconnectionstatechange', function () { if (pc.iceConnectionState !== seenIce) { seenIce = pc.iceConnectionState; add('#' + n + ' ice:' + seenIce + '（' + Math.round((Date.now() - t0) / 100) / 10 + '秒）'); if (seenIce === 'failed') add('#' + n + ' 失敗の詳細: 候補 host=' + candCount.host + ' srflx=' + candCount.srflx + ' relay=' + candCount.relay + ' / 相手の記述 ' + (pc.remoteDescription ? 'あり' : 'なし') + ' / signaling ' + pc.signalingState + ' / 自分の中継 ' + (relayAddrs.join(', ') || 'なし'));
+          // 失敗した接続の、候補の組み合わせ（ペア）を調べる: 相手の候補が届いていたか、何組を試して、何組に返事があったか
+          try {
+            if (seenIce !== 'failed' && seenIce !== 'connected' && seenIce !== 'completed') throw 0;
+            const pairLabel = seenIce === 'failed' ? '失敗のペア' : '接続できたペア';
+            pc.getStats().then(function (stats) {
+              const rc = { host: 0, srflx: 0, relay: 0, prflx: 0 }; let pairs = 0, tried = 0, answered = 0, sent = 0; const rAddrs = [];
+              stats.forEach(function (r) {
+                if (r.type === 'remote-candidate' && rc[r.candidateType] !== undefined) { rc[r.candidateType]++; if (r.candidateType === 'relay' && rAddrs.length < 4) rAddrs.push((r.protocol || '?') + ' ' + (r.address || r.ip || '?')); }
+                if (r.type === 'candidate-pair') { pairs++; if ((r.requestsSent || 0) > 0) tried++; if ((r.responsesReceived || 0) > 0) answered++; sent += r.requestsSent || 0; }
+              });
+              add('#' + n + ' ' + pairLabel + ': 相手の候補 relay=' + rc.relay + ' srflx=' + rc.srflx + ' host=' + rc.host + ' / ペア ' + pairs + '（試した ' + tried + '・返事あり ' + answered + '・送信 ' + sent + '）' + (rAddrs.length ? ' / 相手の中継 ' + rAddrs.join(', ') : ''));
+            }).catch(function () {});
+          } catch (_) {}
+        } });
+        pc.addEventListener('connectionstatechange', function () {
+          if (pc.connectionState !== seenConn) { seenConn = pc.connectionState; add('#' + n + ' conn:' + seenConn + '（' + Math.round((Date.now() - t0) / 100) / 10 + '秒）'); }
+          if (pc.connectionState === 'failed') window.pcCount.failed++;
+        });
+        pc.addEventListener('icecandidateerror', function (e) { if (e && e.errorCode >= 300) add('#' + n + ' ICEエラー ' + e.errorCode + ' ' + String(e.errorText || '').slice(0, 40) + ' ' + String(e.url || '').slice(0, 40)); });
+        const oc = pc.close;
+        pc.close = function () { if (window.pcLive.delete(pc)) { window.pcCount.closed++; add('#' + n + ' close'); } return oc.apply(pc, arguments); };
+        return pc;
+      }
+      document.addEventListener('visibilitychange', function () { add('画面: ' + (document.hidden ? '隠れた（バックグラウンド）' : '戻った')); if (document.hidden) window.pcSaveLog(); });
+      window.addEventListener('pagehide', function (e) { add('画面: ページを離れる（' + (e.persisted ? '一時停止' : '終了') + '）'); window.pcSaveLog(); });
+      window.addEventListener('pageshow', function (e) { add('画面: ページが表示された（' + (e.persisted ? '一時停止から復帰' : '読み込み') + '）'); });
+      document.addEventListener('freeze', function () { add('画面: 凍結された'); window.pcSaveLog(); });
+      document.addEventListener('resume', function () { add('画面: 凍結から戻った'); });
+      window.addEventListener('online', function () { add('回線: つながった'); });
+      window.addEventListener('offline', function () { add('回線: 切れた'); });
+      add('ページを読み込んだ');
+      P.prototype = Orig.prototype;
+      Object.setPrototypeOf(P, Orig);
+      window.RTCPeerConnection = P;
+    })();
+  </script>
   <script type="module">
-    import { joinRoom } from '../vendor/trystero-0.25.4.mjs';
+    import { joinRoom, selfId, getRelaySockets } from '../vendor/trystero-0.25.4.mjs';
+    window.__trysteroSockets = getRelaySockets;
+    // 相手を探す通信（Nostr のリレー）が、こちらの書き込みを、断っていないかを数える（リレーは、短い間に、たくさん書くと、断ることがある）
+    const relayMsgs = new Map(); const hookedSockets = new WeakSet();
+    function hookRelaySockets() {
+      try {
+        const socks = getRelaySockets();
+        Object.keys(socks || {}).forEach(function (u) {
+          const w = socks[u]; if (!w || hookedSockets.has(w)) return;
+          hookedSockets.add(w);
+          const host = String(u).split('://').pop().split('/')[0];
+          const st = relayMsgs.get(host) || { ok: 0, no: 0, notice: 0, last: '' }; relayMsgs.set(host, st);
+          w.addEventListener('message', function (ev) {
+            let m; try { m = JSON.parse(ev.data); } catch (_) { return; }
+            if (!Array.isArray(m)) return;
+            if (m[0] === 'OK') { if (m[2]) st.ok++; else { st.no++; st.last = String(m[3] || '').slice(0, 60); } }
+            else if (m[0] === 'NOTICE' || m[0] === 'CLOSED') { st.notice++; st.last = String(m[m.length - 1] || '').slice(0, 60); }
+          });
+        });
+      } catch (_) {}
+    }
+    setInterval(hookRelaySockets, 2000);
+
 
     const pttBtn = document.getElementById('pttBtn');
     const ledTx = document.getElementById('ledTx');
@@ -671,11 +929,12 @@
     const rxAnalysers = new Map(); // peerId -> AnalyserNode
     let sendJoinAge = null, roomEnterTime = 0;
     let sendTag = null, roomMeta = { tag: '', by: '', at: 0 }; // 話題タグ（誰でも上書き・新しいものが勝つ）
+    let pendingRoomMeta = null; // 読み込み直しの前に付いていた話題タグ（入り直したあとに、戻す）
     let txAnalyser = null;
     let sendStream = null, micGain = null, micSrc = null, micTest = false, inputDb = 0;
     let micSendGain = null, morseOsc = null, morseGain = null; // モールス送信用
     let faxOsc = null, faxGain = null, faxSideGain = null; // FAX送信用
-    let audioCtx = null, userMediaStream = null, localAudioTrack = null;
+    let audioCtx = null, userMediaStream = null, localAudioTrack = null, noMic = false; // noMic: マイクの機器がない端末（モールス・FAXの音だけ送れる）
     let room = null, sendPttState = null, sendNickname = null, sendFaxPage = null;
     let isTransmitting = false, currentTalkerId = null;
     const peerMap = new Map();
@@ -706,7 +965,9 @@
       } catch (_) {}
     }
     // 中継固定にすると、接続の準備が、相手の応答に間に合いにくく、つながりにくくなる（通話の部品の作り上）。通常は、直接を優先し、つながらないときだけ TURN 中継にする。固定したいときは ?relay=1 を付けて開く
-    const FORCE_RELAY = new URLSearchParams(location.search).has('relay');
+    let relayStored = true; // 既定は中継のみ。設定でオフにした端末だけ、直接を優先
+    try { relayStored = localStorage.getItem('pochitalk_relay') !== '0'; } catch (_) {}
+    const FORCE_RELAY = new URLSearchParams(location.search).has('relay') || relayStored;
     function getRtcConfig() {
       // Trystero 0.25.4 は、rtcConfig を RTCPeerConnection の設定として、そのまま使う（0.20.0 のような config の入れ子は不要）
       return iceFetchedAt > 0
@@ -734,14 +995,21 @@
       try {
         const res = await Promise.all(NOSTR_RELAY_URLS.map(function (u) { return probeRelayMain(u).then(function (ok) { return { u: u, ok: ok }; }); }));
         const alive = res.filter(function (r) { return r.ok; }).map(function (r) { return r.u; }).sort(function () { return Math.random() - 0.5; });
-        if (alive.length >= 1) { aliveRelays = alive.slice(0, 4); ROOM_RELAYS = alive.slice(0, 3); }
-        if (pres.started) aliveRelays.forEach(presenceOpen);
+        if (alive.length >= 1) { aliveRelays = alive; ROOM_RELAYS = alive; } // 動いているリレーは全部使う。端末ごとにばらばらに選ぶと、選んだ先が重ならない組み合わせができ、つながりにくくなる
+        if (pres.started) {
+          // 調べる前に開いてしまった、選ばれなかったリレーとの接続は閉じる（負荷と通信を減らす）
+          pres.socks.forEach(function (ws, url) { if (aliveRelays.indexOf(url) < 0) { pres.socks.delete(url); try { ws.close(); } catch (_) {} } });
+          aliveRelays.forEach(presenceOpen);
+        }
       } catch (_) {}
     })();
 
     const urlParams = new URLSearchParams(window.location.search);
-    function isKey(k) { return /^[0-9a-f]{8}$/.test(k); }
+    function isKey(k) { return /^[0-9a-z]{8}$/.test(k); } // 部屋番号は、英小文字と数字の8文字（16進だけの部屋も、そのまま使える）
     function fmt(k) { return k.slice(0, 4).toUpperCase() + '·' + k.slice(4).toUpperCase(); }
+    // 英数字だけの文字は、等幅フォント（.mono0）で出す
+    function monoSpan(text) { const sp = document.createElement('span'); sp.className = 'mono0'; sp.textContent = text; return sp; }
+    function setHash(el, text) { el.textContent = ''; el.appendChild(monoSpan(text)); }
     function toHex(bytes) { return Array.from(bytes).map(function (b) { return (b < 16 ? '0' : '') + b.toString(16); }).join(''); }
     async function hashOf(name) {
       const norm = name.trim().toLowerCase().normalize('NFKC');
@@ -755,6 +1023,8 @@
     if (!savedName) { try { savedName = (JSON.parse(localStorage.getItem('pot-call-profile') || '{}').name || '').slice(0, 12) || null; } catch (_) {} }
     let myNickname = savedName || ('無線機_' + Math.floor(Math.random() * 899 + 100));
     nameInput.value = myNickname;
+    // 通信の記録を残している人は、ハンドルネームの前に 💾 を付けて、同じ部屋の人にも分かるようにする
+    function shownName() { return (window.pcLogMode ? '💾' : '') + myNickname; }
 
     // 効果音の音量（0〜150%）。効果音はすべてこのゲインを通す。マイク（送信）には影響しない
     let sfxVol = 1, sfxGainNode = null, speakerMuted = false;
@@ -772,6 +1042,11 @@
       if (audioCtx.state !== 'running') audioCtx.resume().catch(function () {}); // iOS は 'interrupted' になることもある
       return audioCtx;
     }
+
+    // 操作のたびに、止まっている音声を再開する（受信のレベルメーターやモールスの判定は、音声が止まっていると、まったく動かない）
+    ['pointerdown', 'touchend', 'keydown', 'click'].forEach(function (ev) {
+      document.addEventListener(ev, function () { unlockAudio(); }, true);
+    });
 
     function playPttStartTone() {
       if (!soundEffectCheck.checked) return;
@@ -899,17 +1174,41 @@
       } catch (_) {}
     }
 
+    // 新しい部屋ができたときの音: 低い音から駆け上がる「ポロロン♪」（入室の「ピコーン」とは違う音にする）
+    function playNewRoomTone() {
+      if (!soundEffectCheck.checked) return;
+      try {
+        const ctx = getAudioContext();
+        const t0 = ctx.currentTime;
+        function note(freq, start, dur, vol) {
+          const osc = ctx.createOscillator(), g = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, t0 + start);
+          g.gain.setValueAtTime(0.001, t0 + start);
+          g.gain.exponentialRampToValueAtTime(vol, t0 + start + 0.012);
+          g.gain.exponentialRampToValueAtTime(0.001, t0 + start + dur);
+          osc.connect(g); g.connect(sfxOut(ctx));
+          osc.start(t0 + start); osc.stop(t0 + start + dur + 0.02);
+        }
+        note(659.3, 0.00, 0.18, 0.16);    // ミ
+        note(784.0, 0.09, 0.18, 0.16);    // ソ
+        note(1046.5, 0.18, 0.20, 0.16);   // ド
+        note(1318.5, 0.27, 0.22, 0.16);   // ミ
+        note(2093.0, 0.36, 0.55, 0.12);   // 高いド（余韻）
+      } catch (_) {}
+    }
+
     // マイク → 入力レベル(ゲイン) → [レベル計 / 送信用ストリーム]
     function buildMicGraph(raw) {
       const ctx = getAudioContext();
-      micSrc = ctx.createMediaStreamSource(raw);
+      micSrc = raw ? ctx.createMediaStreamSource(raw) : null;
       micGain = ctx.createGain();
       micGain.gain.value = Math.pow(10, inputDb / 20);
       txAnalyser = ctx.createAnalyser();
       txAnalyser.fftSize = 1024;
       txAnalyser.smoothingTimeConstant = 0.6;
       const dest = ctx.createMediaStreamDestination();
-      micSrc.connect(micGain);
+      if (micSrc) micSrc.connect(micGain);
       micGain.connect(txAnalyser);
       micSendGain = ctx.createGain();
       micGain.connect(micSendGain);
@@ -948,20 +1247,26 @@
     function releaseMic() {
       abortMorse();
       abortFax();
-      try { if (room && sendStream) room.removeStream(sendStream); } catch (_) {}
+      unsendStreams();
       try { if (micSrc) micSrc.disconnect(); if (micGain) micGain.disconnect(); } catch (_) {}
       [userMediaStream, sendStream].forEach(function (st) {
         if (st) st.getTracks().forEach(function (t) { t.stop(); });
       });
       try { if (morseOsc) { morseOsc.stop(); morseOsc.disconnect(); } if (morseGain) morseGain.disconnect(); if (micSendGain) micSendGain.disconnect(); if (faxOsc) { faxOsc.stop(); faxOsc.disconnect(); } if (faxGain) faxGain.disconnect(); if (faxSideGain) faxSideGain.disconnect(); } catch (_) {}
-      userMediaStream = null; sendStream = null; localAudioTrack = null;
+      userMediaStream = null; sendStream = null; localAudioTrack = null; noMic = false;
       micSrc = null; micGain = null; txAnalyser = null;
       micSendGain = null; morseOsc = null; morseGain = null;
     }
 
     let micPending = null;
     async function initMicrophone(quiet) {
-      if (userMediaStream && localAudioTrack) return true;
+      if ((userMediaStream || noMic) && localAudioTrack) {
+        // 長く放置したあと（パソコンのスリープなど）、マイクが止まっていることがある。止まっていたら、取り直す（取り直さないと、押しても、声が出ない）
+        const micDead = !noMic && userMediaStream && userMediaStream.getAudioTracks().length > 0 && userMediaStream.getAudioTracks().every(function (t) { return t.readyState === 'ended' || t.muted; });
+        if (!micDead) return true;
+        try { window.pcLogAdd('マイクが止まっていたので、取り直した'); } catch (_) {}
+        try { releaseMic(); } catch (_) {}
+      }
       if (micPending) return micPending;
       micPending = (async function () {
         try {
@@ -972,9 +1277,19 @@
           if (!room && !micTest) { st.getTracks().forEach(function (t) { t.stop(); }); return false; } // 取得中に退出した
           userMediaStream = st;
           buildMicGraph(st);
-          if (room) room.addStream(sendStream);
+          sendStreamTo(); healSoon();
           return true;
         } catch (err) {
+          // マイクの機器そのものがない端末（デスクトップPCなど）。声は送れないが、モールスとFAXの音は送れるので、マイクなしで送信の準備をする
+          if (err && (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') && (room || micTest)) {
+            try {
+              noMic = true;
+              buildMicGraph(null);
+              sendStreamTo();
+              flashSub('マイクが見つかりません。声は送れませんが、モールスは送れます');
+              return true;
+            } catch (_) { noMic = false; }
+          }
           if (!quiet) alert('マイクの許可が必要です（HTTPS接続が必要）: ' + err.message);
           return false;
         }
@@ -997,15 +1312,185 @@
     }
     function setHandler(r, name, fn) { r[name] = fn; }
 
+    // 相手の音声を、再生要素と解析（レベル計・モールス・FAX）に載せる。onPeerStream と、接続の track イベント（pochiTrack）の両方から呼ぶ。
+    // Trystero は同じ相手から「古いストリーム」を知らせてくることがあるので、終わったトラックしか無い物は捨て、鳴っている物を黙った物で置き換えない
+    const rxSources = new Map(); // peerId -> [MediaStreamAudioSourceNode] 解析に使っている入力（載せ替えるときに外す）
+    function attachRemoteAudio(peerId, stream, fromTrack) {
+      if (!room || !peerMap.has(peerId) || !stream) return;
+      const tracks = stream.getAudioTracks().filter(function (t) { return t.readyState === 'live'; });
+      if (!tracks.length) return;
+      let el = document.getElementById('audio-' + peerId);
+      if (el && el.srcObject) {
+        const cur = el.srcObject.getAudioTracks();
+        if (cur.some(function (t) { return tracks.some(function (u) { return u.id === t.id; }); })) return; // 同じ物が、もう載っている
+        if (!fromTrack && cur.some(function (t) { return t.readyState === 'live' && !t.muted; }) && tracks.every(function (t) { return t.muted; })) return;
+      }
+      if (!el) {
+        el = document.createElement('audio');
+        el.id = 'audio-' + peerId;
+        el.autoplay = true;
+        el.playsInline = true;
+        el.muted = speakerMuted;
+        document.body.appendChild(el);
+      }
+      el.srcObject = stream;
+      try {
+        (rxSources.get(peerId) || []).forEach(function (s) { try { s.disconnect(); } catch (_) {} });
+        const ctx = getAudioContext();
+        const an = ctx.createAnalyser();
+        an.fftSize = 256;
+        an.smoothingTimeConstant = 0.6;
+        const s1 = ctx.createMediaStreamSource(stream); s1.connect(an);
+        rxAnalysers.set(peerId, an);
+        const dan = ctx.createAnalyser();
+        dan.fftSize = 1024;
+        dan.smoothingTimeConstant = 0.05;
+        const s2 = ctx.createMediaStreamSource(stream); s2.connect(dan);
+        rxSources.set(peerId, [s1, s2]);
+        rxDecoders.set(peerId, { an: dan, freq: new Uint8Array(dan.frequencyBinCount), tone: false, toneAt: 0, offAt: 0, pat: '', text: '', letterDone: false, wordDone: false });
+      } catch (_) {}
+      el.play().catch(function () { showUnlockHint(); }); // iPhone は操作の文脈の外では再生を弾くことがある。次のタップで鳴らし直す
+    }
+    window.pochiTrack = function (pc, e) {
+      if (!room || !e || !e.track || e.track.kind !== 'audio') return;
+      let pcs; try { pcs = room.getPeers(); } catch (_) { return; }
+      const id = Object.keys(pcs).find(function (k) { return pcs[k] === pc; });
+      if (id) attachRemoteAudio(id, new MediaStream([e.track]), true);
+    };
+    // 相手が参加扱いになる前に届いていたトラックを拾う（中身が流れている物だけ）
+    function pickupReceivedTracks(peerId) {
+      let pc; try { pc = room && room.getPeers()[peerId]; } catch (_) {}
+      if (!pc) return;
+      pc.getReceivers().forEach(function (r) {
+        const t = r.track;
+        if (t && t.kind === 'audio' && t.readyState === 'live' && !t.muted) attachRemoteAudio(peerId, new MediaStream([t]), true);
+      });
+    }
+
+    // 再生が弾かれたときの受け皿（iPhone・低電力モードなど）。出ている間は、画面のどこをタップしても鳴らし直す
+    let audioLocked = false;
+    function showUnlockHint() {
+      if (audioLocked) return;
+      audioLocked = true;
+      toast('音が止まっています。画面をどこかタップすると鳴ります');
+      flashSub('音が止まっています。画面をタップしてください');
+    }
+    function unlockAudio() {
+      if (audioCtx && audioCtx.state !== 'running') audioCtx.resume().catch(function () {});
+      if (!audioLocked) return;
+      audioLocked = false;
+      document.querySelectorAll('audio[id^="audio-"]').forEach(function (a) { a.play().catch(function () { audioLocked = true; }); });
+    }
+
+    // 送信ストリームは、相手ごとに新しい MediaStream に包んで渡す。Trystero は送信側の MediaStream オブジェクトごとに固定の鍵を振り、
+    // 受信側はその鍵で古いストリームを返すため、同じ物を外して入れ直しても相手に新しいトラックが届かない
+    const sentStreams = new Map(); // peerId -> 相手に渡した MediaStream
+    function sendStreamTo(peerId) {
+      if (!room || !sendStream) return;
+      const ids = peerId ? [peerId] : Array.from(peerMap.keys());
+      ids.forEach(function (id) {
+        if (sentStreams.has(id)) return;
+        const ms = new MediaStream(sendStream.getTracks());
+        sentStreams.set(id, ms);
+        try { room.addStream(ms, { target: id }); } catch (_) { sentStreams.delete(id); }
+      });
+    }
+
+    // ---------- 「音が届いていない相手に、送り直しを頼む」仕組み（ぽっと通話 qramo さん、MIT License の方式を移植）----------
+    // 受信トラックは、パケットが届くまで muted のまま。トラックも再生部品もあるのに、中身が流れてこない（iPhone の Safari で、入った直後に起きる）。
+    // まず黙って「送り直して」と頼み（相手が入り直したのと同じ効果）、それでも駄目なら、全員が止まったままの状態が続いたときだけ、読み込み直す。
+    const AUDIO_WAIT_MS = 2000, AUDIO_MUTE_MS = 2500, AUDIO_MUTE_MID_MS = 5000, AUDIO_FRESH_MS = 15000;
+    const NUDGE_EVERY_MS = 6000, NUDGE_MAX = 3, NUDGE_ACCEPT_MS = 4000, RECOVER_AFTER_MS = 25000;
+    let sendNudge = null, sendWebcaps = null;
+    const webPeers = new Set();      // この仕組みを持つ相手（ウェブ版）。アプリ版は、無音のとき何も送らないので、見張りの対象にしない
+    const nudges = new Map(), nudgeSeen = new Map(), peerSince = new Map();
+    let stuckPeers = new Set(), brokenSince = 0;
+    window.nudgeSent = 0; window.nudgeServed = 0;
+    function resendStreamTo(id) { // 一度外して、新しい MediaStream に包んで入れ直す
+      if (!room || !sendStream) return;
+      try {
+        const old = sentStreams.get(id);
+        if (old) room.removeStream(old, { target: id });
+        const ms = new MediaStream(sendStream.getTracks());
+        sentStreams.set(id, ms);
+        room.addStream(ms, { target: id });
+      } catch (_) {}
+    }
+    function audioFlowing(id) { // 「音が届いている」: 再生部品があり、受信トラックが生きていて、中身が流れている（muted でない）
+      const el = document.getElementById('audio-' + id);
+      if (!el || !el.srcObject) return false;
+      const now = Date.now();
+      const live = el.srcObject.getAudioTracks().some(function (t) { return t.readyState === 'live' && !t.muted; });
+      if (live) { el.mutedSince = 0; return true; }
+      if (!el.mutedSince) el.mutedSince = now;
+      const fresh = now - (peerSince.get(id) || 0) < AUDIO_FRESH_MS;
+      return now - el.mutedSince < (fresh ? AUDIO_MUTE_MS : AUDIO_MUTE_MID_MS);
+    }
+    function checkAudioArrival() {
+      if (!room || !currentKey) { stuckPeers = new Set(); brokenSince = 0; return; }
+      const now = Date.now(), stuck = [];
+      let expect = 0;
+      peerMap.forEach(function (info, id) {
+        if (!webPeers.has(id)) return;
+        expect++;
+        if (audioFlowing(id)) { nudges.delete(id); return; }
+        if (now - (peerSince.get(id) || now) < AUDIO_WAIT_MS) return; // 相手の準備中かもしれない
+        const st = nudges.get(id) || { n: 0, at: 0 };
+        if (st.n >= NUDGE_MAX) { stuck.push(id); return; }            // 頼み尽くした
+        if (now - st.at < NUDGE_EVERY_MS) return;
+        try { if (sendNudge) { sendNudge(1, id); window.nudgeSent++; if (window.pcLog) window.pcLog.push(pcClock() + ' 送り直しを頼んだ ' + ((info && info.name) || id.slice(0, 5)) + '（' + (st.n + 1) + '回目）'); } } catch (_) {}
+        nudges.set(id, { n: st.n + 1, at: now });
+      });
+      stuckPeers = new Set(stuck);
+      if (!(expect > 0 && stuck.length === expect)) { brokenSince = 0; return; } // 全員が止まったままのときだけ、自動で読み込み直す
+      if (!brokenSince) { brokenSince = now; return; }
+      if (now - brokenSince < RECOVER_AFTER_MS || reconnecting || document.hidden) return;
+      brokenSince = now;
+      if (window.pcLog) window.pcLog.push(pcClock() + ' 全員の音が止まったままなので、つなぎ直します');
+      reconnectRoom(true, true, '全員の音が25秒止まったまま');
+    }
+    setInterval(checkAudioArrival, 1000);
+    window.__pochiNudge = function (id) { try { if (sendNudge) sendNudge(1, id); } catch (_) {} }; // 診断・試験用
+    // iPhone は、他のアプリに切り替えると、AudioContext を中断し、再生部品も止める。戻ったとき・通話中は、定期的に起こし直す
+    function replayAudios() { document.querySelectorAll('audio[id^="audio-"]').forEach(function (a) { if (a.paused) a.play().catch(function () { showUnlockHint(); }); }); }
+    function wakeAudio() {
+      if (audioCtx && audioCtx.state !== 'running') audioCtx.resume().then(replayAudios).catch(function () {});
+      else replayAudios();
+    }
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) wakeAudio(); });
+    setInterval(function () { if (room && !document.hidden) wakeAudio(); }, 5000);
+    function unsendStreams() {
+      if (room) sentStreams.forEach(function (ms, id) { try { room.removeStream(ms, { target: id }); } catch (_) {} });
+      sentStreams.clear();
+    }
+
+    // 部屋を出るときは、相手との接続（RTCPeerConnection）を実際に閉じる。Trystero 0.25 は同じアプリの相手との接続を部屋をまたいで
+    // 持ち続け、leave() では閉じない。しかも退出時の removeTrack で作られる再交渉の offer は送り先が無く、接続が固まったまま残る。
+    // 同じ相手と同じ部屋で入り直すと、その固まった接続が使い回されて、音声だけ通らなくなる
+    // 読み込み直す前に、先に作ってあった接続（相手が決まっていないもの）も含めて、全部閉じる。閉じないと、TURN 側に、使われない確保が残り、
+    // 何度も読み込み直すうちに、確保が溜まって、新しい接続が通らなくなっているのでは、という仮説（2026-11-10）
+    function closeAllConnections() { try { Array.from(window.pcLive || []).forEach(function (pc) { try { pc.close(); } catch (_) {} }); } catch (_) {} }
+    window.addEventListener('pagehide', closeAllConnections);
+    function closeOldConnections(oldRoom) {
+      const stale = window.pcLive ? Array.from(window.pcLive).filter(function (pc) { try { return !!pc.remoteDescription; } catch (_) { return false; } }) : [];
+      const done = function () { stale.forEach(function (pc) { try { pc.close(); } catch (_) {} }); };
+      return Promise.resolve(oldRoom ? oldRoom.leave() : null).catch(function () {}).then(done);
+    }
+
     function connectToChannel(key) {
       roomEnterTime = Date.now();
+      try { const stE = roomStats().get(key); window.pcLogAdd('入室した（一覧にいる人: ' + (stE ? stE.count : 0) + ' 人）'); } catch (_) {}
       roomMeta = { tag: '', by: '', at: 0 };
+      if (pendingRoomMeta && pendingRoomMeta.key === key) { roomMeta = { tag: capTag(pendingRoomMeta.tag), by: String(pendingRoomMeta.by || '').slice(0, 12), at: pendingRoomMeta.at }; } // 読み込み直しで、話題タグが消えないようにする
+      pendingRoomMeta = null;
       closeTagForm(); // 部屋を移ったら、開いていた編集欄は閉じる
       renderTagRow();
       const roomId = 'h-' + key;
       if (room) {
-        room.leave();
+        closeOldConnections(room);
         peerMap.clear();
+        sentStreams.clear();
+        webPeers.clear(); nudges.clear(); nudgeSeen.clear(); peerSince.clear();
         rxAnalysers.clear();
         rxDecoders.clear();
         currentTalkerId = null;
@@ -1039,6 +1524,22 @@
       const faxAction = actionOf(room, 'faxPage');
       sendFaxPage = faxAction[0];
       faxAction[1](function (data, peerId) { onFaxPage(data, peerId); });
+
+      // 音が届いていない相手から「送り直して」と頼まれたとき（連打には応じない）。ウェブ版どうしの目印も交換する
+      const nudgeA = actionOf(room, 'nudge');
+      sendNudge = nudgeA[0];
+      nudgeA[1](function (data, peerId) {
+        if (!peerId || !peerMap.has(peerId)) return;
+        const now = Date.now();
+        if (now - (nudgeSeen.get(peerId) || 0) < NUDGE_ACCEPT_MS) return;
+        nudgeSeen.set(peerId, now);
+        resendStreamTo(peerId);
+        window.nudgeServed++;
+        if (window.pcLog) window.pcLog.push(pcClock() + ' 送り直しの頼みに応じた ' + peerId.slice(0, 5));
+      });
+      const capA = actionOf(room, 'webcaps');
+      sendWebcaps = capA[0];
+      capA[1](function (data, peerId) { if (peerId) webPeers.add(peerId); });
 
       const joinAction = actionOf(room, 'joinAge');
       sendJoinAge = joinAction[0];
@@ -1092,10 +1593,13 @@
       });
 
       setHandler(room, 'onPeerJoin', function (peerId) {
+        if (window.pcLog) { window.pcLog.push(pcClock() + ' 相手が現れた ' + peerId.slice(0, 5) + '（入室から ' + (Math.round((Date.now() - roomEnterTime) / 100) / 10) + ' 秒）'); }
         peerMap.set(peerId, { name: '接続中...', isTalking: false, joinJudged: false });
+        peerSince.set(peerId, Date.now());
+        try { if (sendWebcaps) sendWebcaps(1, peerId); } catch (_) {}
         renderPeers();
         setTimeout(checkRoomFull, 3000);
-        sendNickname(myNickname, peerId);
+        sendNickname(shownName(), peerId);
         if (sendJoinAge) sendJoinAge({ age: Date.now() - roomEnterTime }, peerId);
         if (sendTag && roomMeta.at > 0) sendTag(roomMeta, peerId); // 後から来た人にも今のタグを伝える
         // 相手が経過時間を送ってこない場合（別の実装など）: 自分が20秒以上いるなら、相手は新規とみなす
@@ -1104,12 +1608,18 @@
           const p = peerMap.get(peerId);
           if (p && !p.joinJudged) { p.joinJudged = true; if (ageAtJoin > 20000) playEnterTone(); }
         }, 2500);
-        if (sendStream) room.addStream(sendStream, { target: peerId });
+        // 両方の端末が同時に音声を足すと、取り決め（オファー）がぶつかって、片方向になる。IDの小さい側が先に足し、大きい側は、少し待ってから足す
+        setTimeout(function () { if (room && peerMap.has(peerId)) { sendStreamTo(peerId); healSoon(); } }, selfId < peerId ? 0 : 2500);
+        pickupReceivedTracks(peerId);
       });
 
       setHandler(room, 'onPeerLeave', function (peerId) {
+        if (window.pcLog) { const lm = peerMap.get(peerId); window.pcLog.push(pcClock() + ' 相手が去った ' + ((lm && lm.name) || peerId.slice(0, 5))); }
         peerMap.delete(peerId);
+        sentStreams.delete(peerId);
+        webPeers.delete(peerId); nudges.delete(peerId); nudgeSeen.delete(peerId); peerSince.delete(peerId);
         rxAnalysers.delete(peerId);
+        rxSources.delete(peerId);
         rxDecoders.delete(peerId);
         faxDecoders.delete(peerId);
         cancelFaxReveal(peerId);
@@ -1119,43 +1629,109 @@
         renderPeers();
       });
 
-      setHandler(room, 'onPeerStream', function (stream, peerId) {
-        let el = document.getElementById('audio-' + peerId);
-        if (!el) {
-          el = document.createElement('audio');
-          el.id = 'audio-' + peerId;
-          el.autoplay = true;
-          el.playsInline = true;
-          el.muted = speakerMuted;
-          document.body.appendChild(el);
-        }
-        el.srcObject = stream;
-        try {
-          const ctx = getAudioContext();
-          const an = ctx.createAnalyser();
-          an.fftSize = 256;
-          an.smoothingTimeConstant = 0.6;
-          ctx.createMediaStreamSource(stream).connect(an);
-          rxAnalysers.set(peerId, an);
-          const dan = ctx.createAnalyser();
-          dan.fftSize = 1024;
-          dan.smoothingTimeConstant = 0.05;
-          ctx.createMediaStreamSource(stream).connect(dan);
-          rxDecoders.set(peerId, { an: dan, freq: new Uint8Array(dan.frequencyBinCount), tone: false, toneAt: 0, offAt: 0, pat: '', text: '', letterDone: false, wordDone: false });
-        } catch (_) {}
-        el.play().catch(function () {});
-      });
-
-      if (sendStream) room.addStream(sendStream);
+      setHandler(room, 'onPeerStream', function (stream, peerId) { attachRemoteAudio(peerId, stream, false); });
     }
 
+    const peerCountEl = document.getElementById('peerCount');
+    // 音声が通る相手の数。つながっていても、音声の取り決めが外れている相手（向き sendrecv→なし）は、数えない
+    function audioStuck(pc) {
+      try {
+        return pc.connectionState !== 'connected' || pc.getTransceivers().some(function (t) {
+          return t.sender && t.sender.track && (t.direction === 'sendrecv' || t.direction === 'sendonly') && t.currentDirection === null;
+        });
+      } catch (_) { return false; }
+    }
+    function goodLinkCount() {
+      let pcs = {}; try { pcs = room ? room.getPeers() : {}; } catch (_) { return peerMap.size; }
+      let n = 0; Object.keys(pcs).forEach(function (id) { if (!audioStuck(pcs[id])) n++; });
+      return n;
+    }
+    // つながりの良し悪しの順位。各端末が「自分がつながっている人数(cn)」を在室通知で共有している。少ない順に並べ、先頭が「入り直すべき端末」
+    function linkRanking() {
+      if (!currentKey) return null;
+      const rows = [{ name: String(shownName()).slice(0, 12), cn: goodLinkCount(), ag: Math.floor((Date.now() - roomEnterTime) / 1000), me: true, key: pres.pub || 'zz' }];
+      lobbyEntries.forEach(function (v, k) { if (v.ch === currentKey) rows.push({ name: v.name, cn: v.cn, ag: v.ag, me: false, key: k }); });
+      const total = rows.length;
+      const known = rows.filter(function (r) { return r.cn >= 0; });
+      known.sort(function (a, b) { return a.cn - b.cn || (a.key < b.key ? -1 : 1); });
+      // 入室して45秒たっていない端末は、まだ接続の最中なので、「入り直し」の対象にしない
+      const mature = known.filter(function (r) { return r.ag >= 45; });
+      const matureCount = rows.filter(function (r) { return r.ag >= 45; }).length; // 入室直後の端末は、まだつながっていなくて当然なので、数に入れない
+      const weakest = (known.length >= 2 && mature.length && mature[0].cn < Math.max(0, matureCount - 1)) ? mature[0] : null; // 全員とつながっている端末が最下位なら、入り直しは不要
+      return { rows: known, unknown: rows.length - known.length, total: total, weakest: weakest };
+    }
+    function updatePeerCount() {
+      if (!currentKey) { peerCountEl.textContent = ''; return; }
+      // 在室 = 一覧（Nostr）で見えている人 と 実際につながっている人 を、名前でまとめて数える（どちらかにしか見えない人も、数に入れる）
+      const st = roomStats().get(currentKey);
+      const connected = peerMap.size + 1;
+      const all = new Set();
+      all.add(String(shownName()).slice(0, 12));
+      peerMap.forEach(function (info, id) { all.add(String(info.name || id.slice(0, 5)).slice(0, 12)); });
+      if (st) st.names.forEach(function (n) { all.add(String(n).replace('(自分)', '').slice(0, 12)); });
+      const present = Math.max(all.size, st ? st.count : 0, connected);
+      peerCountEl.textContent = '接続 ' + connected + ' / 在室 ' + present;
+      const goodAudio = goodLinkCount() + 1;
+      if (goodAudio < connected) peerCountEl.textContent += '（音声OK ' + goodAudio + '）';
+      peerCountEl.style.color = connected >= present ? '#4ade80' : '#fbbf24';
+      renderMissing();
+    }
+    // 一覧（在室通知）には出ているのに、まだつながっていない人を、赤いチップで出す（名前の数で突き合わせる）
+    function renderMissing() {
+      if (!peersList) return;
+      peersList.querySelectorAll('.peer-tag.miss').forEach(function (e) { e.remove(); });
+      if (!currentKey) return;
+      const st = roomStats().get(currentKey);
+      if (!st) return;
+      const have = new Map();
+      const add = function (n) { const k = String(n || '').slice(0, 12); have.set(k, (have.get(k) || 0) + 1); };
+      add(shownName()); peerMap.forEach(function (info) { add(info.name); });
+      const note = peersList.querySelector('.peers-empty');
+      st.names.forEach(function (n) {
+        if (String(n).indexOf('(自分)') >= 0) return;
+        const k = String(n).slice(0, 12);
+        if ((have.get(k) || 0) > 0) { have.set(k, have.get(k) - 1); return; }
+        const sp = document.createElement('span');
+        sp.className = 'peer-tag miss';
+        sp.title = '一覧にはいますが、まだつながっていません';
+        sp.textContent = k;
+        if (note) peersList.insertBefore(sp, note); else peersList.appendChild(sp);
+      });
+    }
+
+    // 入室して45秒たっても、だれともつながらないとき、保存データを消して入り直すよう案内する（Safariで、サイトの状態が悪くなることがあるため）
+    let zeroSince = 0;
+    function updateZeroHint() {
+      let box = document.getElementById('zeroHint');
+      const st = currentKey ? roomStats().get(currentKey) : null;
+      const others = st ? st.names.filter(function (n) { return String(n).indexOf('(自分)') < 0; }).length : 0;
+      const bad = currentKey && peerMap.size === 0 && others > 0;
+      if (!bad) { zeroSince = 0; if (box) box.remove(); return; }
+      if (!zeroSince) zeroSince = Date.now();
+      if (Date.now() - zeroSince < 45000) { if (box) box.remove(); return; }
+      if (box) return;
+      box = document.createElement('div');
+      box.id = 'zeroHint';
+      box.style.cssText = 'margin:8px 0;padding:10px;border:1px solid #fbbf24;border-radius:10px;color:#fbbf24;font-size:13px;line-height:1.5';
+      box.appendChild(document.createTextNode('入室して1分近く、だれともつながっていません。このブラウザの保存データが悪くなっているかもしれません。下のボタンで消して入り直すと、直ることがあります。'));
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'btn-sub'; b.style.cssText = 'width:100%;margin-top:8px';
+      b.textContent = '保存データを消して、入り直す';
+      b.addEventListener('click', function () { document.getElementById('resetDataBtn').click(); });
+      box.appendChild(b);
+      peersList.parentNode.insertBefore(box, peersList.nextSibling);
+    }
+    setInterval(updateZeroHint, 3000);
+    window.__pochiFakeLobby = function (name) { lobbyEntries.set('fake' + Math.random(), { ch: currentKey, cn: 0, ag: 9999, talking: false, name: name, tag: '', by: '', at: 0, ts: Date.now() }); renderMissing(); }; // 試験用
     function renderPeers() {
+      updatePeerCount();
+      announce(); // つながっている人数が変わったら、順位のため、すぐ知らせる（1秒に1回まで）
       peersList.innerHTML = '';
       // 自分（入室中のみ）。話しているときは赤で光る
       if (currentKey) {
         const me = document.createElement('span');
         me.className = 'peer-tag me' + (isTransmitting ? ' sending' : '');
-        me.textContent = myNickname + '（自分）';
+        me.textContent = shownName() + '（自分）';
         peersList.appendChild(me);
       }
       peerMap.forEach(function (info, id) {
@@ -1174,9 +1750,10 @@
       if (peerMap.size === 0) {
         const none = document.createElement('span');
         none.className = 'peers-empty';
-        none.textContent = currentKey ? '（ほかの参加者を待っています）' : '待機中（参加者なし）';
+        none.textContent = currentKey ? ((function () { try { return isBotRoom(currentKey) && botAway(currentKey); } catch (_) { return false; } })() ? '（おうむは休憩中です。すぐ戻ります）' : '（ほかの参加者を待っています）') : '待機中（参加者なし）';
         peersList.appendChild(none);
       }
+      renderMissing();
     }
 
     function onStartReceiving(name) {
@@ -1254,7 +1831,7 @@
     }
 
     let pressed = false;
-    function press() { pressed = true; startTransmission(); }
+    function press() { if (isInviteMode()) { joinInvited(); return; } if (!currentKey) { createFromPtt(); return; } pressed = true; startTransmission(); }
     function release() { pressed = false; stopTransmission(); }
 
     pttBtn.addEventListener('mousedown', function (e) { e.preventDefault(); press(); });
@@ -1269,6 +1846,7 @@
     function endTouch() {
       clearTimeout(touchTimer); touchTimer = null;
       const swiped = touchSwiped;
+      if (!currentKey && !swiped && touchActive) { touchActive = false; if (isInviteMode()) joinInvited(); else createFromPtt(); return; } // 部屋の外では、PTTボタンが「入室」か「新しい部屋」のボタン
       touchActive = false; touchSwiped = false;
       if (!swiped && pressed) release();
     }
@@ -1320,7 +1898,7 @@
       return el.tagName === 'INPUT' && /^(text|search|url|email|number|password|tel)$/.test(el.type || 'text');
     }
     function spaceActive() {
-      return !!currentKey && !document.getElementById('radioView').classList.contains('hidden')
+      return !!currentKey && !document.getElementById('radioView').classList.contains('idle')
         && !document.querySelector('dialog[open]') && !isTyping() && !document.getElementById('radioView').classList.contains('flipped');
     }
 
@@ -1409,7 +1987,7 @@
     }
     async function playMorseChar(ch, session, wideGap) {
       const pat = MORSE_CODE[ch];
-      lcdSub.textContent = 'モールス: ' + ch + ' ' + pat.split('').map(function (s) { return s === '.' ? '・' : '−'; }).join('');
+      lcdSub.textContent = ''; lcdSub.appendChild(document.createTextNode('モールス: ')); lcdSub.appendChild(monoSpan(ch)); lcdSub.appendChild(document.createTextNode(' ' + pat.split('').map(function (s) { return s === '.' ? '・' : '−'; }).join('')));
       for (let i = 0; i < pat.length; i++) {
         if (session !== morseSession) return false;
         morseKey(true);
@@ -1451,7 +2029,7 @@
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
       if (!currentKey || !room) return;
       const rv = document.getElementById('radioView');
-      if (rv.classList.contains('hidden') || rv.classList.contains('flipped')) return;
+      if (rv.classList.contains('idle') || rv.classList.contains('flipped')) return;
       if (document.querySelector('dialog[open]') || isTyping()) return;
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -1477,12 +2055,118 @@
         if (morseQueue.length) { e.preventDefault(); morseQueue.pop(); }
         return;
       }
-      if (!e.key || e.key.length !== 1) return;
-      const ch = e.key.toUpperCase();
+      // 日本語入力がオンのときは、e.key が「Process」になり、文字が取れない。物理キー（e.code）から、英字と数字を拾う
+      let rawCh = e.key && e.key.length === 1 ? e.key : '';
+      if (!rawCh && (e.key === 'Process' || e.keyCode === 229) && e.code) {
+        const mm = /^Key([A-Z])$/.exec(e.code) || /^Digit([0-9])$/.exec(e.code);
+        if (mm) rawCh = mm[1];
+      }
+      if (!rawCh) return;
+      const ch = rawCh.toUpperCase();
       if (!Object.prototype.hasOwnProperty.call(MORSE_CODE, ch)) return;
       e.preventDefault();
       morseQueue.push(ch);
       startMorse();
+    });
+
+    // ---------- 広い画面の並べ方（本体とダイヤルを横並び）と、モールスのキーボード ----------
+    (function () {
+      const body = document.body;
+      const ctrl1 = document.getElementById('ctrlRow1'), ctrl2 = document.getElementById('ctrlRow2');
+      const headerBtns = document.getElementById('headerBtns'), tuneActions = document.getElementById('tuneActions');
+      let wideNow = null;
+      function layoutWide() {
+        const need = window.innerWidth >= (body.classList.contains('diag-on') ? 1100 : 1000);
+        if (need === wideNow) return;
+        wideNow = need;
+        body.classList.toggle('wide', need);
+        if (typeof placeHomeControls === 'function') placeHomeControls();
+        const rb = document.getElementById('reconnectBtn'), lb = document.getElementById('leaveBtn');
+        const sb = document.getElementById('shareBtn'), qb = document.getElementById('qrBtn'), sp = document.getElementById('speakerBtn');
+        if (need) { ctrl1.appendChild(rb); ctrl1.appendChild(lb); ctrl2.appendChild(sb); ctrl2.appendChild(qb); ctrl2.appendChild(sp); }
+        else { headerBtns.appendChild(rb); headerBtns.appendChild(lb); tuneActions.appendChild(sb); tuneActions.appendChild(qb); tuneActions.appendChild(sp); }
+      }
+      window.addEventListener('resize', layoutWide);
+      new MutationObserver(function () { layoutWide(); }).observe(body, { attributes: true, attributeFilter: ['class'] });
+      layoutWide();
+
+      // モールスのキーボード（スマホ）。スペースは付けない
+      const drawer = document.getElementById('morseDrawer'), handle = document.getElementById('morseHandle'), kb = document.getElementById('morseBody'), qv = document.getElementById('morseQueueView');
+      const rows = ['1234567890', 'QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM', '.,?!/-:'];
+      rows.forEach(function (r, ri) {
+        const row = document.createElement('div'); row.className = 'mk-row';
+        if (ri === 3) { const e = document.createElement('button'); e.type = 'button'; e.className = 'mk wide'; e.textContent = 'ESC'; e.dataset.k = 'ESC'; row.appendChild(e); }
+        r.split('').forEach(function (c) { const b = document.createElement('button'); b.type = 'button'; b.className = 'mk mono0'; b.textContent = c; b.dataset.k = c; row.appendChild(b); });
+        if (ri === 3) { const d = document.createElement('button'); d.type = 'button'; d.className = 'mk wide'; d.textContent = '⌫'; d.dataset.k = 'BS'; row.appendChild(d); }
+        kb.appendChild(row);
+      });
+      // ファックスモードのときだけ出る「送信」キー（キーボードの Enter の代わり）
+      const faxRow = document.createElement('div'); faxRow.className = 'mk-row'; faxRow.style.display = 'none';
+      { const sb = document.createElement('button'); sb.type = 'button'; sb.className = 'mk wide'; sb.style.flex = '1 1 auto'; sb.textContent = 'FAX 送信'; sb.dataset.k = 'SEND'; faxRow.appendChild(sb); }
+      kb.appendChild(faxRow);
+      handle.addEventListener('click', function () { const o = drawer.classList.toggle('open'); handle.setAttribute('aria-expanded', o ? 'true' : 'false'); document.getElementById('morseToggle').textContent = o ? '▼ 閉じる' : '▲ 開く'; });
+      kb.addEventListener('pointerdown', function (e) { if (e.target.closest && e.target.closest('.mk')) e.preventDefault(); }); // 入力欄のフォーカスを奪わない
+      kb.addEventListener('click', function (e) {
+        const b = e.target.closest ? e.target.closest('.mk') : null;
+        if (!b || !currentKey || !room) return;
+        const k = b.dataset.k;
+        if (k === 'ESC') { if (faxMode) exitFaxMode(); faxCanvas.classList.add('hidden'); morseQueue.push('E', 'S', 'C'); startMorse(); return; }
+        // ファックスモード（隠し）: 画面のキーでも、「FAX」と打つと入る。入ったあとは、打った文字が紙に出て、「FAX 送信」で送る。ESC で解除
+        if (faxMode) {
+          if (faxTxActive) return;
+          if (k === 'SEND') { if (faxText) startFaxTx(); return; }
+          if (k === 'BS') { faxText = faxText.slice(0, -1); renderFaxCompose(); return; }
+          if (k.length === 1 && faxText.length < 24) { faxText += k; renderFaxCompose(); }
+          return;
+        }
+        if (k === 'SEND') return;
+        if (k === 'BS') { if (morseQueue.length) morseQueue.pop(); return; }
+        if (!Object.prototype.hasOwnProperty.call(MORSE_CODE, k)) return;
+        if (k.length === 1) {
+          faxProbe = (faxProbe + k.toLowerCase()).slice(-3);
+          if (faxProbe === 'fax') { // 先に入れた F と A が、まだ送られていなければ、取り消してから入る
+            faxProbe = '';
+            if (morseQueue.length >= 2 && morseQueue[morseQueue.length - 2] === 'F' && morseQueue[morseQueue.length - 1] === 'A') { morseQueue.pop(); morseQueue.pop(); }
+            enterFaxMode(); return;
+          }
+        }
+        morseQueue.push(k); startMorse();
+      });
+      setInterval(function () { faxRow.style.display = faxMode ? '' : 'none'; if (drawer.classList.contains('hidden')) return; const t = morseQueue.join('').trim(); if (faxMode) qv.textContent = 'FAX: 打った文字が紙に出ます。「FAX 送信」で送信 / ESC で終了'; else { qv.textContent = ''; if (t) { qv.appendChild(document.createTextNode('送信待ち ')); qv.appendChild(monoSpan(t)); } } }, 250);
+    })();
+
+
+    // スマホ: 左端の帯でダイヤルのドロワーを開く。外側を押すか、部屋に入ると、閉じる
+    (function () {
+      const tab = document.getElementById('dialTab'), scrim = document.getElementById('dialScrim');
+      function setOpen(o) { document.body.classList.toggle('dial-open', o); tab.setAttribute('aria-expanded', o ? 'true' : 'false'); }
+      tab.addEventListener('click', function () { setOpen(!document.body.classList.contains('dial-open')); });
+      document.getElementById('dialCloseTab').addEventListener('click', function () { setOpen(false); });
+      scrim.addEventListener('click', function () { setOpen(false); });
+      window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && document.body.classList.contains('dial-open')) { e.stopPropagation(); setOpen(false); } }, true);
+      window.closeDialDrawer = function () { setOpen(false); };
+    })();
+
+    // iPhone: 入力欄をタップしてキーボードが出たあと、ページの位置が、ずれたまま戻らなくなることがある。収まっているページは、いつも一番上に戻す
+    (function () {
+      function resetIfFits() {
+        const de = document.documentElement;
+        if (de.scrollHeight <= window.innerHeight + 4 && window.scrollY !== 0) window.scrollTo(0, 0);
+      }
+      document.addEventListener('focusout', function (e) {
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) { setTimeout(resetIfFits, 60); setTimeout(resetIfFits, 400); }
+      });
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', function () { setTimeout(resetIfFits, 60); });
+    })();
+
+    // トラブル用: このサイトの保存データだけを消して、読み込み直す（Safari の履歴は消さない）
+    document.getElementById('resetDataBtn').addEventListener('click', async function () {
+      if (!confirm('ぽちっと通話の保存データ（ハンドルネームや設定）を消して、読み込み直します。ぽっと通話の保存データは消えません。よろしいですか？')) return;
+      try { closeAllConnections(); } catch (_) {}
+      // [potalk] ぽちっと通話のぶんだけ消す（同じドメインにある、ぽっと通話の保存データには触らない）
+      [localStorage, sessionStorage].forEach(function (st) { try { Object.keys(st).filter(function (k) { return k.indexOf('pochitalk_') === 0; }).forEach(function (k) { st.removeItem(k); }); } catch (_) {} });
+      await wait(400);
+      location.replace(location.pathname);
     });
 
     // ---------- モールス受信（700Hzトーンを検出して文字に戻す） ----------
@@ -1540,7 +2224,7 @@
       let cur = d.pat;
       if (d.hasPend) cur += d.pendDur < MORSE_UNIT_MS * 2 ? '.' : '-';
       if (cur) s += (s ? ' ' : '') + cur.split('').map(function (c) { return c === '.' ? '・' : '−'; }).join('');
-      lcdSub.textContent = s.length > 38 ? s.slice(-38) : s; // 表題なし・長いときは最新だけ見せる
+      setHash(lcdSub, s.length > 38 ? s.slice(-38) : s); // 表題なし・長いときは最新だけ見せる（0 には斜線を付ける）
     }
     function finalizePend(peerId) {
       const d = rxDecoders.get(peerId);
@@ -1551,11 +2235,17 @@
       renderRxDecode(peerId);
     }
     setInterval(function () { decodeMorseRx(); decodeFaxRx(); }, 15); // 描画と切り離して一定間隔で測る（先頭の符号を取りこぼさないため）
+    function freqQuiet(freq) {
+      for (let i = 0; i < freq.length; i++) { if (freq[i] > 10) return false; }
+      return true;
+    }
     function decodeMorseRx() {
       const now = performance.now();
       rxDecoders.forEach(function (d, peerId) {
         const an = d.an;
         an.getByteFrequencyData(d.freq);
+        // 無音のときは、重い計算を飛ばす（相手が7人いても、パソコンの負荷を抑える）。保留中の符号があるときは、続ける
+        if (!d.tone && !d.hasPend && !d.pat && !(d.letterDone && !d.wordDone) && freqQuiet(d.freq)) { d.dbg = null; return; }
         const binHz = an.context.sampleRate / an.fftSize;
         const idx = Math.round(700 / binHz);
         let peak = 0;
@@ -1574,6 +2264,8 @@
         const pure = eVoice > 0 && bandEnergy(620, 780) / eVoice >= 0.55;
         const floor = d.tone ? 70 : 100;
         const isTone = peak >= floor && peak > avg * 3 && pure;
+        d.dbg = { peak: peak, avg: Math.round(avg), pure: eVoice > 0 ? Math.round(bandEnergy(620, 780) / eVoice * 100) : 0, tone: isTone, sr: an.context.sampleRate, at: now }; // 診断画面用
+        if (peak >= 30 && (!d.dbgLast || peak >= d.dbgLast.peak || now - d.dbgLast.at > 8000)) d.dbgLast = d.dbg; // 直近で、いちばん強かった音を残す
         if (isTone) {
           if (!d.tone) {
             d.tone = true; d.toneAt = now;
@@ -1643,7 +2335,7 @@
       faxImg.data[i + 3] = 255;
     }
     function renderFaxCompose() {
-      lcdSub.textContent = faxText ? faxText + '▌' : 'FAXモード: 文字を打って Enter で送信（ESCで終了）';
+      if (faxText) setHash(lcdSub, faxText + '▌'); else lcdSub.textContent = 'FAXモード: 文字を打って Enter で送信（ESCで終了）';
     }
     function enterFaxMode() {
       abortMorse();
@@ -1808,6 +2500,7 @@
         let d = faxDecoders.get(peerId);
         if (!d) { d = { state: 'idle', preCount: 0, row: 0, lastX: -1, lastAct: 0, rowStart: 0, syncStart: 0 }; faxDecoders.set(peerId, d); }
         srcD.an.getByteFrequencyData(srcD.freq);
+        if (d.state === 'idle' && freqQuiet(srcD.freq)) { d.preCount = 0; return; }
         const ePre = faxBandEnergy(srcD, FAX_FREQ.pre), eSync = faxBandEnergy(srcD, FAX_FREQ.sync);
         const eW = faxBandEnergy(srcD, FAX_FREQ.white), eB = faxBandEnergy(srcD, FAX_FREQ.black);
         const total = ePre + eSync + eW + eB;
@@ -1954,13 +2647,13 @@
         rooms.sort(function (a, b) { return a.key < b.key ? -1 : 1; });
         const peers = [];
         if (currentKey) {
-          peers.push({ id: 'me', name: myNickname, me: true, talking: !!isTransmitting });
+          peers.push({ id: 'me', name: shownName(), me: true, talking: !!isTransmitting });
           peerMap.forEach(function (p, id) { peers.push({ id: id, name: p.name || '相手', me: false, talking: !!p.isTalking }); });
         }
         let morse = '';
         rxDecoders.forEach(function (d) { if (d.text) morse = d.text; });
         return {
-          type: 'state', name: myNickname,
+          type: 'state', name: shownName(),
           inRoom: !!currentKey, roomKey: currentKey || '', roomHash: currentKey ? fmt(currentKey) : '',
           tag: roomMeta.tag || '', tagBy: roomMeta.by || '',
           peers: peers, rooms: rooms,
@@ -1987,8 +2680,8 @@
         try { cmd = JSON.parse(json); } catch (_) { return; }
         if (!cmd || !cmd.cmd) return;
         try {
-          if (cmd.cmd === 'join' && cmd.name) hashOf(String(cmd.name)).then(function (k) { tuneKey(k); });
-          else if (cmd.cmd === 'joinKey' && cmd.key) tuneKey(String(cmd.key).toLowerCase());
+          if (cmd.cmd === 'join' && cmd.name) hashOf(String(cmd.name)).then(function (k) { tuneKey(k, true); });
+          else if (cmd.cmd === 'joinKey' && cmd.key) tuneKey(String(cmd.key).toLowerCase(), true);
           else if (cmd.cmd === 'leave') leaveRoom();
           else if (cmd.cmd === 'reconnect') reconnectRoom(false);
           else if (cmd.cmd === 'pttDown') press();
@@ -2047,14 +2740,29 @@
 
     // ---------- 部屋(ハッシュ周波数)操作 ----------
     let pendingKey = null; // 招待URLで指定された部屋（まだ入室していない）
+    let scrolledForKey = null; // 入室したとき、本体が画面の外にあれば、自動で本体までスクロールする（スマホ用）
     function renderFreq(key) {
+      if (key && window.closeDialDrawer) window.closeDialDrawer();
+      if (!key) scrolledForKey = null;
+      else if (scrolledForKey !== key) {
+        scrolledForKey = key;
+        setTimeout(function () {
+          const r = document.getElementById('radioView').getBoundingClientRect();
+          if (r.top < 0 || r.top > window.innerHeight * 0.4) document.getElementById('radioView').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 150);
+      }
       document.getElementById('homeView').classList.toggle('hidden', !!key);
-      document.getElementById('radioView').classList.toggle('hidden', !key);
+      document.getElementById('homeCard').classList.toggle('hidden', !!key);
+      document.getElementById('radioView').classList.toggle('idle', !key);
+      setPttLabel(key);
+      placeHomeControls();
+      document.getElementById('ctrlCard').classList.toggle('hidden', !key);
+      document.getElementById('morseDrawer').classList.toggle('hidden', !key);
       if (!key) document.getElementById('stickyBar').classList.add('hidden');
       if (!key) { resetFlip(); return; }
-      roomDisplay.textContent = fmt(key);
+      setHash(roomDisplay, fmt(key));
       chDisplay.textContent = 'ROOM HASH';
-      freqDisplay.textContent = fmt(key);
+      setHash(freqDisplay, fmt(key));
       freqDisplay.classList.remove('tuning');
       lcdSub.textContent = '';
     }
@@ -2062,10 +2770,10 @@
     function leaveRoom() {
       if (isTransmitting) { pressed = false; stopTransmission(); }
       if (voxCheck.checked) { setVoxUI(false); stopVox(); }
-      if (room) { room.leave(); room = null; }
+      if (room) { const old = room; room = null; closeOldConnections(old); }
       releaseMic();
-      sendPttState = null; sendNickname = null; sendJoinAge = null; sendTag = null; sendFaxPage = null;
-      peerMap.clear();
+      sendPttState = null; sendNickname = null; sendJoinAge = null; sendTag = null; sendFaxPage = null; sendNudge = null; sendWebcaps = null;
+      peerMap.clear(); webPeers.clear(); nudges.clear(); nudgeSeen.clear(); peerSince.clear();
       currentTalkerId = null;
       document.querySelectorAll('audio[id^="audio-"]').forEach(function (a) { a.remove(); });
       ledRx.classList.remove('active');
@@ -2084,13 +2792,18 @@
       flashSub.t = setTimeout(function () { renderFreq(currentKey); }, 2500);
     }
 
-    function tuneKey(key) {
+    function tuneKey(key, skipConfirm, isNew) {
       if (isTransmitting) { flashSub('送信中は周波数を変えられません'); return; }
       if (key !== currentKey) {
         const st0 = roomStats().get(key);
         if (st0 && st0.count >= MAX_ROOM) { toast('この部屋は満員です（' + MAX_ROOM + '人まで）'); return; }
       }
       if (key === currentKey) { renderFreq(key); flashSub('すでにこの周波数です'); return; }
+      if (!skipConfirm) {
+        const stc = roomStats().get(key);
+        const msg = (isNew ? '新しい部屋を作って、入室しますか？' : 'この部屋に入室しますか？' + String.fromCharCode(10) + fmt(key) + (stc && stc.count ? '（いま ' + stc.count + ' 人）' : '')) + (currentKey ? String.fromCharCode(10) + 'いまの部屋からは退出します。' : '');
+        if (!confirm(msg)) return;
+      }
       currentKey = key;
       pendingKey = null;
       resetFlip();
@@ -2099,10 +2812,13 @@
       let i = 0;
       const t = setInterval(function () {
         if (++i >= 9) { clearInterval(t); renderFreq(currentKey); return; }
-        freqDisplay.textContent = fmt(toHex(crypto.getRandomValues(new Uint8Array(4))));
+        setHash(freqDisplay, fmt(toHex(crypto.getRandomValues(new Uint8Array(4)))));
       }, 45);
       endMicTest();
-      connectToChannel(currentKey);
+      // TURN の資格情報が取れる前に入ると、その部屋にいる間ずっと直接接続（中継なし）のままになるので、少しだけ待つ（最長 4 秒）
+      const keyNow = currentKey;
+      const ready = iceFetchedAt > 0 ? Promise.resolve() : Promise.race([refreshIceServers(), new Promise(function (r) { setTimeout(r, 4000); })]);
+      ready.then(function () { if (currentKey === keyNow) connectToChannel(keyNow); });
       renderPeers();
       // 入室のタップ操作の中でマイクの許可を求める（許可されなければ、話すときにもう一度確認する）
       initMicrophone(true).then(function (ok) {
@@ -2121,9 +2837,19 @@
     // ・入ったあと（同時に入って超えたとき）: 入室が新しい人から、上限を超えた分が、自分で退出する（古い人は、追い出されない）
     const MAX_ROOM = 8;
     // おうむ返しボットの部屋は、特別扱い: タグは固定で、誰も書き換えられない。一覧では、いつも先頭に出す
-    const BOT_ROOM_KEY = '7a0b07c1';
+    const BOT_ROOM_KEY = '22360679'; // 富士山麓にオウム鳴く（√5 = 2.2360679）
+    const BOT_ROOM_OLD = '7a0b07c1'; // 前のおうむの部屋。古い版の人が来るあいだ、おうむを置いておく
     const BOT_ROOM_TAG = '🦜 おうむ返しの部屋（話すと、あなたにだけ声が返ります）';
-    function isBotRoom(k) { return k === BOT_ROOM_KEY; }
+    function isBotRoom(k) { return k === BOT_ROOM_KEY || k === BOT_ROOM_OLD; }
+    // おうむボットが、定期の入り直しなどで、席を外しているとき（一覧に、おうむ返しボットの在室がないとき）は、「休憩中」と出す。起動して8秒は、一覧がそろっていないので、出さない
+    const BOT_SEEN_NAME = 'おうむ返しボット';
+    function botAway(k) {
+      try {
+        if (performance.now() < 8000) return false;
+        const stB = roomStats().get(k || BOT_ROOM_KEY);
+        return !stB || stB.names.indexOf(BOT_SEEN_NAME) < 0;
+      } catch (_) { return false; }
+    }
     let toastTimer = null;
     function toast(msg) {
       const el = document.getElementById('toast');
@@ -2131,6 +2857,18 @@
       el.classList.remove('hidden');
       clearTimeout(toastTimer);
       toastTimer = setTimeout(function () { el.classList.add('hidden'); }, 3500);
+    }
+    // 新しい部屋ができたら、音で知らせる（設定でオンにしたときだけ。このアプリを開いている間だけ動く。画面の知らせや、ブラウザの通知は出さない）
+    let notifyRoomOn = false;
+    try { notifyRoomOn = localStorage.getItem('pochitalk_notify_room') === '1'; } catch (_) {}
+    const roomNotified = new Map(); // 部屋 → 最後に鳴らした時刻（同じ部屋で、10分以内に、何度も鳴らさない）
+    function notifyNewRoom(d) {
+      if (!notifyRoomOn || isBotRoom(d.ch) || performance.now() < 12000) return; // 開いた直後は、もともとあった部屋なので、鳴らさない
+      const last = roomNotified.get(d.ch) || 0;
+      if (Date.now() - last < 600000) return;
+      roomNotified.set(d.ch, Date.now());
+      try { window.pcLogAdd('新しい部屋の音: ' + fmt(d.ch)); } catch (_) {}
+      try { playNewRoomTone(); } catch (_) {}
     }
     function checkRoomFull() {
       if (!currentKey || !room) return;
@@ -2163,18 +2901,27 @@
       if (!mismatchSince) mismatchSince = Date.now();
       const dur = Date.now() - mismatchSince;
       if (dur > 10000) {
-        const note = 'ほかに ' + (expected - connected) + ' 人が在室していますが、まだつながっていません（つなぎ直しています）';
+        const note = 'ほかに ' + (expected - connected) + ' 人が在室していますが、まだつながっていません（' + (autoReconnectOn ? 'つなぎ直しています' : '「再接続」を押すと、やり直せます') + '）';
         if (note !== mismatchNote) { mismatchNote = note; renderPeers(); }
       }
       if (dur > 25000 && Date.now() - lastAutoReconnect > 90000 && !reconnecting) {
         lastAutoReconnect = Date.now();
         mismatchSince = Date.now();
-        reconnectRoom(true);
+        reconnectRoom(true, false, '一覧と接続の食い違いが25秒続いた');
       }
     }
-    setInterval(checkMismatch, 3000);
+    setInterval(function () { checkMismatch(); updatePeerCount(); }, 3000);
 
     const lobbyEntries = new Map(); // 送り主の公開鍵 -> { ch(key), talking, name, tag, by, at, ts }
+    // 再読み込みの直後は、他の人の在室通知が、届くまで（最大 6 秒）一覧が減って見える。直前の一覧を、20秒以内の分だけ、引き継ぐ
+    function saveLobby() {
+      try { sessionStorage.setItem('pochitalk_lobby', JSON.stringify({ at: Date.now(), list: Array.from(lobbyEntries.entries()) })); } catch (_) {}
+    }
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('pochitalk_lobby') || 'null');
+      if (saved && Array.isArray(saved.list)) saved.list.forEach(function (kv) { if (kv && kv[1] && Date.now() - kv[1].ts < 15000) lobbyEntries.set(kv[0], kv[1]); });
+    } catch (_) {}
+    window.addEventListener('pagehide', saveLobby);
     const PRESENCE_KIND = 29334, PRESENCE_TOPIC = 'pochitalk-presence-v1', PRESENCE_BEAT_MS = 6000, PRESENCE_EXPIRE_MS = 20000;
     let sendPresence = null, lobbyRoom = null; // 旧方式の名前（ほかの場所から参照されるので残してある。使わない）
     const pres = { schnorr: null, priv: null, pub: '', socks: new Map(), retry: new Map(), seen: new Map(), started: false, timer: null, lastSent: 0, pending: null, announced: false };
@@ -2184,7 +2931,10 @@
       try {
         const mod = await import('../vendor/noble-curves-1.4.0-secp256k1.mjs');
         pres.schnorr = mod.schnorr;
-        pres.priv = pres.schnorr.utils.randomPrivateKey();
+        // 読み込み直しても、同じ鍵を使う（鍵が変わると、読み込み前の自分が、別人として残り、在室が1人多く見える）。このタブの中だけで、保存する
+        let saved = ''; try { saved = sessionStorage.getItem('pochitalk_pres_key') || ''; } catch (_) {}
+        if (/^[0-9a-f]{64}$/.test(saved)) { const b = new Uint8Array(32); for (let i = 0; i < 32; i++) b[i] = parseInt(saved.substr(i * 2, 2), 16); pres.priv = b; }
+        else { pres.priv = pres.schnorr.utils.randomPrivateKey(); try { sessionStorage.setItem('pochitalk_pres_key', toHex(pres.priv)); } catch (_) {} }
         pres.pub = toHex(pres.schnorr.getPublicKey(pres.priv));
         return true;
       } catch (_) { return false; }
@@ -2222,7 +2972,7 @@
         return;
       }
       pres.announced = true; pres.lastSent = Date.now();
-      presenceSend({ ch: currentKey, talking: isTransmitting, name: myNickname, tag: roomMeta.tag, by: roomMeta.by, at: roomMeta.at });
+      presenceSend({ ch: currentKey, cn: goodLinkCount(), ag: Math.floor((Date.now() - roomEnterTime) / 1000), talking: isTransmitting, name: shownName(), tag: roomMeta.tag, by: roomMeta.by, at: roomMeta.at });
     }
     function announceSoon() { setTimeout(announce, 300 + Math.random() * 1200); }
 
@@ -2239,9 +2989,13 @@
       if (d.ch === '') { if (lobbyEntries.delete(ev.pubkey)) renderScan(); return; }
       if (!isKey(d.ch)) return;
       const isNew = !lobbyEntries.has(ev.pubkey);
-      lobbyEntries.set(ev.pubkey, { ch: d.ch, talking: !!d.talking, name: String(d.name || '?').slice(0, 12), tag: capTag(d.tag), by: String(d.by || '').slice(0, 12), at: typeof d.at === 'number' ? d.at : 0, ts: Date.now() });
+      let roomWasKnown = true; try { roomWasKnown = Array.from(lobbyEntries.values()).some(function (v) { return v.ch === d.ch; }); } catch (_) {}
+      lobbyEntries.set(ev.pubkey, { ch: d.ch, ag: (typeof d.ag === 'number' && d.ag >= 0) ? d.ag : 9999, cn: (typeof d.cn === 'number' && d.cn >= 0 && d.cn < 32) ? d.cn : -1, talking: !!d.talking, name: String(d.name || '?').slice(0, 12), tag: capTag(d.tag), by: String(d.by || '').slice(0, 12), at: typeof d.at === 'number' ? d.at : 0, ts: Date.now() });
+      if (!roomWasKnown && d.ch !== currentKey) { try { notifyNewRoom(d); } catch (_) {} }
+      if (isNew && d.ch === currentKey) { try { window.pcLogAdd('一覧に現れた: ' + String(d.name || '?').slice(0, 12)); } catch (_) {} }
       if (isNew) announceSoon(); // 新しく来た人に、こちらの在室を、すぐ知らせる
       renderScan();
+      if (d.ch === currentKey) updatePeerCount();
     }
 
     function presenceOpen(url) {
@@ -2255,6 +3009,7 @@
       };
       ws.onmessage = function (e) { presenceOnMessage(e.data); };
       ws.onclose = function () {
+        if (pres.socks.get(url) !== ws) return; // 捨てた古い接続の終わり。新しい接続は、そのまま
         pres.socks.delete(url);
         if (!pres.started) return;
         const wait = Math.min(pres.retry.get(url) || 5000, 300000); // 落ちているリレーは、間隔を倍にしながら、再試行する
@@ -2275,11 +3030,30 @@
           pres.seen.forEach(function (t, k) { if (now - t > 120000) pres.seen.delete(k); });
           announce();
           renderScan();
+          saveLobby();
         }, PRESENCE_BEAT_MS);
       });
     }
-    // 回線が戻ったら、すぐにつなぎ直す
-    window.addEventListener('online', function () { pres.retry.clear(); aliveRelays.forEach(presenceOpen); });
+    // 一覧を取り直す。切れたまま残った接続は捨てて、つなぎ直し、生きている接続には、購読をやり直して、自分の在室も知らせる
+    function refreshLobby() {
+      if (!pres.started) return;
+      pres.retry.clear();
+      pres.socks.forEach(function (ws, url) {
+        if (ws.readyState === 1) {
+          try { ws.send(JSON.stringify(['REQ', 'pochi-presence', { kinds: [PRESENCE_KIND], '#x': [PRESENCE_TOPIC], since: Math.floor(Date.now() / 1000) - 5 }])); } catch (_) {}
+        } else if (ws.readyState !== 0) { // 閉じかけ・閉じた接続が残っている
+          pres.socks.delete(url);
+          try { ws.close(); } catch (_) {}
+        }
+      });
+      aliveRelays.forEach(presenceOpen);
+      announce();
+      renderScan();
+    }
+    // 回線が戻ったら、すぐにつなぎ直す。画面に戻ったときも、一覧を取り直す
+    window.addEventListener('online', refreshLobby);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) setTimeout(refreshLobby, 500); });
+    window.addEventListener('pageshow', function (e) { if (e.persisted) setTimeout(refreshLobby, 500); });
 
     function roomStats() {
       const stats = new Map();
@@ -2292,7 +3066,7 @@
       if (currentKey) {
         const me = stats.get(currentKey) || { count: 0, air: false, names: [], tag: '', tagBy: '', tagAt: 0 };
         if (roomMeta.at > me.tagAt) { me.tagAt = roomMeta.at; me.tag = roomMeta.tag; me.tagBy = roomMeta.by; }
-        me.count++; me.names.unshift(myNickname + '(自分)'); if (isTransmitting) me.air = true;
+        me.count++; me.names.unshift(shownName() + '(自分)'); if (isTransmitting) me.air = true;
         stats.set(currentKey, me);
       }
       return stats;
@@ -2364,10 +3138,10 @@
     function parseSearch() {
       const q = searchInput.value.trim();
       if (!q) return null;
-      const m = q.match(/[?&]r=([0-9a-fA-F]{8})(?![0-9a-fA-F])/);
+      const m = q.match(/[?&]r=([0-9a-zA-Z]{8})(?![0-9a-zA-Z])/);
       const hexq = q.toLowerCase().replace(/[· -]/g, ''); // 区切り（· - 空白）を無視
-      const exact = m ? m[1].toLowerCase() : (/^[0-9a-f]{8}$/.test(hexq) ? hexq : null);
-      return { text: q.toLowerCase(), hex: /^[0-9a-f]{2,8}$/.test(hexq) ? hexq : null, exact: exact };
+      const exact = m ? m[1].toLowerCase() : (/^[0-9a-z]{8}$/.test(hexq) ? hexq : null);
+      return { text: q.toLowerCase(), hex: /^[0-9a-z]{2,8}$/.test(hexq) ? hexq : null, exact: exact };
     }
 
     function matchSearch(key, st, f) {
@@ -2379,27 +3153,106 @@
 
     // ---------- 招待URLで開いたとき: 画面の先頭に、その部屋を大きく出す ----------
     const inviteCard = document.getElementById('inviteCard');
-    function renderInvite(st) {
-      if (!pendingKey || currentKey) { inviteCard.classList.add('hidden'); return; }
-      inviteCard.classList.remove('hidden');
-      document.getElementById('inviteHash').textContent = fmt(pendingKey);
-      const info = document.getElementById('inviteInfo');
-      if (st && st.count > 0) {
-        info.textContent = '';
-        info.appendChild(document.createTextNode('👤 ' + st.count + '人：'));
-        appendNames(info, st.names);
-        if (st.tag) info.appendChild(document.createTextNode('　🏷 ' + st.tag));
-      } else {
-        info.textContent = 'いまは誰もいません。入って待つこともできます。';
-      }
+    let inviteShown = false;
+    let previewShown = false;
+    function idlePlaceholders() { // どこにも入っていないときの、本体の表示
+      chDisplay.textContent = 'ROOM HASH';
+      freqDisplay.textContent = '----·----';
+      document.getElementById('tagText').textContent = '';
+      statusLabel.textContent = 'STANDBY'; statusLabel.style.color = '#38bdf8';
+      peersList.textContent = '';
+      const e = document.createElement('span'); e.className = 'peers-empty'; e.textContent = '待機中（参加者なし）'; peersList.appendChild(e);
+      peerCountEl.textContent = '';
     }
-    document.getElementById('inviteJoin').addEventListener('click', function () { if (pendingKey) tuneKey(pendingKey); });
+    // ダイヤルを合わせた部屋の様子を、入っていない本体の表示部分に出す
+    function renderPreview() {
+      if (currentKey || isInviteMode()) {
+        if (previewShown) { // 入室した・招待された: ダイヤルの部屋の表示を、元に戻す
+          previewShown = false;
+          chDisplay.textContent = 'ROOM HASH';
+          statusLabel.textContent = 'STANDBY'; statusLabel.style.color = '#38bdf8';
+          if (currentKey) { document.getElementById('tagText').textContent = ''; renderTagRow(); renderPeers(); }
+        }
+        return;
+      }
+      const key = dialKeys[dialIndex()];
+      const st = key ? roomStats().get(key) : null;
+      if (!key || !st || st.invited || st.empty || !st.count) {
+        if (previewShown) { previewShown = false; idlePlaceholders(); }
+        return;
+      }
+      previewShown = true;
+      chDisplay.textContent = 'ダイヤルの部屋';
+      setHash(freqDisplay, fmt(key));
+      document.getElementById('tagText').textContent = st.tag ? '🏷 ' + st.tag : '';
+      statusLabel.textContent = '入室していません'; statusLabel.style.color = '#94a3b8';
+      peersList.textContent = '';
+      st.names.forEach(function (nm) { const sp = document.createElement('span'); sp.className = 'peer-tag'; sp.textContent = nm; peersList.appendChild(sp); });
+      peerCountEl.textContent = '👤 ' + st.count + '人' + (st.count >= MAX_ROOM ? '（満員）' : '');
+      peerCountEl.style.color = '#94a3b8';
+    }
+    // スマホのトップページでは、押せない「招待URL・QR・ミュート」の場所に、ハンドルネームと設定を置く
+    function placeHomeControls() {
+      let ck = null; try { ck = currentKey; } catch (_) {}
+      const narrow = !document.body.classList.contains('wide');
+      const want = !ck && narrow;
+      const rv = document.getElementById('radioView');
+      rv.classList.toggle('slot-on', want);
+      const target = document.getElementById(want ? 'idleSlot' : 'homeCard');
+      const nb = document.getElementById('nameBox'), sb = document.getElementById('settingsBtn');
+      if (nb.parentElement !== target) { target.appendChild(nb); target.appendChild(sb); }
+    }
+    function isInviteMode() { return !!pendingKey && !currentKey; }
+    function setPttLabel(key) { // 大きなボタンの役割: 部屋の中=話す / 招待された部屋=入室 / どこにも入っていない=新しい部屋を作る
+      const pm = pttBtn.querySelector('.ptt-main'), ps = pttBtn.querySelector('.ptt-sub');
+      const inv = !!pendingKey && !key;
+      if (pm) pm.textContent = key ? 'PUSH' : (inv ? 'JOIN' : 'NEW');
+      if (ps) ps.textContent = key ? 'TO TALK' : (inv ? '入室' : '新しい部屋');
+    }
+    let createGuard = false;
+    function createFromPtt() { if (createGuard || currentKey) return; createGuard = true; setTimeout(function () { createGuard = false; }, 1500); document.getElementById('emptyBtn').click(); }
+    function joinInvited() { if (isInviteMode()) tuneKey(pendingKey, true); }
+    function renderInvite(st) {
+      placeHomeControls();
+      const on = isInviteMode();
+      inviteCard.classList.add('hidden'); // 旧い招待カードは使わない（本体に表示する）
+      const rv = document.getElementById('radioView');
+      rv.classList.toggle('invite', on);
+      rv.classList.toggle('idle', !currentKey && !on);
+      document.getElementById('inviteLinks').classList.toggle('hidden', !on);
+      setPttLabel(currentKey);
+      if (on) {
+        inviteShown = true;
+        chDisplay.textContent = 'INVITED';
+        setHash(freqDisplay, fmt(pendingKey));
+        document.getElementById('tagText').textContent = (st && st.tag) ? '🏷 ' + st.tag : '';
+        statusLabel.textContent = '招待された部屋'; statusLabel.style.color = '#fbbf24';
+        peersList.textContent = '';
+        if (st && st.count > 0) {
+          st.names.forEach(function (nm) { const sp = document.createElement('span'); sp.className = 'peer-tag'; sp.textContent = nm; peersList.appendChild(sp); });
+        } else {
+          const e = document.createElement('span'); e.className = 'peers-empty'; e.textContent = 'いまは誰もいません。入って待つこともできます'; peersList.appendChild(e);
+        }
+        peerCountEl.textContent = '👤 ' + ((st && st.count) || 0) + '人';
+        peerCountEl.style.color = '#fbbf24';
+      } else if (inviteShown) {
+        inviteShown = false;
+        chDisplay.textContent = 'ROOM HASH';
+        statusLabel.textContent = 'STANDBY'; statusLabel.style.color = '#38bdf8';
+        if (currentKey) { setHash(freqDisplay, fmt(currentKey)); renderTagRow(); renderPeers(); }
+        else { idlePlaceholders(); renderPreview(); }
+      } else { renderPreview(); }
+    }
+    document.getElementById('inviteJoin').addEventListener('click', function () { if (pendingKey) tuneKey(pendingKey, true); });
     document.getElementById('inviteLater').addEventListener('click', function () {
       pendingKey = null;
       try { history.replaceState(null, '', location.pathname); } catch (_) {}
       renderScan();
     });
     document.getElementById('inviteAbout').addEventListener('click', function () { openDialog(aboutDialog); });
+    document.getElementById('inviteLater2').addEventListener('click', function () { document.getElementById('inviteLater').click(); });
+    document.getElementById('inviteNew2').addEventListener('click', function () { document.getElementById('inviteLater').click(); createFromPtt(); }); // 招待を閉じて、自分で新しい部屋を作る
+    document.getElementById('inviteAbout2').addEventListener('click', function () { openDialog(aboutDialog); });
 
     function appendNames(el, names) { // 名前を1人ずつ割れない要素で並べる（改行は「、」の後だけ）
       names.forEach(function (nm, i) {
@@ -2412,7 +3265,7 @@
     }
 
     // ---------- 部屋を探すダイヤル ----------
-    const DIAL_ROW = 84; // 1行の高さ(px)。CSS の --rdial-row と同じ
+    const DIAL_ROW = 132; // 1行の高さ(px)。CSS の --rdial-row と同じ
     let dialKeys = [];
     let dialBusy = false, dialPending = false, dialTimer = null, dialProgrammatic = false, dialLastIdx = -1, dialLastTick = 0, dialRaf = 0;
     function dialIndex() { return Math.max(0, Math.min(Math.max(0, dialKeys.length - 1), Math.round(scanList.scrollTop / DIAL_ROW))); }
@@ -2433,7 +3286,7 @@
     }
     // 円柱（ドラム）の形に見せる: 部屋は円柱の表面に並び、中央の1行が、真正面を向く。
     // 1行ぶん回すと STEP 度回る。上下の部屋は、奥に回り込み、縦に詰まって、暗くなる。
-    const DIAL_STEP = 52;                                   // 1行あたりの回転角（度）。大きいほど、上下の部屋が、強く詰まって見える
+    const DIAL_STEP = 36;                                   // 1行あたりの回転角（度）。大きいほど、上下の部屋が、強く詰まって見える
     const DIAL_R = DIAL_ROW / (DIAL_STEP * Math.PI / 180);   // 円柱の半径（px）。中央付近で、スクロールと同じ速さで動くように決める
     const railTicks = [], ridges = [];
     (function makeParts() {
@@ -2449,7 +3302,7 @@
     function dialUpdate() {
       const kids = scanList.children, top = scanList.scrollTop, idx = dialIndex();
       const rot = top / DIAL_ROW * DIAL_STEP; // いまの円柱の回転角（度）
-      // 左右にはずらさない・ゆがめない（縦方向に、つぶすだけ）。円柱を真横から見た形（奥行きの遠近は使わない）
+      // 円柱を真横から見た形（左右にはずらさない・ゆがめない。縦方向にだけ、詰める）
       for (let i = 0; i < kids.length; i++) {
         const el = kids[i];
         if (!el.classList.contains('rdial-item')) continue;
@@ -2458,8 +3311,9 @@
         const rad = th * Math.PI / 180;
         const c = Math.cos(rad);
         const dy = DIAL_R * Math.sin(rad) - off * DIAL_ROW;           // 平らに並べたときの位置から、円柱の上の位置へのずれ
+        // 文字は、ドラムの面に印刷されている。左右には動かさず、縦方向だけ、円柱の丸みの分、詰める（上下の端ほど、細かく詰まる）
         el.style.transform = 'translateY(' + dy.toFixed(1) + 'px) scaleY(' + Math.max(0.04, c).toFixed(3) + ')';
-        el.style.opacity = Math.abs(off) > 1.85 ? '0' : String(Math.max(0.1, Math.pow(c, 1.4)).toFixed(2));
+        el.style.opacity = Math.abs(off) > 2.6 ? '0' : String(Math.max(0.12, Math.pow(c, 1.1)).toFixed(2));
         el.style.filter = (el.classList.contains('full') ? 'grayscale(0.7) ' : '') + 'brightness(' + (0.5 + 0.5 * c).toFixed(2) + ')';
         el.classList.toggle('on-line', i === idx);
       }
@@ -2476,9 +3330,43 @@
       };
       place(ridges, 1, true);   // 横切る線は、円柱の端ほど濃く、中央ほど薄く（文字に重なって、うるさくならないように）
       place(railTicks, 1, false);
-      if (idx !== dialLastIdx) { if (dialLastIdx >= 0 && !dialProgrammatic) dialTick(); dialLastIdx = idx; }
+      if (idx !== dialLastIdx) { if (dialLastIdx >= 0 && !dialProgrammatic) dialTick(); dialLastIdx = idx; renderPreview(); renderDialDetail(); }
+    }
+    function renderDialDetail() {
+      const box = document.getElementById('dialDetail');
+      if (!box) return;
+      const key = dialKeys[dialIndex()];
+      const st = key ? roomStats().get(key) : null;
+      box.textContent = '';
+      if (!key || !st) { const e = document.createElement('div'); e.className = 'dd-count'; e.textContent = 'ダイヤルを回して、部屋を選んでください'; box.appendChild(e); return; }
+      const t = document.createElement('div'); t.className = 'dd-title'; setHash(t, fmt(key)); box.appendChild(t);
+      if (st.tag) { const g = document.createElement('div'); g.className = 'dd-tag'; g.textContent = '🏷 ' + st.tag + (st.tagBy ? '（' + st.tagBy + '）' : ''); box.appendChild(g); }
+      const c = document.createElement('div'); c.className = 'dd-count';
+      c.textContent = st.invited ? '招待された部屋（いまは無人）' : (st.empty || !st.count) ? 'いまは誰もいません' : '👤 ' + st.count + '人' + (st.count >= MAX_ROOM ? '（満員）' : '');
+      box.appendChild(c);
+      if (st.names && st.names.length) {
+        const nm = document.createElement('div'); nm.className = 'dd-names';
+        st.names.forEach(function (n) { const sp = document.createElement('span'); sp.textContent = n; nm.appendChild(sp); });
+        box.appendChild(nm);
+      }
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-sub';
+      const here = key === currentKey;
+      b.textContent = here ? 'いま入っている部屋です' : 'この部屋に入る';
+      b.disabled = here || (st.count >= MAX_ROOM && !here);
+      b.addEventListener('click', function () { tuneKey(key); });
+      box.appendChild(b);
     }
     function dialGo(i) { scanList.scrollTo({ top: Math.max(0, Math.min(dialKeys.length - 1, i)) * DIAL_ROW, behavior: 'smooth' }); }
+    // ダイヤルにフォーカスがなくても、カーソルキーの上下で、1つずつ回す（入力欄・ダイアログの中では、使わない）
+    window.addEventListener('keydown', function (e) {
+      if ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (e.target === scanList || isTyping() || document.querySelector('dialog[open]')) return;
+      const f = document.activeElement;
+      if (f && (f.tagName === 'SELECT' || f.tagName === 'TEXTAREA' || f.tagName === 'INPUT' && f.type !== 'checkbox' && f.type !== 'button')) return;
+      if (!dialKeys.length) return;
+      e.preventDefault();
+      dialGo(dialIndex() + (e.key === 'ArrowDown' ? 1 : -1));
+    });
     function dialEnter() { const key = dialKeys[dialIndex()]; if (key) tuneKey(key); }
     function dialIdleSoon(ms) {
       clearTimeout(dialTimer);
@@ -2497,6 +3385,7 @@
       else if (e.key === 'Enter' || e.key === ' ') { dialEnter(); e.preventDefault(); e.stopPropagation(); } // スペースを、話すキーとして扱わせない
     });
 
+    let dialShownKey = null;
     function buildDial(keys, stats, f) {
       if (dialBusy) { dialPending = true; return; }
       const prevKey = dialKeys[dialIndex()], prevIdx = dialIndex();
@@ -2513,11 +3402,11 @@
       keys.forEach(function (key, i) {
         const st = stats.get(key);
         const b = document.createElement('div');
-        b.className = 'rdial-item' + (key === BOT_ROOM_KEY ? ' bot' : '') + (key === currentKey ? ' me' : '') + (st.air ? ' air' : '') + (key === pendingKey ? ' invited' : '') + (st.count >= MAX_ROOM && key !== currentKey ? ' full' : '');
+        b.className = 'rdial-item' + (isBotRoom(key) ? ' bot' : '') + (key === currentKey ? ' me' : '') + (st.air ? ' air' : '') + (key === pendingKey ? ' invited' : '') + (st.count >= MAX_ROOM && key !== currentKey ? ' full' : '');
         b.setAttribute('role', 'option');
         b.dataset.key = key;
         const head = document.createElement('div');
-        head.textContent = (key === BOT_ROOM_KEY ? '🦜 ' : '') + (st.air ? '🔴 ' : '🔵 ') + fmt(key) + ' · 👤' + st.count + (key === currentKey && st.count !== peerMap.size + 1 ? '（つながっているのは ' + (peerMap.size + 1) + ' 人）' : '') + (st.count >= MAX_ROOM ? ' · 満員' : '') + (key === pendingKey ? ' · 招待' : '');
+        head.textContent = ''; head.appendChild(document.createTextNode((isBotRoom(key) ? '🦜 ' : '') + (st.air ? '🔴 ' : '🔵 '))); head.appendChild(monoSpan(fmt(key))); head.appendChild(document.createTextNode(' · 👤' + st.count + (isBotRoom(key) && botAway(key) ? ' · 🌙 休憩中' : '') + (key === currentKey && st.count !== peerMap.size + 1 ? '（つながっているのは ' + (peerMap.size + 1) + ' 人）' : '') + (st.count >= MAX_ROOM ? ' · 満員' : '') + (key === pendingKey ? ' · 招待' : '')));
         b.appendChild(head);
         if (st.tag) {
           const tg = document.createElement('div');
@@ -2537,11 +3426,15 @@
       });
       // 再描画のあとも、同じ部屋が、赤い線の位置に残るようにする（初回は、いまいる部屋、なければ先頭）
       let at = prevKey ? keys.indexOf(prevKey) : -1;
+      // 入室したときは、その部屋が、赤い線の位置に来る
+      if (currentKey !== dialShownKey) { dialShownKey = currentKey; if (currentKey && keys.indexOf(currentKey) >= 0) at = keys.indexOf(currentKey); }
       if (at < 0) at = dialLastIdx < 0 ? Math.max(0, keys.indexOf(currentKey)) : Math.min(prevIdx, keys.length - 1);
       dialProgrammatic = true;
       scanList.scrollTop = at * DIAL_ROW;
       dialLastIdx = at;
       dialUpdate();
+      renderPreview();
+      renderDialDetail();
       setTimeout(function () { dialProgrammatic = false; }, 120);
     }
 
@@ -2550,11 +3443,17 @@
       if (pendingKey && !stats.has(pendingKey)) stats.set(pendingKey, { count: 0, air: false, names: [], invited: true });
       const f = parseSearch();
       // URLやハッシュで指定された部屋に、いま誰もいない場合も、入れるように出す
-      if (f && f.exact && !stats.has(f.exact)) stats.set(f.exact, { count: 0, air: false, names: [], empty: true });
+      // （英数字8文字の名前、たとえば iphone12 を探したときは、名前が合う部屋があれば、空の部屋は作らない）
+      if (f && f.exact && !stats.has(f.exact)) {
+        const textHit = !/^[0-9a-f]{8}$/.test(f.exact) && Array.from(stats.keys()).some(function (k) { return matchSearch(k, stats.get(k), { text: f.text, hex: null, exact: null }); });
+        if (!textHit) stats.set(f.exact, { count: 0, air: false, names: [], empty: true });
+      }
+      // おうむ返しの部屋は、無人でも、いつも一覧に出す（指定がなければ、ここに合わせる）
+      if (!f && !stats.has(BOT_ROOM_KEY)) stats.set(BOT_ROOM_KEY, { count: 0, air: false, names: [], empty: true });
       const allKeys = Array.from(stats.keys()).sort();
       let keys = f ? allKeys.filter(function (k) { return matchSearch(k, stats.get(k), f); }) : allKeys;
       // 招待された部屋は、一覧の先頭に出す
-      if (keys.indexOf(BOT_ROOM_KEY) > 0) keys = [BOT_ROOM_KEY].concat(keys.filter(function (k) { return k !== BOT_ROOM_KEY; })); // ボットの部屋は、いつも先頭
+      { const top = [BOT_ROOM_KEY, BOT_ROOM_OLD].filter(function (k) { return keys.indexOf(k) >= 0; }); if (top.length) keys = top.concat(keys.filter(function (k) { return !isBotRoom(k); })); } // ボットの部屋は、いつも先頭
       if (pendingKey && keys.indexOf(pendingKey) >= 0) keys = [pendingKey].concat(keys.filter(function (k) { return k !== pendingKey; }));
       renderInvite(pendingKey ? stats.get(pendingKey) : null);
       let total = 0;
@@ -2568,44 +3467,93 @@
 
     // ---------- 再接続（部屋には入ったまま、通話とロビーの接続を張り直す）----------
     let reconnecting = false, hiddenAt = 0;
-    async function reconnectRoom(auto) {
+    let autoReconnectOn = false; // 自動の再接続は、標準ではオフ（端末どうしが、つなぎ直しを繰り返して、お互いを邪魔するため）
+    try { autoReconnectOn = localStorage.getItem('pochitalk_autoreconnect') === '1'; } catch (_) {}
+    // 再接続は、ページごと読み込み直す（ぽっと通話と同じ方式）。ページ内で leave → join し直すと、Trystero は相手との接続を閉じずに使い回し、
+    // 退出時に作った再交渉の offer も送れずに残るので、入り直しても音声の経路が固まったままになる（名前や合図は届くので、部屋にいるように見える）。
+    // 読み込み直せば、接続も自分の ID も作り直され、相手からは正真正銘の新しい参加者になる。入る部屋と VOX は sessionStorage で引き継ぐ
+    const REJOIN_KEY = 'pochitalk_rejoin', AUTO_RELOAD_KEY = 'pochitalk_auto_reloads';
+    function autoReloadAllowed() { // 自動の読み込み直しは 10 分に 2 回まで（壊れたまま直らないときに、読み込みが繰り返されて操作できなくなるのを防ぐ）
+      let arr = [];
+      try { arr = JSON.parse(sessionStorage.getItem(AUTO_RELOAD_KEY) || '[]'); } catch (_) {}
+      const now = Date.now();
+      arr = Array.isArray(arr) ? arr.filter(function (t) { return now - t < 600000; }) : [];
+      if (arr.length >= 2) return false;
+      arr.push(now);
+      try { sessionStorage.setItem(AUTO_RELOAD_KEY, JSON.stringify(arr)); } catch (_) {}
+      return true;
+    }
+    async function reconnectRoom(auto, force, why) { // force: 自己修復から（自動の設定がオフでも動く） why: 理由（診断に残す）
+      if (auto && !autoReconnectOn && !force) return;
       if (!currentKey || reconnecting) return;
+      if (auto && !autoReloadAllowed()) { flashSub('つながりません。「再接続」を押すか、時間をおいて入り直してください'); return; }
+      try { sessionStorage.setItem('pochitalk_reload_why', JSON.stringify({ at: Date.now(), auto: !!auto, why: why || (auto ? '自動（理由不明）' : '「再接続」ボタン') })); } catch (_) {}
       reconnecting = true;
       const btn = document.getElementById('reconnectBtn');
       btn.disabled = true;
-      await refreshIceServers(true); // つなぎ直しでは資格情報を取り直してから入る
+      btn.textContent = '再接続中…';
+      flashSub(auto ? '接続が切れた可能性があるので、つなぎ直しています…' : '再接続中…');
+      try { sessionStorage.setItem(REJOIN_KEY, JSON.stringify({ key: currentKey, vox: voxCheck.checked, at: Date.now(), meta: { tag: roomMeta.tag, by: roomMeta.by, at: roomMeta.at } })); } catch (_) {}
+      if (isTransmitting) { pressed = false; stopTransmission(); }
+      const oldRoom = room;
+      room = null;
+      try { pres.announced = false; presenceSend({ ch: '' }); } catch (_) {} // 一覧からも、いったん消す（残ると、読み込み直したあとの人数が 1 人多く見える）
+      // 退出の知らせを先に送ってから読み込み直す（相手がこちらの離脱を早く知るほど、戻ったときにすんなり繋ぎ直してもらえる）。届かなくても 1.2 秒で進める
+      try { await Promise.race([closeOldConnections(oldRoom), wait(1200)]); } catch (_) {}
+      closeAllConnections(); await wait(400); // 先に作ってあった接続も閉じて、TURN の確保を返す（返事が出るのを、少し待つ）
+      location.reload();
+    }
+    // 自動の入り直し（つながらないときに、読み込み直すと、すぐ直るため）。話している最中の端末は、動かさない。
+    //  (1) 入室から45〜150秒たっても、つながらない人がいる: 新しく入った側だけ（10分に1回まで）
+    //  (2) 1人で待っていて、一覧に誰かが現れて5秒たってもつながらない: 1人なので、誰にも迷惑がかからない（5分に1回まで）
+    //  (3) 1人で10分待った: 静かに入り直す（待っている間に、古い状態になるのを防ぐ）
+    const LOBBY_WAIT_MS = 5000, ALONE_RELOAD_MS = 10 * 60 * 1000;
+    let aloneSince = 0, othersSince = 0;
+    function autoHeal(why, key, capMs) {
+      let last = 0;
+      try { last = Number(localStorage.getItem(key) || 0); } catch (_) {}
+      if (Date.now() - last < capMs) return;
+      try { localStorage.setItem(key, String(Date.now())); } catch (_) {}
+      reconnectRoom(true, true, why);
+    }
+    setInterval(function () {
       try {
-        if (isTransmitting) { pressed = false; stopTransmission(); }
-        flashSub(auto ? '接続が切れた可能性があるので、つなぎ直しています…' : '再接続中…');
-        const key = currentKey, meta = roomMeta, enter = roomEnterTime;
-        const oldRoom = room, oldLobby = lobbyRoom;
-        // 古い接続を片付ける（マイクと、部屋に入っている状態はそのまま）
-        room = null; lobbyRoom = null;
-        sendPttState = null; sendNickname = null; sendJoinAge = null; sendTag = null; sendPresence = null; sendFaxPage = null;
-        peerMap.clear(); rxAnalysers.clear(); rxDecoders.clear(); lobbyEntries.clear();
-        currentTalkerId = null;
-        document.querySelectorAll('audio[id^="audio-"]').forEach(function (a) { a.remove(); });
-        ledRx.classList.remove('active');
-        renderPeers(); renderScan();
-        await Promise.all([oldRoom ? oldRoom.leave() : null, oldLobby ? oldLobby.leave() : null]);
-        await new Promise(function (r) { setTimeout(r, 300); });
-        if (currentKey !== key) return; // 待っている間に退出・移動した
-        connectToChannel(key);
-        roomMeta = meta; roomEnterTime = enter; renderTagRow(); // タグと入室時刻は引き継ぐ
-        joinLobby();
-        announce();
-        renderScan();
-        flashSub('再接続しました。相手が見つかるまで少し待ってください');
-      } catch (e) {
-        flashSub('再接続に失敗しました。ページを再読み込みしてください');
-      } finally {
-        reconnecting = false;
-        btn.disabled = false;
-      }
+        if (!currentKey || reconnecting || isTransmitting || !roomEnterTime) return;
+        const now = Date.now(), age = now - roomEnterTime;
+        const st = roomStats().get(currentKey);
+        const others = st ? Math.max(0, st.count - 1) : 0;
+        if (peerMap.size === 0) {
+          if (!aloneSince) aloneSince = now;
+          if (others > 0) { if (!othersSince) othersSince = now; } else othersSince = 0;
+          if (others > 0 && now - othersSince >= LOBBY_WAIT_MS && age >= LOBBY_WAIT_MS) {
+            autoHeal('1人で待っていて、一覧に相手が現れて ' + Math.round(LOBBY_WAIT_MS / 1000) + ' 秒たってもつながらなかった（自動で入り直し）', 'pochitalk_autoheal_alone', 300000);
+            return;
+          }
+          if (others === 0 && now - aloneSince >= ALONE_RELOAD_MS && age >= ALONE_RELOAD_MS) {
+            autoHeal('1人で10分待ったので、静かに入り直し（自動）', 'pochitalk_autoheal_idle', 540000);
+            return;
+          }
+        } else { aloneSince = 0; othersSince = 0; }
+        if (age < 45000 || age > 150000) return;
+        const missing = (st ? st.count : 0) - 1 - peerMap.size;
+        if (missing < 1) return;
+        autoHeal('入室から45秒たっても、つながらない人が ' + missing + ' 人いた（自動で入り直し）', 'pochitalk_autoheal_at', 600000);
+      } catch (_) {}
+    }, 1000);
+    // 読み込み直しの後半: 予約があれば、同じ部屋に入り直す（init から呼ぶ）
+    function rejoinAfterReload() {
+      let r = null;
+      try { r = JSON.parse(sessionStorage.getItem(REJOIN_KEY) || 'null'); sessionStorage.removeItem(REJOIN_KEY); } catch (_) {}
+      if (!r || !isKey(r.key) || typeof r.at !== 'number' || Date.now() - r.at > 60000) return false;
+      if (r.meta && typeof r.meta.at === 'number' && r.meta.at > 0 && r.meta.tag) pendingRoomMeta = { key: r.key, tag: r.meta.tag, by: r.meta.by, at: r.meta.at };
+      tuneKey(r.key, true);
+      flashSub('再接続しました。相手が見つかるまで少し待ってください');
+      if (r.vox) initMicrophone(true).then(function (ok) { if (ok && currentKey === r.key) { setVoxUI(true); startVox(); } });
+      return true;
     }
     document.getElementById('reconnectBtn').addEventListener('click', function () { reconnectRoom(false); });
     // 回線が戻ったときは、自動でつなぎ直す
-    window.addEventListener('online', function () { reconnectRoom(true); });
+    window.addEventListener('online', function () { reconnectRoom(true, false, '回線が戻った'); });
     // ---------- QRコード（裏返して、裏面に招待QRを見せる）----------
     const radioEl = document.getElementById('radioView'), frontFace = document.getElementById('frontFace'), backFace = document.getElementById('backFace');
     let flipping = false;
@@ -2613,7 +3561,7 @@
 
     async function renderQr() {
       const url = location.origin + location.pathname + '?r=' + currentKey;
-      document.getElementById('qrRoom').textContent = fmt(currentKey);
+      setHash(document.getElementById('qrRoom'), fmt(currentKey));
       document.getElementById('qrUrl').textContent = url;
       const box = document.getElementById('qrBox');
       box.textContent = '読み込み中…';
@@ -2663,8 +3611,7 @@
       backFace.classList.add('hidden');
       radioEl.style.transition = ''; radioEl.style.transform = '';
     }
-    document.getElementById('qrBtn').addEventListener('click', function () { document.getElementById('qrBtn').blur(); flipTo(true); });
-    document.getElementById('qrBack').addEventListener('click', function () { flipTo(false); });
+    document.getElementById('qrBtn').addEventListener('click', function () { document.getElementById('qrBtn').blur(); flipTo(!radioEl.classList.contains('flipped')); }); // QRボタンで、見せる・閉じるを切り替える
     window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && radioEl.classList.contains('flipped')) flipTo(false); });
 
     // ---------- バックグラウンド / フォアグラウンド ----------
@@ -2696,7 +3643,7 @@
       if (!need) return;
       const voxWasOn = voxCheck.checked;
       if (micDead) { if (voxWasOn) { setVoxUI(false); stopVox(); } releaseMic(); } // 止まったマイクは捨てて、取り直す
-      reconnectRoom(true).then(function () {
+      reconnectRoom(true, false, 'マイクが止まっていた（画面に戻った）').then(function () {
         if (userMediaStream) return;
         initMicrophone(true).then(function (ok) {
           if (ok && voxWasOn) { setVoxUI(true); startVox(); }
@@ -2709,13 +3656,22 @@
       if (document.hidden) goneBackground(); else backToForeground();
     });
     window.addEventListener('pagehide', goneBackground);
+    // 再読み込みや閉じるときだけ（バックグラウンドに回るだけのときは除く）、通話の接続・マイク・リレーとの接続を、先に片付ける。iPad の Safari は、片付けの終わりを待つので、再読み込みが遅くなる
+    window.addEventListener('pagehide', function (e) {
+      if (e.persisted) return;
+      try { if (diagTimer) { clearInterval(diagTimer); diagTimer = null; } } catch (_) {}
+      try { if (room) { room.leave(); } } catch (_) {}
+      try { pres.socks.forEach(function (ws) { try { ws.close(); } catch (_) {} }); } catch (_) {}
+      try { releaseMic(); } catch (_) {}
+    });
     window.addEventListener('pageshow', function (e) { if (e.persisted) backToForeground(); });
     document.addEventListener('freeze', goneBackground);
     document.addEventListener('resume', backToForeground);
 
     document.getElementById('emptyBtn').addEventListener('click', function () {
       const key = toHex(crypto.getRandomValues(new Uint8Array(4)));
-      tuneKey(key);
+      tuneKey(key, false, true);
+      if (currentKey !== key) return;
       flashSub('新しい部屋を作りました。招待で友達を呼べます');
     });
 
@@ -2729,9 +3685,254 @@
     settingsDialog.addEventListener('click', function (e) { if (e.target === settingsDialog) closeSettings(); });
     // 設定を閉じたら、マイクテストを止めてマイクを解放する（入室中は部屋が使うのでそのまま）
     settingsDialog.addEventListener('close', function () { endMicTest(); if (!room) releaseMic(); });
+    // ---------- 通信の診断（設定の中。相手ごとの接続の状態と、リレーの様子）----------
+    const diagBox = document.getElementById('diagBox');
+    let diagTimer = null;
+    function diagLine(parent, text, color) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      if (color) d.style.color = color;
+      parent.appendChild(d);
+    }
+    const diagPanel = document.getElementById('diagPanel');
+    const diagAlwaysChk = document.getElementById('diagAlways');
+    function diagStop() {
+      if (diagTimer) { clearInterval(diagTimer); diagTimer = null; }
+      diagPanel.classList.remove('on');
+      document.body.classList.remove('diag-on');
+      try { localStorage.setItem('pochitalk_diag_always', '0'); } catch (_) {}
+      diagAlwaysChk.checked = false;
+    }
+    function diagStart() {
+      diagPanel.classList.add('on');
+      document.body.classList.add('diag-on');
+      diagRender().catch(function () {});
+      if (!diagTimer) diagTimer = setInterval(diagRender, 2000);
+    }
+    const diagPrev = new Map();
+    // 音声の取り決めが、途中で止まった相手を、見つけて、やり直す。
+    // 通話の部品（Trystero 0.25.4）は、つながったあとに、自分の声を送る準備（通り道の追加）をするとき、取り決めの要求を取りこぼすことがある。
+    // 取りこぼすと、相手との接続は「つながっている」のに、自分の声が、その相手に届かない（診断の「向き」が「sendrecv→なし」になる）。
+    // 診断で見つけたら、同じ要求を、もう一度、出す（通常の取り決めと同じ手順なので、害はない）。数回までにする
+    const healState = new Map();
+    let lastEscalate = 0;
+    window.healCount = 0;
+    function healAudio() {
+      let pcs = {};
+      try { pcs = room ? room.getPeers() : {}; } catch (_) { return; }
+      const now = Date.now();
+      healState.forEach(function (v, id) { if (!pcs[id]) healState.delete(id); });
+      Object.keys(pcs).forEach(function (id) {
+        const pc = pcs[id];
+        let stuck = false;
+        try {
+          stuck = pc.connectionState === 'connected' && pc.signalingState === 'stable' && pc.getTransceivers().some(function (t) {
+            return t.sender && t.sender.track && (t.direction === 'sendrecv' || t.direction === 'sendonly') && t.currentDirection === null;
+          });
+        } catch (_) {}
+        let st = healState.get(id);
+        if (!stuck) { if (st) healState.delete(id); return; }
+        if (!st) { healState.set(id, { since: now, tries: 0, last: 0 }); return; }
+        if (st.tries >= 6 && now - st.last > 8000 && now - lastEscalate > 300000 && !document.hidden && !isTransmitting && !reconnecting) {
+          // 4回やり直しても直らない: この端末だけ、1回、退出して入り直す（全員が同時に動かないよう、5分に1回まで）
+          lastEscalate = now; healState.delete(id);
+          if (window.pcLog) window.pcLog.push(pcClock() + ' 取り決めが直らないため、入り直します');
+          reconnectRoom(true, true, '音の取り決めが直らなかった');
+          return;
+        }
+        if (now - st.since < 2000 || st.tries >= 6 || now - st.last < 4000) return;
+        st.tries++; st.last = now; window.healCount++;
+        const meta = peerMap.get(id);
+        if (window.pcLog) window.pcLog.push(pcClock() + ' 音声の取り決めをやり直し ' + ((meta && meta.name) || id.slice(0, 5)) + '（' + st.tries + '回目）');
+        try { if (typeof pc.onnegotiationneeded === 'function') pc.onnegotiationneeded(new Event('negotiationneeded')); } catch (_) {}
+      });
+    }
+    setInterval(healAudio, 1000);
+    function healSoon() { setTimeout(healAudio, 800); setTimeout(healAudio, 2500); } // 音声を足した直後に、取り決めが始まったか、すぐ確かめる（アプリ版は、取り決めの開始を、必ず受け取る）
+    async function diagRender() {
+      const out = document.createElement('div');
+      diagLine(out, '版 ' + (document.getElementById('appVersion').textContent || '').replace('版 ', '') + ' / ' + (navigator.onLine ? 'オンライン' : 'オフライン') + ' / ' + (document.hidden ? '裏' : '表'));
+      const st0 = currentKey ? roomStats().get(currentKey) : null;
+      diagLine(out, '部屋: ' + (currentKey ? fmt(currentKey) : '（入っていません）') + ' / 一覧では ' + (st0 ? st0.count : 0) + ' 人 / つながっているのは ' + (currentKey ? peerMap.size + 1 : 0) + ' 人（自分を含む）');
+      (function () {
+        const lr = linkRanking();
+        if (!lr) return;
+        diagLine(out, 'つながりの順位（少ない順・先頭が入り直す番）:');
+        lr.rows.forEach(function (r, i) {
+          const mark = (lr.weakest && lr.weakest.key === r.key) ? '　← 入り直し推奨' : '';
+          diagLine(out, '　' + (i + 1) + '. ' + r.name + (r.me ? '（自分）' : '') + ' ' + r.cn + '/' + (lr.total - 1) + ' 本' + (r.ag < 45 ? '（入室直後）' : '') + mark, mark ? '#f87171' : (r.cn >= lr.total - 1 ? '#4ade80' : '#fbbf24'));
+        });
+        if (lr.unknown) diagLine(out, '　順位に入っていない端末: ' + lr.unknown + ' 台（古い版など）');
+        if (lr.weakest && lr.weakest.me) diagLine(out, '→ あなたが一番つながっていません。入り直してください（ほかの人は、入り直さないでください）', '#f87171');
+        else if (lr.weakest) diagLine(out, '→ 入り直すのは「' + lr.weakest.name + '」です。あなたは、そのままで大丈夫です', '#4ade80');
+      })();
+      try {
+        const why = JSON.parse(sessionStorage.getItem('pochitalk_reload_why') || 'null');
+        if (why && Date.now() - why.at < 900000) { const d = new Date(why.at); diagLine(out, '直前の読み込み直し: ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ' / ' + (why.auto ? '自動' : '手動') + ' / 理由: ' + why.why, why.auto ? '#fbbf24' : ''); }
+      } catch (_) {}
+      let rs = 0;
+      pres.socks.forEach(function (w) { if (w.readyState === 1) rs++; });
+      diagLine(out, '一覧用のリレー: ' + rs + ' / ' + aliveRelays.length + ' 本がつながっています');
+      diagLine(out, '音声の処理（AudioContext）: ' + (audioCtx ? audioCtx.state : '未作成') + (audioCtx && audioCtx.state !== 'running' ? '　← 止まっています。画面を1回タップ（クリック）してください' : ''), audioCtx && audioCtx.state !== 'running' ? '#f87171' : '');
+      diagLine(out, '自分: ' + (isTransmitting ? '送信中' : '待機') + ' / VOX ' + (voxCheck.checked ? 'オン' : 'オフ') + ' / スピーカー ' + (speakerMuted ? 'ミュート' : 'オン'));
+      diagLine(out, '通話用のリレー: ' + ROOM_RELAYS.length + ' 本を使用 / 経路: ' + (FORCE_RELAY ? '中継のみ' : '直接を優先'));
+      try { // 相手を見つけるための実際の接続（Trystero が開いている WebSocket）
+        const socks = getRelaySockets(); let open = 0, total = 0; const bad = [];
+        Object.keys(socks || {}).forEach(function (u) { total++; const w = socks[u]; if (w && w.readyState === 1) open++; else bad.push(String(u).split('://').pop().slice(0, 22) + (w ? '(' + ['接続中', '', '切断中', '切断'][w.readyState] + ')' : '')); });
+        let okAll = 0, noAll = 0; const refused = [];
+        relayMsgs.forEach(function (st, host) { okAll += st.ok; noAll += st.no + st.notice; if (st.no + st.notice > 0) refused.push(host.slice(0, 20) + ' ' + (st.no + st.notice) + '回「' + st.last + '」'); });
+        diagLine(out, '相手を探す接続への書き込み: 受け付けられた ' + okAll + ' 回 / 断られた・注意された ' + noAll + ' 回' + (refused.length ? '（' + refused.join('、') + '）' : ''), noAll > 0 ? '#fbbf24' : '');
+        diagLine(out, '相手を探す接続: ' + open + ' / ' + total + ' 本が開いています' + (bad.length ? '（閉じている: ' + bad.join('、') + '）' : ''), open === 0 ? '#f87171' : (open < total ? '#fbbf24' : ''));
+      } catch (_) {}
+      let pcs = {};
+      try { pcs = room ? room.getPeers() : {}; } catch (_) {}
+      const ids = Object.keys(pcs);
+      if (currentKey && !ids.length) diagLine(out, '相手とのつながりは、まだありません', '#fbbf24');
+      for (const id of ids) {
+        const pc = pcs[id];
+        const meta = peerMap.get(id);
+        let route = '?', rtt = '', inb = '', outB = -1, outP = 0, inP = -1, ips = '';
+        try {
+          const stats = await pc.getStats();
+          let pairId = null;
+          stats.forEach(function (r) { if (r.type === 'transport' && r.selectedCandidatePairId) pairId = r.selectedCandidatePairId; });
+          stats.forEach(function (r) {
+            if (r.type === 'inbound-rtp' && (r.kind === 'audio' || r.mediaType === 'audio')) {
+              const prev = diagPrev.get(id) || { b: 0, e: 0 };
+              const db = (r.bytesReceived || 0) - prev.b;
+              const de = (r.totalAudioEnergy || 0) - prev.e;
+              diagPrev.set(id, { b: r.bytesReceived || 0, e: r.totalAudioEnergy || 0 });
+              inb = ' / 受信 ' + Math.round(db / 1024 * 10) / 10 + 'KB/2秒, 音量 ' + (typeof r.audioLevel === 'number' ? r.audioLevel.toFixed(3) : '?') + ', 音の量の増加 ' + de.toFixed(4);
+            }
+          });
+          stats.forEach(function (r) {
+            if (r.type === 'outbound-rtp' && (r.kind === 'audio' || r.mediaType === 'audio')) { outB = r.bytesSent || 0; outP = r.packetsSent || 0; }
+            if (r.type === 'inbound-rtp' && (r.kind === 'audio' || r.mediaType === 'audio')) { inP = r.packetsReceived || 0; }
+          });
+          stats.forEach(function (r) {
+            if (r.type === 'candidate-pair' && (r.id === pairId || (!pairId && r.nominated && r.state === 'succeeded'))) {
+              const lc = stats.get(r.localCandidateId), rc = stats.get(r.remoteCandidateId);
+              route = (lc ? lc.candidateType : '?') + ' - ' + (rc ? rc.candidateType : '?');
+              if (lc && rc && lc.candidateType === 'relay') ips = ' [' + (lc.address || lc.ip || '?') + ' ↔ ' + (rc.address || rc.ip || '?') + ']'; // 中継どうしの住所（つながらない組み合わせとの比較用）
+              if (typeof r.currentRoundTripTime === 'number') rtt = ' / 遅延 ' + Math.round(r.currentRoundTripTime * 1000) + 'ms';
+            }
+          });
+        } catch (_) {}
+        const bad = pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed';
+        const dd = rxDecoders.get(id);
+        if (dd && dd.dbgLast && performance.now() - dd.dbgLast.at < 30000) diagLine(out, '　直近の音: ピーク ' + dd.dbgLast.peak + '（モールスには 100以上）/ 平均 ' + dd.dbgLast.avg + ' / 700Hz帯の割合 ' + dd.dbgLast.pure + '%（55%以上）/ ' + (dd.dbgLast.tone ? 'トーンと判定' : 'トーンではない') + ' / ' + Math.round((performance.now() - dd.dbgLast.at) / 1000) + '秒前 / ' + dd.dbgLast.sr + 'Hz');
+        try {
+          const el = document.getElementById('audio-' + id);
+          const rcv = pc.getReceivers().filter(function (r) { return r.track && r.track.kind === 'audio'; });
+          const snd = pc.getSenders().filter(function (r) { return r.track && r.track.kind === 'audio'; });
+          const tr = pc.getTransceivers().filter(function (t) { return (t.receiver && t.receiver.track && t.receiver.track.kind === 'audio'); }).map(function (t) { return (t.direction || '?') + '→' + (t.currentDirection || 'なし'); });
+          diagLine(out, '　音: 再生部品 ' + (el ? ((el.paused ? '停止' : '再生中') + (el.muted ? '・ミュート' : '') + '・トラック' + (el.srcObject ? el.srcObject.getAudioTracks().length : 0)) : 'なし（相手の音声が、届いていません）')
+            + ' / 受信トラック ' + rcv.map(function (r) { return r.track.readyState + (r.track.muted ? '・無音' : ''); }).join(',') + (rcv.length ? '' : 'なし')
+            + ' / 送信トラック ' + (snd.length ? snd.map(function (r) { return r.track.readyState + (r.track.enabled ? '' : '・停止中'); }).join(',') : 'なし')
+            + ' / 向き ' + (tr.join(',') || '?') + ' / 送信 ' + (outB >= 0 ? Math.round(outB / 1024) + 'KB' : '?') + ' / 受信パケット ' + (inP >= 0 ? inP : '?'), '#94a3b8');
+        } catch (_) {}
+        diagLine(out, (meta && meta.name ? meta.name : id.slice(0, 5)) + ' : ' + pc.connectionState + ' / ice:' + pc.iceConnectionState + ' / 経路 ' + route + ips + rtt + inb + ' / 話し中の合図: ' + (meta && meta.isTalking ? 'はい' : 'いいえ') + (id === currentTalkerId ? '（受信中）' : ''), bad ? '#f87171' : (pc.connectionState === 'connected' ? '#4ade80' : '#fbbf24'));
+      }
+      if (currentKey) {
+        const have = new Set();
+        peerMap.forEach(function (info) { have.add(String(info.name || '').slice(0, 12)); });
+        const st1 = roomStats().get(currentKey);
+        const miss = [];
+        if (st1) st1.names.forEach(function (n) { const nn = String(n).replace('(自分)', ''); if (String(n).indexOf('(自分)') < 0 && !have.has(nn.slice(0, 12))) miss.push(nn); });
+        if (miss.length) diagLine(out, '一覧にいるが、つながっていない人: ' + miss.join('、'), '#fbbf24');
+      }
+      if (currentKey) {
+        const ws = []; peerMap.forEach(function (info, id) { if (webPeers.has(id)) ws.push(String((info && info.name) || id.slice(0, 5)).slice(0, 12) + (audioFlowing(id) ? '：流れている' : '：止まっている（頼んだ ' + ((nudges.get(id) || { n: 0 }).n) + '回' + (stuckPeers.has(id) ? '・頼み尽くした' : '') + '）')); });
+        diagLine(out, '音の見張り（ウェブ版の相手 ' + ws.length + ' 人）: ' + (ws.length ? ws.join(' / ') : 'なし') + ' / 頼んだ ' + window.nudgeSent + ' 回・頼まれた ' + window.nudgeServed + ' 回', stuckPeers.size ? '#fbbf24' : '');
+      }
+      if (window.pcCount) {
+        diagLine(out, '接続の記録: 作成 ' + window.pcCount.created + ' / 破棄 ' + window.pcCount.closed + ' / 失敗 ' + window.pcCount.failed + '（直近の出来事は、下）');
+        (function () {
+          const bad = new Set();
+          window.pcLog.forEach(function (l) { const m = /(#[0-9]+) (ice|conn):(failed|disconnected)/.exec(l); if (m) bad.add(m[1]); });
+          return window.pcLog.filter(function (l) { const m = /(#[0-9]+) /.exec(l); return l.indexOf('相手') >= 0 || l.indexOf('取り決め') >= 0 || l.indexOf('送り直し') >= 0 || l.indexOf('つなぎ直し') >= 0 || l.indexOf('入り直し') >= 0 || l.indexOf('ICEエラー') >= 0 || l.indexOf('画面:') >= 0 || l.indexOf('回線:') >= 0 || l.indexOf('ページを読み込んだ') >= 0 || l.indexOf('一覧に現れた') >= 0 || l.indexOf('入室した') >= 0 || l.indexOf('記録モード') >= 0 || (m && bad.has(m[1]) && (l.indexOf('失敗の詳細') >= 0 || l.indexOf('失敗のペア') >= 0 || l.indexOf('ice:failed') >= 0 || l.indexOf('ice:disconnected') >= 0 || l.indexOf('作成') >= 0)) ; }).slice(-60);
+        })().forEach(function (l) { diagLine(out, '　' + l, '#94a3b8'); });
+      }
+      if (window.pcPrevLog && window.pcPrevLog.length) {
+        const pa = window.pcPrevAt ? new Date(window.pcPrevAt) : null;
+        diagLine(out, '前のページの記録（最後に保存: ' + (pa ? pa.getHours() + ':' + ('0' + pa.getMinutes()).slice(-2) + ':' + ('0' + pa.getSeconds()).slice(-2) : '?') + '）:');
+        window.pcPrevLog.filter(function (l) { return l.indexOf('相手') >= 0 || l.indexOf('画面:') >= 0 || l.indexOf('回線:') >= 0 || l.indexOf('ice:failed') >= 0 || l.indexOf('ice:disconnected') >= 0 || l.indexOf('入り直し') >= 0 || l.indexOf('つなぎ直し') >= 0 || l.indexOf('ページを読み込んだ') >= 0 || l.indexOf('一覧に現れた') >= 0 || l.indexOf('入室した') >= 0 || l.indexOf('記録モード') >= 0; }).slice(-40).forEach(function (l) { diagLine(out, '　' + l, '#64748b'); });
+      }
+      diagBox.textContent = '';
+      diagBox.appendChild(out);
+    }
+    const logChk = document.getElementById('logMode');
+    logChk.checked = !!window.pcLogMode;
+    logChk.addEventListener('change', function () {
+      window.pcLogMode = logChk.checked;
+      try { localStorage.setItem('pochitalk_logmode', logChk.checked ? '1' : '0'); } catch (_) {}
+      if (logChk.checked) { try { window.pcLogAdd('記録モード: オンにした'); window.pcSaveLog(); } catch (_) {} }
+      else { try { localStorage.removeItem('pochitalk_log_v1'); } catch (_) {} window.pcPrevLog = []; }
+      try { if (sendNickname) sendNickname(shownName()); announce(); renderPeers(); renderScan(); } catch (_) {} // 名前の前の 💾 を、相手にも知らせる
+    });
+    const notifyChk = document.getElementById('notifyRoom');
+    notifyChk.checked = notifyRoomOn;
+    notifyChk.addEventListener('change', function () {
+      notifyRoomOn = notifyChk.checked;
+      try { localStorage.setItem('pochitalk_notify_room', notifyRoomOn ? '1' : '0'); } catch (_) {}
+      if (notifyRoomOn) { try { playNewRoomTone(); } catch (_) {} } // オンにしたとき、音を 1 回鳴らして、確かめられるようにする
+    });
+    const autoChk = document.getElementById('autoReconnect');
+    autoChk.checked = autoReconnectOn;
+    autoChk.addEventListener('change', function () {
+      autoReconnectOn = autoChk.checked;
+      try { localStorage.setItem('pochitalk_autoreconnect', autoChk.checked ? '1' : '0'); } catch (_) {}
+    });
+    const relayChk = document.getElementById('relayOnly');
+    relayChk.checked = FORCE_RELAY;
+    relayChk.addEventListener('change', function () {
+      try { localStorage.setItem('pochitalk_relay', relayChk.checked ? '1' : '0'); } catch (_) {}
+      setTimeout(function () { location.reload(); }, 200);
+    });
+    document.getElementById('diagBtn').addEventListener('click', function () {
+      closeSettings(); // 設定を閉じて、メイン画面に出す
+      diagStart();
+    });
+    diagAlwaysChk.addEventListener('change', function () {
+      try { localStorage.setItem('pochitalk_diag_always', diagAlwaysChk.checked ? '1' : '0'); } catch (_) {}
+      if (diagAlwaysChk.checked) diagStart();
+      else { if (diagTimer) { clearInterval(diagTimer); diagTimer = null; } diagPanel.classList.remove('on'); document.body.classList.remove('diag-on'); }
+    });
+    try { if (localStorage.getItem('pochitalk_diag_always') === '1') { diagAlwaysChk.checked = true; setTimeout(function () { diagStart(); }, 1500); } } catch (_) {} // 画面の準備が終わってから始める
+    document.getElementById('diagClose').addEventListener('click', diagStop);
+    document.getElementById('diagCopy').addEventListener('click', function () {
+      const btn = this;
+      const lines = [];
+      (diagBox.firstChild ? diagBox.firstChild.childNodes : []).forEach(function (n) { lines.push(n.textContent); });
+      const text = lines.join(String.fromCharCode(10));
+      const done = function (ok) { btn.textContent = ok ? 'コピーしました' : 'コピー失敗'; setTimeout(function () { btn.textContent = 'コピー'; }, 1800); };
+      const fallback = function () {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          const ok = document.execCommand('copy');
+          document.body.removeChild(ta); done(ok);
+        } catch (_) { done(false); }
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
+      else fallback();
+    });
+
     document.getElementById('welcomeMicBtn').addEventListener('click', function () { openDialog(settingsDialog); });
     document.getElementById('welcomeAboutBtn').addEventListener('click', function () { openDialog(aboutDialog); });
-    document.getElementById('welcomeClose').addEventListener('click', function () { welcomeDialog.close(); });
+    // 利用上の注意（規約）への同意: チェックを入れないと、「はじめる」を押せない。同意した版の番号を、端末に残す（版が変わったら、もう一度出す）
+    const TERMS_VERSION = '2026-11-10';
+    function termsOk() { try { return localStorage.getItem('pochitalk_terms') === TERMS_VERSION; } catch (_) { return false; } }
+    const termsAgree = document.getElementById('termsAgree'), welcomeCloseBtn = document.getElementById('welcomeClose');
+    function syncTerms() { welcomeCloseBtn.disabled = !termsAgree.checked; welcomeCloseBtn.style.opacity = termsAgree.checked ? '1' : '.45'; }
+    termsAgree.checked = termsOk(); termsAgree.addEventListener('change', syncTerms); syncTerms();
+    welcomeCloseBtn.addEventListener('click', function () {
+      if (!termsAgree.checked) return;
+      try { localStorage.setItem('pochitalk_terms', TERMS_VERSION); } catch (_) {}
+      welcomeDialog.close();
+    });
+    welcomeDialog.addEventListener('cancel', function (e) { if (!termsOk()) e.preventDefault(); }); // 同意するまで、Esc などでは閉じさせない
     // 初回案内の表示設定: オフにしたときだけ記録する（設定の中とダイアログのチェックは同じ値）
     const welcomeAgain = document.getElementById('welcomeAgain'), welcomeAgain2 = document.getElementById('welcomeAgain2');
     function getWelcomeOn() { try { return localStorage.getItem('pochitalk_welcome') !== 'off'; } catch (_) { return true; } }
@@ -2897,8 +4098,8 @@
 
       function draw() {
         requestAnimationFrame(draw);
-        if (!radioView.classList.contains('hidden')) roomMeter(pickSource());
-        else if (!homeView.classList.contains('hidden')) homeMeter(micTest && txAnalyser ? { an: txAnalyser, idle: true } : null);
+        if (!radioView.classList.contains('idle')) roomMeter(pickSource());
+        else homeMeter(micTest && txAnalyser ? { an: txAnalyser, idle: true } : null);
       }
       requestAnimationFrame(draw);
     })();
@@ -2959,7 +4160,7 @@
     leftyCheck.addEventListener('change', function () { setLefty(leftyCheck.checked, true); });
 
     // ---------- 効果音の音量 ----------
-    document.getElementById('testRoomBtn').addEventListener('click', function () { closeSettings(); tuneKey('7a0b07c1'); });
+    document.getElementById('testRoomBtn').addEventListener('click', function () { closeSettings(); tuneKey(BOT_ROOM_KEY, true); });
     const sfxVolEl = document.getElementById('sfxVol'), sfxVolVal = document.getElementById('sfxVolVal');
     function setSfxVol(v, save) {
       const n = Math.min(150, Math.max(0, parseInt(v, 10)));
@@ -2984,8 +4185,9 @@
       if (!ok) endMicTest();
     });
 
-    document.getElementById('leaveBtn').addEventListener('click', function () { leaveRoom(); });
-    document.getElementById('leaveBtn2').addEventListener('click', function () { leaveRoom(); });
+    function askLeave() { if (currentKey && !confirm('この部屋から退出しますか？')) return; leaveRoom(); }
+    document.getElementById('leaveBtn').addEventListener('click', askLeave);
+    document.getElementById('leaveBtn2').addEventListener('click', askLeave);
 
     // 液晶が画面外にスクロールしたら、上部にルームハッシュのバーを出す
     (function () {
@@ -2995,7 +4197,7 @@
       if (!('IntersectionObserver' in window)) return;
       new IntersectionObserver(function (entries) {
         const visible = entries[0].isIntersecting;
-        const inRoom = !document.getElementById('radioView').classList.contains('hidden');
+        const inRoom = !document.getElementById('radioView').classList.contains('idle');
         bar.classList.toggle('hidden', visible || !inRoom || radioView2.classList.contains('flipped'));
       }).observe(lcd);
     })();
@@ -3015,13 +4217,14 @@
     nameInput.addEventListener('change', function () {
       myNickname = nameInput.value.trim() || 'NoName';
       try { localStorage.setItem('pochitalk_ptt_name', myNickname); } catch (_) {}
-      if (sendNickname) sendNickname(myNickname);
+      if (sendNickname) sendNickname(shownName());
       announce();
       renderScan();
     });
 
     // 招待URLで開いたときは、招待の画面を優先して、初回案内は出さない（設定からいつでも見られる）
-    if (getWelcomeOn() && !isKey((urlParams.get('r') || '').trim().toLowerCase())) openDialog(welcomeDialog);
+    // 同意がまだなら、招待のURLで開いたときも、先に案内を出す（同意するまで、ほかの操作はできない）
+    if ((!POCHI_NATIVE && !termsOk()) || (getWelcomeOn() && !isKey((urlParams.get('r') || '').trim().toLowerCase()))) openDialog(welcomeDialog);
 
     (async function init() {
       const p = (urlParams.get('r') || '').trim().toLowerCase();
@@ -3029,6 +4232,7 @@
       renderFreq(null);
       await refreshIceServers();
       setInterval(function () { refreshIceServers(false); }, 5 * 60 * 1000); // 通話中も資格情報を新しく保つ
+      rejoinAfterReload();
       joinLobby();
       renderScan();
     })();
