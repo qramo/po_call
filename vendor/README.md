@@ -7,6 +7,7 @@ esm.sh から実行時に読み込んでいたライブラリを、**同じ中�
 | ファイル | 元 | 使う所 |
 | :--- | :--- | :--- |
 | `trystero-0.25.4.mjs` | `https://esm.sh/trystero@0.25.4?bundle` が指す `/trystero@0.25.4/es2022/trystero.bundle.mjs` | 参加（②ライブラリの読み込み）・ロビー |
+| `trystero-0.25.4-pool0.mjs` | **〈β だけの試験・2026-11-11〉** 上の `trystero-0.25.4.mjs` の数字 1 つだけを変えた写し：`sed 's/lo=20,Ft=class/lo=0,Ft=class/'`（先に作っておく接続の数 20→0＝必要になってから作る。リョータさんの提案）。「中身は変えない」の決まりの例外なので、別名で置き、**本番（main）には入れない**。やめるときはこのファイル・この行・SHA256SUMS の行・`index.html` の 2 か所を戻す | β の参加・ロビー |
 | `nostr-tools-2.10.4.mjs` | `https://esm.sh/nostr-tools@2.10.4?bundle` が指す `/nostr-tools@2.10.4/es2022/nostr-tools.bundle.mjs` | 在室の公開・名刺の Nostr の確認 |
 | `qrcode-generator-1.4.4.mjs` | `https://esm.sh/qrcode-generator@1.4.4?bundle` が指す `/qrcode-generator@1.4.4/es2022/qrcode-generator.bundle.mjs` | 招待の QR |
 | `noble-curves-1.4.0-secp256k1.mjs` | `https://esm.sh/@noble/curves@1.4.0/secp256k1?bundle` が指す `/@noble/curves@1.4.0/es2022/secp256k1.bundle.mjs` | `ptt/`（ぽちっと通話）の在室の知らせの署名 |
