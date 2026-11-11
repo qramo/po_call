@@ -50,7 +50,7 @@
   "onnxruntime-web":  "./vendor/onnxruntime-web-1.30.0/dist/ort.wasm.min.mjs"
 }}</script>
 <link rel="preconnect" href="https://pot-turn.itsuma-kuramoto.workers.dev" crossorigin>
-<link rel="modulepreload" href="vendor/trystero-0.25.4-pool0.mjs">
+<link rel="modulepreload" href="vendor/trystero-0.25.4.mjs">
 <!-- CSP：どこから読み、どこへ送ってよいかをブラウザに宣言する。GitHub Pages は HTTP ヘッダを
      足せないので <meta> で入れる（その制約で frame-ancestors は使えない＝クリックジャッキング
      対策は打てない）。単一 index.html にインラインの <style>/<script> があるため 'unsafe-inline'
@@ -4126,7 +4126,7 @@ const trysteroConfig = ice => (Array.isArray(ice) && ice.length > 0)
 // 失敗時はキャッシュを捨てて次回リトライできるようにする（参加フローの段階別エラー表示を壊さない）。
 let trysteroPromise = null, trysteroMod = null
 const loadTrystero = () => {
-  if (!trysteroPromise) trysteroPromise = import('./vendor/trystero-0.25.4-pool0.mjs')   // ★上の modulepreload と同じ URL に解決されること
+  if (!trysteroPromise) trysteroPromise = import('./vendor/trystero-0.25.4.mjs')   // ★上の modulepreload と同じ URL に解決されること
     .then(m => (trysteroMod = m))
     .catch(e => { trysteroPromise = null; throw e })
   return trysteroPromise
