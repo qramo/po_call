@@ -8924,7 +8924,7 @@ const startPttWatch = async () => {
         if (ev.created_at < Date.now() / 1000 - 120) return
         let d; try { d = JSON.parse(ev.content) } catch { return }
         if (!d || typeof d.ch !== 'string') return
-        if (d.ch === '' || !/^[0-9a-f]{8}$/.test(d.ch)) { if (pttRooms.delete(ev.pubkey)) renderLobby(); return }
+        if (d.ch === '' || !/^[0-9a-z]{8}$/.test(d.ch)) { if (pttRooms.delete(ev.pubkey)) renderLobby(); return }
         const isNew = !pttRooms.has(ev.pubkey)
         pttRooms.set(ev.pubkey, { ch: d.ch, talking: !!d.talking, name: capText(String(d.name || ''), 12), tag: capText(String(d.tag || ''), ROOM_MAX), by: capText(String(d.by || ''), 12), ts: Date.now() })
         if (isNew) renderLobby(); else renderLobbyThrottled('ptt:' + ev.pubkey)

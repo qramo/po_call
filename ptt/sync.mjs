@@ -34,9 +34,24 @@ const NAME_SEED = `try { savedName = localStorage.getItem('pochitalk_ptt_name');
     // [potalk] ぽっと通話（同じドメインの本体）で決めた名前を、初めて開いたときの初期値に使う
     if (!savedName) { try { savedName = (JSON.parse(localStorage.getItem('pot-call-profile') || '{}').name || '').slice(0, 12) || null; } catch (_) {} }`
 
+// 版の表記：上流の括弧書きは -p9 の説明（接続準備 0・やり直し短縮）なので、ここで使う公開版の説明に替える
+const VERSION = w.APP_VERSION.replace(/（.*$/, '') + '（Trystero 0.25.4 公開版）・potalk.app/ptt'
+// 「保存データを消す」は、ぽちっと通話のぶん（pochitalk_ で始まるキー）だけにする。
+// potalk.app では本体と同じドメインなので、元のまま（全部消す）だと本体の名前・成長・配信部屋の鍵（IndexedDB・作り直せない）まで消える
+const WIPE_FROM = `      try { localStorage.clear(); } catch (_) {}
+      try { sessionStorage.clear(); } catch (_) {}
+      try { if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.map(function (k) { return caches.delete(k); })); } } catch (_) {}
+      try { if (indexedDB && indexedDB.databases) { const dbs = await indexedDB.databases(); dbs.forEach(function (d) { if (d && d.name) indexedDB.deleteDatabase(d.name); }); } } catch (_) {}
+      try { if (navigator.serviceWorker) { const rs = await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(function (r) { return r.unregister(); })); } } catch (_) {}
+`
+const WIPE_TO = `      // [potalk] ぽちっと通話のぶんだけ消す（同じドメインにある、ぽっと通話の保存データには触らない）
+      [localStorage, sessionStorage].forEach(function (st) { try { Object.keys(st).filter(function (k) { return k.indexOf('pochitalk_') === 0; }).forEach(function (k) { st.removeItem(k); }); } catch (_) {} });
+`
+
 const R = [
   // 読み込み：外部の配信元（esm.sh）をやめ、本体の vendor/ を使う（同じ版・同じ通信の形）
-  ["from '/vendor/trystero-0.25.4.mjs'", "from '../vendor/trystero-0.25.4.mjs'", 1],
+  // 上流は数字を 3 つ変えた Trystero（-p9）を読む。ここでは本体と同じ無加工の公開版を使う（同じ 0.25.4＝通信の形は同じ。理由は README）
+  ["from '/vendor/trystero-0.25.4-p9.mjs'", "from '../vendor/trystero-0.25.4.mjs'", 1],
   ["import('https://esm.sh/@noble/curves@1.4.0/secp256k1')", "import('../vendor/noble-curves-1.4.0-secp256k1.mjs')", 1],
   ["import('https://esm.sh/qrcode-generator@1.4.4')", "import('../vendor/qrcode-generator-1.4.4.mjs')", 1],
   // TURN の資格情報は本体と同じ Worker から（ぽちっと通話の /api/turn はこのドメインに無い）
@@ -47,10 +62,12 @@ const R = [
   ['href="/apple-touch-icon.png"', 'href="apple-touch-icon.png"', 1],
   ['__ORIGIN__/og.png', 'https://potalk.app/ptt/og.png', 2],
   ['__ORIGIN__/', 'https://potalk.app/ptt/', 1],
-  ['__VERSION__', w.APP_VERSION + '・potalk.app/ptt', 2],
+  ['__VERSION__', VERSION, 2],
   ['<meta name="viewport"', CSP + '\n  <meta name="viewport"', 1],
   ["try { savedName = localStorage.getItem('pochitalk_ptt_name'); } catch (_) {}", NAME_SEED, 1],
   // ぽっと通話へ戻る道：ホーム（部屋を出たあとの画面）の先頭に置く。通話中の画面には置かない（押し間違いで通話が切れないように）
+  [WIPE_FROM, WIPE_TO, 1],
+  ['このサイトの保存データ（ハンドルネームや設定）を消して、読み込み直します。', 'ぽちっと通話の保存データ（ハンドルネームや設定）を消して、読み込み直します。ぽっと通話の保存データは消えません。', 2],
   ['<div class="home" id="homeView">', '<div class="home" id="homeView">\n    <a class="potalk-back" id="potalkBack" href="../">← ぽっと通話に戻る</a>', 1],
   ['  </style>\n</head>', '    .potalk-back { align-self: flex-start; color: #93c5fd; font-size: 0.85rem; text-decoration: none; padding: 4px 2px; }\n  </style>\n</head>', 1],
   // プライバシーの説明を、この置き場所に合わせる（配信元が違う・TURN の資格情報の出どころが違う）
@@ -66,7 +83,8 @@ for (const [from, to, n] of R) {
   html = html.split(from).join(to)
 }
 // 残っていたら止める：外部から読むコード・ルートからの絶対パス
-for (const bad of ['esm.sh/', "'/vendor/", '"/vendor/', '__ORIGIN__', '__VERSION__', "'/api/"]) {
+// 同じドメインの本体の保存データを巻き込む消し方も、残っていたら止める
+for (const bad of ['esm.sh/', "'/vendor/", '"/vendor/', '__ORIGIN__', '__VERSION__', "'/api/", 'Storage.clear(', 'deleteDatabase', 'caches.delete', '.unregister(']) {
   if (html.includes(bad)) { console.error('残っている: ' + bad); process.exit(3) }
 }
 writeFileSync(join(here, 'index.html'), html)
