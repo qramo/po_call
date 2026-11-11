@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.16.26
+  ぽっと通話〈実験版〉 v0.16.27
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -50,7 +50,11 @@
   "onnxruntime-web":  "./vendor/onnxruntime-web-1.30.0/dist/ort.wasm.min.mjs"
 }}</script>
 <link rel="preconnect" href="https://pot-turn.itsuma-kuramoto.workers.dev" crossorigin>
-<link rel="modulepreload" href="vendor/trystero-0.25.4.mjs">
+<!-- ★Trystero の切り替えはこの 1 行だけ（下の loadTrystero はこの href を読む）。
+     vendor/trystero-0.25.4-pool0.mjs ＝ 先に作っておく接続 0（v0.16.27〜。後から来た人とつながりやすい）
+     vendor/trystero-0.25.4.mjs       ＝ 公開版そのまま（作り置き 20）。不調が出たらこちらに書き換えれば元に戻る
+     どちらも通信の形は同じ＝混ざっていてもつながる。ほかの数にしたいときは vendor/README.md -->
+<link rel="modulepreload" id="trysteroLib" href="vendor/trystero-0.25.4-pool0.mjs">
 <!-- CSP：どこから読み、どこへ送ってよいかをブラウザに宣言する。GitHub Pages は HTTP ヘッダを
      足せないので <meta> で入れる（その制約で frame-ancestors は使えない＝クリックジャッキング
      対策は打てない）。単一 index.html にインラインの <style>/<script> があるため 'unsafe-inline'
@@ -1993,7 +1997,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.16.26'
+const APP_VERSION = 'v0.16.27'
 
 // ─── 節マニフェスト（目次・出現順） ───────────────────────────────────────
 // このファイルは下のバナーコメントで探せる。バナーは実務の目録としてそのまま保つ。
@@ -4126,7 +4130,7 @@ const trysteroConfig = ice => (Array.isArray(ice) && ice.length > 0)
 // 失敗時はキャッシュを捨てて次回リトライできるようにする（参加フローの段階別エラー表示を壊さない）。
 let trysteroPromise = null, trysteroMod = null
 const loadTrystero = () => {
-  if (!trysteroPromise) trysteroPromise = import('./vendor/trystero-0.25.4.mjs')   // ★上の modulepreload と同じ URL に解決されること
+  if (!trysteroPromise) trysteroPromise = import(document.getElementById('trysteroLib').href)   // どのファイルを読むかは <head> の modulepreload（#trysteroLib）の 1 行で決まる
     .then(m => (trysteroMod = m))
     .catch(e => { trysteroPromise = null; throw e })
   return trysteroPromise

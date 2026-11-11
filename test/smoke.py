@@ -2374,6 +2374,7 @@ def T76(r, room):
     """同梱ライブラリ（v0.16.2）：vendor/ のファイルが SHA256SUMS と一致し、ページは esm.sh へ一切取りに行かない
 
     中身を 1 バイトでも変えたら落ちる（版を上げるときは vendor/README.md の手順で SHA256SUMS も揃える）。
+    例外は trystero-0.25.4-pool0.mjs（v0.16.27）：公開版の数字 1 つ（lo=20→0）だけを変えた写しで、それ以外が同じことも見る。
     参加・QR・在室の公開（nostr-tools）まで通して、読み込んだスクリプトの出どころを見る。
     ＋読み上げ（v0.16.14）：import map と CSP に jsDelivr／unpkg が残っていない（実エンジンは 100MB なので落とさず、宛先だけ見る）。
     """
@@ -2385,6 +2386,9 @@ def T76(r, room):
         h, f = line.split()
         if hashlib.sha256(open(os.path.join(vd, f), 'rb').read()).hexdigest() != h:
             bad.append(f)
+    stock = open(os.path.join(vd, 'trystero-0.25.4.mjs')).read()
+    if stock.count('lo=20,Ft=class') != 1 or open(os.path.join(vd, 'trystero-0.25.4-pool0.mjs')).read() != stock.replace('lo=20,Ft=class', 'lo=0,Ft=class'):
+        bad.append('trystero-0.25.4-pool0.mjs（公開版との違いが lo だけではない）')
     a = r.open_tab()
     a.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
     r.join(a, room + 'VND')
@@ -2398,7 +2402,7 @@ def T76(r, room):
     cdn = a.eval("(() => { const t = document.querySelector('script[type=importmap]').textContent + document.querySelector('meta[http-equiv=Content-Security-Policy]').content;"
                  " return /jsdelivr|unpkg|esm\\.sh/.test(t) })()")
     tts = a.eval("Object.values(JSON.parse(document.querySelector('script[type=importmap]').textContent).imports).every(u => u.startsWith('./vendor/'))")
-    ok = bool(not bad and joined and qr and not esm and not cdn and tts and 'trystero-0.25.4.mjs' in vend and 'qrcode-generator-1.4.4.mjs' in vend)
+    ok = bool(not bad and joined and qr and not esm and not cdn and tts and [v for v in vend if v.startswith('trystero-')] in (['trystero-0.25.4-pool0.mjs'], ['trystero-0.25.4.mjs']) and 'qrcode-generator-1.4.4.mjs' in vend)
     r.check('T76', '同梱ライブラリ：SHA256SUMS と一致・外部 CDN へ取りに行かない・vendor/ から読む（読み上げの import map も）', ok, 'pass',
             '不一致=%s / 参加=%s / QR=%s / CDN=%s / map・CSP に CDN=%s / 読み上げ→vendor=%s / vendor=%s' % (bad, bool(joined), bool(qr), esm[:3], cdn, tts, vend))
     click_leave(a)

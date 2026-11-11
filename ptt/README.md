@@ -16,7 +16,7 @@ node ptt/sync.mjs /tmp/worker.js     # index.html・favicon.svg・favicon.png・
 
 | 置き換え | 理由 |
 | :--- | :--- |
-| Trystero・@noble/curves・qrcode-generator を `../vendor/` から読む | 本体と同じく、第三者の CDN（esm.sh）のコードを動かさない。Trystero は同じ 0.25.4（通信の形は同じ）。向こうは数字を 3 つ変えた版（`trystero-0.25.4-p9.mjs`：先に作っておく接続 20→0・待ち時間 2 つ）を使うが、ここは公開版のまま（`vendor/` は手で直さない決まり）。版表記に「Trystero 0.25.4 公開版」と出す |
+| Trystero・@noble/curves・qrcode-generator を `../vendor/` から読む | 本体と同じく、第三者の CDN（esm.sh）のコードを動かさない。Trystero は同じ 0.25.4（通信の形は同じ）。向こうは数字を 3 つ変えた版（`trystero-0.25.4-p9.mjs`：先に作っておく接続 20→0・待ち時間 2 つ）を使うが、ここは公開版のまま（本体は v0.16.27 から、作り置きだけ 0 にした写し `trystero-0.25.4-pool0.mjs` を読む。`ptt/` を揃えるかは未定）。版表記に「Trystero 0.25.4 公開版」と出す |
 | TURN の資格情報を本体の Worker（pot-turn）から取る | 向こうの `/api/turn` はこのドメインに無い。Worker は資格情報を渡すだけ（CLAUDE.md の法的な前提のまま） |
 | CSP を足す | つなぐ先を TURN の Worker と Nostr リレーに絞る |
 | 名前の初期値に本体の名前（`pot-call-profile`）を使う | ぽっと通話の人が、同じ名前で続けられるように。ぽちっと通話の名前がまだ無いときだけ |
