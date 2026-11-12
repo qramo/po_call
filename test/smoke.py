@@ -2993,6 +2993,32 @@ def T93(r, room):
     c.call('Page.navigate', url='about:blank')
 
 
+def T94(r, room):
+    """メンバー一覧の先頭の行の吹き出しが、上のタブ（貼り付く #tabs）に隠れない（v0.16.27・利用者 2026-11-12）。
+    吹き出しは行の上に出るが、タブの行は z-index が上なので先頭の行の吹き出しはタブの裏に潜っていた。
+    ①先頭の行（自分）の吹き出しはタブの下端より下にある ②2 行目（相手）の吹き出しは今までどおり行の上
+    """
+    x = room + 'BUB'
+    a = r.open_tab(); r.join(a, x)
+    assert a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER), 'A が参加できない'
+    b = r.open_tab(); r.join(b, x)
+    two = a.wait_for("document.querySelectorAll('#members .member').length >= 2", timeout=DISCOVER)
+    a.eval("document.getElementById('tabMembers').click(); window.scrollTo(0, 0)")
+    SAY = "(() => { const t = document.getElementById('chatText'); t.value = %s; document.getElementById('chatSend').click() })()"
+    a.eval(SAY % js_str('先頭'))
+    BUB = "[...document.querySelectorAll('#members .chat-bubble')].find(e => e.textContent === %s)"
+    TOP = "(() => { const e = %s; return !!e && e.getBoundingClientRect().top >= document.getElementById('tabs').getBoundingClientRect().bottom })()"
+    first = a.wait_for(TOP % (BUB % js_str('先頭')), timeout=SHORT)
+    b.eval(SAY % js_str('二番目'))
+    shown = a.wait_for("!!" + BUB % js_str('二番目'), timeout=DISCOVER)
+    above = a.eval("(() => { const e = %s; return !!e && !e.classList.contains('below') && e.getBoundingClientRect().bottom <= e.parentElement.getBoundingClientRect().top + 1 })()" % (BUB % js_str('二番目')))
+    ok = two and first and shown and above
+    r.check('T94', '先頭の行の吹き出しはタブに隠れない（2 行目は今までどおり行の上）', ok, 'pass',
+            '2 人=%s / 先頭の吹き出しがタブより下=%s / 2 行目に届いた=%s / 2 行目は行の上=%s' % (two, first, shown, above))
+    for t in (a, b):
+        click_leave(t)
+
+
 def T88(r, room):
     """主タブで「ひとこと」を開くと、最新の行が見える位置へ送る（2026-11-07 β 実機）。
     ひとことの欄は下詰めでスクロールしないので、最新の行は欄の下端にある。スマホで縦が狭いと
@@ -4274,6 +4300,8 @@ def main():
             T92(r, room)
         if run('T93'):
             T93(r, room)
+        if run('T94'):
+            T94(r, room)
         if run('T89'):
             T89(r, room)
         if run('T90'):
