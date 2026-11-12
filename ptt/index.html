@@ -641,7 +641,7 @@
   <button class="dial-tab dial-tab-close" id="dialCloseTab" type="button" aria-label="ダイヤルを閉じる"><span class="dial-tab-body">◀ 閉じる</span></button>
   <div class="dial-scrim" id="dialScrim"></div>
 
-  <div class="app-version" id="appVersion">版 2026-11-10-z12q41（Trystero 0.25.4 公開版）・potalk.app/ptt</div>
+  <div class="app-version" id="appVersion">版 2026-11-10-z12q41（Trystero 0.25.4・接続準備 0）・potalk.app/ptt</div>
 
   <div class="toast hidden" id="toast" role="status"></div>
 
@@ -698,7 +698,7 @@
         <h3>うまくつながらないとき</h3>
         <p style="opacity:.8;font-size:0.78rem;margin:6px 0">ぽちっと通話の保存データ（ハンドルネームや設定）を消して、読み込み直します。ぽっと通話の保存データは消えません。ブラウザの履歴は消えません。</p>
         <button class="btn-sub" id="resetDataBtn" type="button" style="width:100%">保存データを消して、読み込み直す</button>
-        <p style="opacity:.55;font-size:0.7rem;margin-top:10px">版: 2026-11-10-z12q41（Trystero 0.25.4 公開版）・potalk.app/ptt</p>
+        <p style="opacity:.55;font-size:0.7rem;margin-top:10px">版: 2026-11-10-z12q41（Trystero 0.25.4・接続準備 0）・potalk.app/ptt</p>
       </div>
     </div>
   </dialog>
@@ -888,7 +888,7 @@
     })();
   </script>
   <script type="module">
-    import { joinRoom, selfId, getRelaySockets } from '../vendor/trystero-0.25.4.mjs';
+    import { joinRoom, selfId, getRelaySockets } from '../vendor/trystero-0.25.4-pool0.mjs';
     window.__trysteroSockets = getRelaySockets;
     // 相手を探す通信（Nostr のリレー）が、こちらの書き込みを、断っていないかを数える（リレーは、短い間に、たくさん書くと、断ることがある）
     const relayMsgs = new Map(); const hookedSockets = new WeakSet();
