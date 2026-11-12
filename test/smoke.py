@@ -2996,7 +2996,7 @@ def T93(r, room):
 def T94(r, room):
     """メンバー一覧の先頭の行の吹き出しが、上のタブ（貼り付く #tabs）に隠れない（v0.16.27・利用者 2026-11-12）。
     吹き出しは行の上に出るが、タブの行は z-index が上なので先頭の行の吹き出しはタブの裏に潜っていた。
-    ①先頭の行（自分）の吹き出しはタブの下端より下にある ②2 行目（相手）の吹き出しは今までどおり行の上
+    ①先頭の行（自分）の吹き出しはタブの下端より下・自分の行に被さる（上端が自分の行の中） ②2 行目（相手）の吹き出しは今までどおり行の上
     """
     x = room + 'BUB'
     a = r.open_tab(); r.join(a, x)
@@ -3007,14 +3007,14 @@ def T94(r, room):
     SAY = "(() => { const t = document.getElementById('chatText'); t.value = %s; document.getElementById('chatSend').click() })()"
     a.eval(SAY % js_str('先頭'))
     BUB = "[...document.querySelectorAll('#members .chat-bubble')].find(e => e.textContent === %s)"
-    TOP = "(() => { const e = %s; return !!e && e.getBoundingClientRect().top >= document.getElementById('tabs').getBoundingClientRect().bottom })()"
+    TOP = "(() => { const e = %s; if (!e) return false; const b = e.getBoundingClientRect(), row = e.parentElement.getBoundingClientRect(); return b.top >= document.getElementById('tabs').getBoundingClientRect().bottom && b.top < row.bottom })()"
     first = a.wait_for(TOP % (BUB % js_str('先頭')), timeout=SHORT)
     b.eval(SAY % js_str('二番目'))
     shown = a.wait_for("!!" + BUB % js_str('二番目'), timeout=DISCOVER)
-    above = a.eval("(() => { const e = %s; return !!e && !e.classList.contains('below') && e.getBoundingClientRect().bottom <= e.parentElement.getBoundingClientRect().top + 1 })()" % (BUB % js_str('二番目')))
+    above = a.eval("(() => { const e = %s; return !!e && !e.classList.contains('over') && e.getBoundingClientRect().bottom <= e.parentElement.getBoundingClientRect().top + 1 })()" % (BUB % js_str('二番目')))
     ok = two and first and shown and above
     r.check('T94', '先頭の行の吹き出しはタブに隠れない（2 行目は今までどおり行の上）', ok, 'pass',
-            '2 人=%s / 先頭の吹き出しがタブより下=%s / 2 行目に届いた=%s / 2 行目は行の上=%s' % (two, first, shown, above))
+            '2 人=%s / 先頭の吹き出しがタブより下で自分の行に被さる=%s / 2 行目に届いた=%s / 2 行目は行の上=%s' % (two, first, shown, above))
     for t in (a, b):
         click_leave(t)
 
