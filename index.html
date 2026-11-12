@@ -984,15 +984,9 @@
     82%  { opacity:1; transform:translateY(-6px) }
     100% { opacity:0; transform:translateY(-14px) }
   }
-  /* 上に出すと貼り付いたタブ（#tabs・z-index:20）の裏に潜るとき（＝先頭の行）は行の下に出す。showBubble が測って付ける（v0.16.27・利用者） */
-  .chat-bubble.below{ bottom:auto; top:calc(100% + 4px); border-bottom-left-radius:12px; border-top-left-radius:3px;
-    animation-name:chat-pop-below }
-  @keyframes chat-pop-below{
-    0%   { opacity:0; transform:translateY(-6px) scale(.85) }
-    6%   { opacity:1; transform:translateY(0) scale(1) }
-    82%  { opacity:1; transform:translateY(6px) }
-    100% { opacity:0; transform:translateY(14px) }
-  }
+  /* 上に出すと貼り付いたタブ（#tabs・z-index:20）の裏に潜るとき（＝先頭の行）は、半行下げて**自分の行に被せる**
+     （タブには被らない。2 行目の人には出た瞬間に下端が数 px かかるだけで、動きはほかの吹き出しと同じ上向き＝上がるほど自分の行に収まる）。showBubble が測って付ける（v0.16.27・利用者） */
+  .chat-bubble.over{ bottom:auto; top:50% }
   /* ひとことのタイムライン（入力欄の真上）。**高さを固定して中でスクロール**させる＝
      行が増えてもページ全体が伸びず、下の共有リンクやロビーが押し出されない。 */
   /* **パネルの高さを目一杯使い、下から上へ流す。**スクロールはしない＝古い行は上へ抜けて消える
@@ -6824,10 +6818,10 @@ const showBubble = (uid, text) => {
   el.className = 'chat-bubble'
   el.textContent = text                    // ★ここを innerHTML にしないこと
   row.appendChild(el)
-  // 上に出すとタブの行に隠れる（先頭の行・タブが上に貼り付いているとき）なら下に出す。
+  // 上に出すとタブの行に隠れる（先頭の行・タブが上に貼り付いているとき）なら自分の行に被せる。
   // メンバーのタブが見えていないとき（offsetParent が無い）は測れないので上のまま
   const tabs = $('tabs')
-  if (row.offsetParent && !tabs.hidden && el.getBoundingClientRect().top < tabs.getBoundingClientRect().bottom) el.classList.add('below')
+  if (row.offsetParent && !tabs.hidden && el.getBoundingClientRect().top < tabs.getBoundingClientRect().bottom) el.classList.add('over')
   setTimeout(() => el.remove(), 4700)
 }
 const sendChat = () => {
