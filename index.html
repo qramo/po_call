@@ -4188,6 +4188,21 @@ const ARROWS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 // シェアアイコン（ロビーの部屋URLコピー用：iPhone/iOSで親しまれている「箱から上矢印」）
 const SHARE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>'
 const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>'
+// コピー済みの ✓ は部屋ごとに覚える：カードが作り直されても（人の出入りなど）1.6 秒は ✓ のまま（v0.16.27）
+let shareDone = null   // { room, until }
+const shareMark = (el, room) => {
+  const left = shareDone && shareDone.room === room ? shareDone.until - Date.now() : 0
+  if (left <= 0) return
+  el.innerHTML = CHECK_SVG
+  el.classList.add('copied')
+  el.setAttribute('title', 'コピーしました ✓')
+  clearTimeout(el._revert)
+  el._revert = setTimeout(() => {
+    el.innerHTML = SHARE_SVG
+    el.classList.remove('copied')
+    el.setAttribute('title', '部屋名とリンクをコピー')
+  }, left)
+}
 const copyRoomUrl = async (el, id, name, people = []) => {
   const url = roomUrl(id)   // ロビーに出ている＝開いている部屋なので名前は載せない（入室後の招待リンクと同じ・v0.16.26 試作）
   // 招待リンクのコピー（shareText）と同じ形＝**「部屋名 - 名前」＋改行＋URL**（v0.15.29・利用者の要望）。
@@ -4199,15 +4214,8 @@ const copyRoomUrl = async (el, id, name, people = []) => {
   const text = (isBcRoom(id) ? '📣 ' : '🫖 ') + ((name || '').trim() || '部屋') + ' - ' + who + '\n' + url
   try {
     await navigator.clipboard.writeText(text)
-    el.innerHTML = CHECK_SVG
-    el.classList.add('copied')
-    el.setAttribute('title', 'コピーしました ✓')
-    clearTimeout(el._revert)
-    el._revert = setTimeout(() => {
-      el.innerHTML = SHARE_SVG
-      el.classList.remove('copied')
-      el.setAttribute('title', '部屋名とリンクをコピー')
-    }, 1600)
+    shareDone = { room: id, until: Date.now() + 1600 }
+    shareMark(el, id)
   } catch {
     prompt('部屋のリンクです（長押しでコピー）:', url)
   }
@@ -8845,11 +8853,12 @@ let askSlid = null
 const askOver = (list, btn, ask, key) => {
   const fresh = askSlid !== key
   if (fresh) { askSlid = key; ask.classList.add('slide') }
-  const wrap = document.createElement('div'); wrap.className = 'room-wrap'
+  const wrap = document.createElement('div'); wrap.className = 'room-wrap'; wrap._k = btn._k
   wrap.append(btn, ask); list.append(wrap)
   // 出したときだけ、カードごと見える所まで送る。通話中は下に盤が固定されていて、下端の部屋は盤の裏に隠れる
   // （利用者 2026-11-09）。一覧が自分でスクロールする（PC の max-height）なら先に一覧の中を送る
   if (fresh) requestAnimationFrame(() => {
+    list = $('lobbyList')   // 渡された list は作りかけの箱（lobbyPatch が中身を本物の一覧へ移す）
     const lb = list.getBoundingClientRect().bottom, over = wrap.getBoundingClientRect().bottom - lb
     if (list.scrollHeight > list.clientHeight && over > 0) list.scrollTop += over + 4
     const vv = window.visualViewport, vb = vv ? vv.offsetTop + vv.height : innerHeight, dock = $('dock')
@@ -8876,7 +8885,7 @@ const renderPttRooms = (list, ptt) => {
     const r = ptt.get(ch), talking = r.people.some(p => p.talking)
     const btn = document.createElement('button')
     btn.className = 'room ptt-room' + (talking ? ' act2' : '')
-    btn.dataset.ptt = ch
+    btn.dataset.ptt = ch; btn._k = 'ptt:' + ch
     const top = document.createElement('div'); top.className = 'room-top'
     const nm = document.createElement('span'); nm.className = 'room-name'
     // 部屋の呼び名は向こうの画面と同じ書き方（ぽちっと通話の一覧・招待と見比べられるように）。話題タグがあれば見出しはタグ
@@ -8936,8 +8945,42 @@ const startPttWatch = async () => {
     })
   } catch { pttWatching = false }
 }
+// 一覧を、作り直した中身（box）に合わせる。**見た目が変わっていないカードは、今ある要素をそのまま残す**（v0.16.27）。
+// 在室の合図のたびに全部を入れ替えていたので（2 人の部屋 1 つでも毎秒 1〜2 回）、カーソルや指が乗っている最中の
+// 共有ボタンが別の要素になり、色がちらつく・✓ がすぐ消える・押しても反応しないことがあった（利用者 2026-11-12）。
+// 比べるのは中身の文字列（lobbySig）。話している強さ（カードの act と EQ）と共有ボタンの ✓ は比べず、
+// 残した要素へ写す＝誰かが話しているだけではカードを作り直さない。鍵（_k）の無いもの（「ほか N 部屋」）は毎回入れ替える
+const lobbyCards = el => el.matches('.room') ? [el] : [...el.querySelectorAll('.room')]
+const lobbySig = el => {
+  const c = el.cloneNode(true)
+  c.querySelectorAll('.room-eq, .room-share').forEach(x => x.remove())
+  lobbyCards(c).forEach(x => x.removeAttribute('class'))
+  return c.outerHTML
+}
+const lobbyPatch = (list, box) => {
+  const old = new Map()
+  ;[...list.children].forEach(el => { if (el._k) old.set(el._k, el) })
+  let at = list.firstChild
+  ;[...box.children].forEach(nu => {
+    nu._sig = lobbySig(nu)
+    let el = nu
+    const cur = nu._k && old.get(nu._k)
+    if (cur && cur._sig === nu._sig) {
+      el = cur
+      const a = lobbyCards(cur), b = lobbyCards(nu)
+      a.forEach((x, i) => {
+        x.className = b[i].className
+        const ea = x.querySelector('.room-eq'), eb = b[i].querySelector('.room-eq')
+        if (ea && eb) ea.dataset.act = eb.dataset.act
+      })
+    }
+    if (el === at) at = at.nextSibling
+    else list.insertBefore(el, at)
+  })
+  while (at) { const n = at.nextSibling; at.remove(); at = n }
+}
 const renderLobby = () => {
-  const list = $('lobbyList'), status = $('lobbyStatus')
+  const real = $('lobbyList'), status = $('lobbyStatus'), list = document.createElement('div')   // list＝作りかけの箱。最後に lobbyPatch で real へ
   if (!lobbyRoom) return  // 接続前は初期メッセージのまま
   entryUpdate()           // 入口の確認（リンクで来た人）は在室が変わるたびに見直す
   // 部屋名 → 参加者[] に集約。自分は自分の発信を受け取らないので、通話中なら合成して足す。
@@ -8953,7 +8996,6 @@ const renderLobby = () => {
   // ★配信部屋は**配信者がいるときだけ**一覧に出す（v0.14.0）。聞き役だけの部屋に新しい人が流れ込まない
   //   （配信者が去った部屋は下の「配信の終わり」で片づく）。告知そのものは全員が送る＝人数は出る
   byRoom.forEach((people, room) => { if (isBcRoom(room) && !people.some(p => p.bo)) byRoom.delete(room) })
-  list.replaceChildren()
   // 並び順（上の「通話中の部屋の並び順」）。消えた部屋の記録は捨てる
   const now = Date.now(), viewerSprout = stageOf() === '🌱'
   roomStat.forEach((_, r) => { if (!byRoom.has(r)) roomStat.delete(r) })
@@ -9010,6 +9052,7 @@ const renderLobby = () => {
     const act = Math.max(0, ...people.map(p => p.talk || 0))
     const btn = document.createElement('button')
     btn.className = 'room' + (room === call.joinedId ? ' here' : '') + (act ? ' act' + act : '')
+    btn._k = room
     const top = document.createElement('div'); top.className = 'room-top'
     // 配信部屋は 📣 で区別する（一覧では「入ると何が起きるか」が違うので、家の絵文字では足りない）。
     // 指紋そのものは出さない＝長いだけで読み手には意味がない。
@@ -9028,6 +9071,7 @@ const renderLobby = () => {
     sh.setAttribute('title', '部屋名とリンクをコピー')
     sh.setAttribute('aria-label', '部屋名とリンクをコピー')
     sh.innerHTML = SHARE_SVG
+    shareMark(sh, room)
     sh.onclick = e => { e.stopPropagation(); copyRoomUrl(sh, room, lobbyName(room, people), people) }
     sh.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyRoomUrl(sh, room, lobbyName(room, people), people) } }
     top.append(nm, ct, sh)
@@ -9129,6 +9173,7 @@ const renderLobby = () => {
     more.textContent = 'ほか ' + (names.length - LOBBY_MAX_ROOMS) + ' 部屋（多すぎるため省略しています）'
     list.append(more)
   }
+  lobbyPatch(real, list)
 }
 
 // 一覧クリック：タップした部屋にそのまま入室する（＝参加ボタンと同じ意味）。

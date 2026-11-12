@@ -2959,6 +2959,40 @@ def T92(r, room):
             % (joined, pushed, closed, stay, again, left, clean, back))
 
 
+def T93(r, room):
+    """ロビーのカードは、見た目が変わっていなければ作り直さない（v0.16.27・利用者 2026-11-12）。
+    在室の合図のたびに一覧を全部入れ替えていたので、カード右上の共有ボタンが毎秒 1〜2 回別の要素になり、
+    色がちらつく・✓ がすぐ消える・押しても反応しないことがあった。
+    ①何も変わらない 6 秒のあいだ、共有ボタンが同じ要素のまま ②押すと ✓ が 1 秒後も残り、そのあと戻る
+    ③人が増えたら（見た目が変わったら）カードの中身は新しくなる
+    """
+    x = room + 'SHR'
+    a = r.open_tab(); r.join(a, x)
+    assert a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER), 'A が参加できない'
+    c = r.open_tab()
+    c.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    CARD = "[...document.querySelectorAll('#lobbyList .room')].find(b => b.textContent.includes(%s))" % js_str(x)
+    assert c.wait_for("!!" + CARD, timeout=DISCOVER), 'ロビーに出ない'
+    time.sleep(2)
+    c.eval("window.__sh = %s.querySelector('.room-share')" % CARD)
+    time.sleep(6)   # 在室の合図（描き直し）を何度かまたぐ
+    same = c.eval("window.__sh.isConnected && window.__sh === %s.querySelector('.room-share')" % CARD)
+    n = c.eval("__T.clip.length")
+    c.eval("window.__sh.click()", await_promise=False)
+    time.sleep(1.0)
+    copied = c.eval("__T.clip.length") == n + 1
+    check = c.eval("%s.querySelector('.room-share').classList.contains('copied')" % CARD)
+    back = c.wait_for("!%s.querySelector('.room-share').classList.contains('copied')" % CARD, timeout=SHORT)
+    b = r.open_tab(); r.join(b, x)   # 同じ名前の部屋を探して入る
+    grew = c.wait_for("(%s.querySelector('.room-count') || {}).textContent === '2人'" % CARD, timeout=DISCOVER)
+    ok = same and copied and check and back and grew
+    r.check('T93', 'ロビーのカードは変わらなければ作り直さない（共有ボタンが同じ要素のまま・✓ が残る・人が増えれば中身は変わる）', ok, 'pass',
+            '6 秒後も同じ要素=%s / コピーした=%s / 1 秒後も ✓=%s / そのあと戻る=%s / 2人に変わる=%s' % (same, copied, check, back, grew))
+    for t in (a, b):
+        click_leave(t)
+    c.call('Page.navigate', url='about:blank')
+
+
 def T88(r, room):
     """主タブで「ひとこと」を開くと、最新の行が見える位置へ送る（2026-11-07 β 実機）。
     ひとことの欄は下詰めでスクロールしないので、最新の行は欄の下端にある。スマホで縦が狭いと
@@ -4238,6 +4272,8 @@ def main():
             T91(r, room)
         if run('T92'):
             T92(r, room)
+        if run('T93'):
+            T93(r, room)
         if run('T89'):
             T89(r, room)
         if run('T90'):
