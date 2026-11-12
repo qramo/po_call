@@ -6,8 +6,8 @@ esm.sh から実行時に読み込んでいたライブラリを、**同じ中�
 
 | ファイル | 元 | 使う所 |
 | :--- | :--- | :--- |
-| `trystero-0.25.4.mjs` | `https://esm.sh/trystero@0.25.4?bundle` が指す `/trystero@0.25.4/es2022/trystero.bundle.mjs` | `ptt/`（ぽちっと通話）・下の写しの元 |
-| `trystero-0.25.4-pool0.mjs` | 上の `trystero-0.25.4.mjs` の**数字 1 つだけを変えた写し**：`sed 's/lo=20,Ft=class/lo=0,Ft=class/' trystero-0.25.4.mjs > trystero-0.25.4-pool0.mjs`（先に作っておく接続の数 20→0＝必要になってから作る）。「中身は変えない」のただ 1 つの例外（v0.16.27〜・下の注） | 参加（②ライブラリの読み込み）・ロビー |
+| `trystero-0.25.4.mjs` | `https://esm.sh/trystero@0.25.4?bundle` が指す `/trystero@0.25.4/es2022/trystero.bundle.mjs` | 下の写しの元（v0.16.26 までは本体と `ptt/` が読んでいた。戻すときの控え） |
+| `trystero-0.25.4-pool0.mjs` | 上の `trystero-0.25.4.mjs` の**数字 1 つだけを変えた写し**：`sed 's/lo=20,Ft=class/lo=0,Ft=class/' trystero-0.25.4.mjs > trystero-0.25.4-pool0.mjs`（先に作っておく接続の数 20→0＝必要になってから作る）。「中身は変えない」のただ 1 つの例外（v0.16.27〜・下の注） | 参加（②ライブラリの読み込み）・ロビー・`ptt/`（ぽちっと通話） |
 | `nostr-tools-2.10.4.mjs` | `https://esm.sh/nostr-tools@2.10.4?bundle` が指す `/nostr-tools@2.10.4/es2022/nostr-tools.bundle.mjs` | 在室の公開・名刺の Nostr の確認 |
 | `qrcode-generator-1.4.4.mjs` | `https://esm.sh/qrcode-generator@1.4.4?bundle` が指す `/qrcode-generator@1.4.4/es2022/qrcode-generator.bundle.mjs` | 招待の QR |
 | `noble-curves-1.4.0-secp256k1.mjs` | `https://esm.sh/@noble/curves@1.4.0/secp256k1?bundle` が指す `/@noble/curves@1.4.0/es2022/secp256k1.bundle.mjs` | `ptt/`（ぽちっと通話）の在室の知らせの署名 |
@@ -16,7 +16,7 @@ esm.sh から実行時に読み込んでいたライブラリを、**同じ中�
 | `onnxruntime-web-1.30.0/dist/` | npm `onnxruntime-web@1.30.0` の tarball の `dist/ort.wasm.min.mjs`・`ort-wasm-simd-threaded.mjs`・`ort-wasm-simd-threaded.wasm`（14MB） | 読み上げ（推論） |
 
 - **中身は 1 バイトも変えない**。`SHA256SUMS` と一致することを `test/smoke.py` の T76 が確かめる（`shasum -a 256 -c SHA256SUMS`）。
-- **例外は `trystero-0.25.4-pool0.mjs` だけ**（v0.16.27・2026-11-12）。Trystero は相手が決まる前に接続（offer）を 20 本作り置く。これを 0 にすると、後から来た人と片方だけ音がつながらない、といった不調が減った（ぽちっと通話のリョータさんの提案＝8〜10 台の部屋での実測。β で日本各地の 4 人が試して採用）。元のファイルは触らず、数字 1 つを変えた写しを別名で置く。通信の形は同じで、公開版の相手（古いページ・CLI・常設ページ・泡版・`ptt/`）とそのままつながる。T76 が「公開版との違いがこの 1 か所だけ」を確かめる。**切り替えは `index.html` の `<head>` にある `<link rel="modulepreload" id="trysteroLib">` の href 1 行だけ**（公開版に戻すなら `vendor/trystero-0.25.4.mjs` と書く。T76 はどちらでも通る）。ほかの数（例 8）を試すなら、`sed` の `lo=0` を変えて別名の写しを作り、`SHA256SUMS` に 1 行足して href を向ける（T76 の「違いは 1 か所だけ」の確かめは pool0 だけが対象）。Trystero の版を上げるときは、同じ `sed` で作り直す（`lo=20,Ft=class` が見つからなければ、作り置きの数の定数を探し直す）。
+- **例外は `trystero-0.25.4-pool0.mjs` だけ**（v0.16.27・2026-11-12）。Trystero は相手が決まる前に接続（offer）を 20 本作り置く。これを 0 にすると、後から来た人と片方だけ音がつながらない、といった不調が減った（ぽちっと通話のリョータさんの提案＝8〜10 台の部屋での実測。β で日本各地の 4 人が試して採用）。元のファイルは触らず、数字 1 つを変えた写しを別名で置く。通信の形は同じで、公開版の相手（古いページ・CLI・常設ページ・泡版）とそのままつながる。`ptt/` も同じ写しを読む（切り替えは `ptt/sync.mjs` の `TRYSTERO` の 1 行。`ptt/README.md`）。T76 が「公開版との違いがこの 1 か所だけ」を確かめる。**切り替えは `index.html` の `<head>` にある `<link rel="modulepreload" id="trysteroLib">` の href 1 行だけ**（公開版に戻すなら `vendor/trystero-0.25.4.mjs` と書く。T76 はどちらでも通る）。ほかの数（例 8）を試すなら、`sed` の `lo=0` を変えて別名の写しを作り、`SHA256SUMS` に 1 行足して href を向ける（T76 の「違いは 1 か所だけ」の確かめは pool0 だけが対象）。Trystero の版を上げるときは、同じ `sed` で作り直す（`lo=20,Ft=class` が見つからなければ、作り置きの数の定数を探し直す）。
 - **版を上げるとき**：同じ URL から取り直し、ファイル名の版・`index.html` の import と modulepreload・`SHA256SUMS`・`LICENSES.md`・この表を揃える。
   Trystero は版で通信の形が変わりうる（`index.html` の「Trystero 0.25.x API notes」と RUNBOOK §4 を先に読む）。版が同じなら通信の形は変わらず、本番・CLI・常設ページ・泡版とそのままつながる。
 - ライセンス本文は `LICENSES.md`（中に含まれる依存も含む）。

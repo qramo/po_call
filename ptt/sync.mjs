@@ -34,8 +34,11 @@ const NAME_SEED = `try { savedName = localStorage.getItem('pochitalk_ptt_name');
     // [potalk] ぽっと通話（同じドメインの本体）で決めた名前を、初めて開いたときの初期値に使う
     if (!savedName) { try { savedName = (JSON.parse(localStorage.getItem('pot-call-profile') || '{}').name || '').slice(0, 12) || null; } catch (_) {} }`
 
-// 版の表記：上流の括弧書きは -p9 の説明（接続準備 0・やり直し短縮）なので、ここで使う公開版の説明に替える
-const VERSION = w.APP_VERSION.replace(/（.*$/, '') + '（Trystero 0.25.4 公開版）・potalk.app/ptt'
+// どの Trystero を読むか（★切り替えはこの 1 行。直したら作り直す）。本体（index.html の #trysteroLib）と揃えてある
+//   trystero-0.25.4-pool0.mjs ＝ 先に作っておく接続 0（v0.16.27〜）／ trystero-0.25.4.mjs ＝ 公開版そのまま（作り置き 20）
+const TRYSTERO = 'trystero-0.25.4-pool0.mjs'
+// 版の表記：上流の括弧書きは -p9 の説明（接続準備 0・やり直し短縮）なので、ここで読むファイルの説明に替える
+const VERSION = w.APP_VERSION.replace(/（.*$/, '') + (TRYSTERO.includes('pool0') ? '（Trystero 0.25.4・接続準備 0）' : '（Trystero 0.25.4 公開版）') + '・potalk.app/ptt'
 // 「保存データを消す」は、ぽちっと通話のぶん（pochitalk_ で始まるキー）だけにする。
 // potalk.app では本体と同じドメインなので、元のまま（全部消す）だと本体の名前・成長・配信部屋の鍵（IndexedDB・作り直せない）まで消える
 const WIPE_FROM = `      try { localStorage.clear(); } catch (_) {}
@@ -50,8 +53,8 @@ const WIPE_TO = `      // [potalk] ぽちっと通話のぶんだけ消す（同
 
 const R = [
   // 読み込み：外部の配信元（esm.sh）をやめ、本体の vendor/ を使う（同じ版・同じ通信の形）
-  // 上流は数字を 3 つ変えた Trystero（-p9）を読む。ここでは本体と同じ無加工の公開版を使う（同じ 0.25.4＝通信の形は同じ。理由は README）
-  ["from '/vendor/trystero-0.25.4-p9.mjs'", "from '../vendor/trystero-0.25.4.mjs'", 1],
+  // 上流は数字を 3 つ変えた Trystero（-p9）を読む。ここでは本体と同じファイルを使う（上の TRYSTERO。同じ 0.25.4＝通信の形は同じ。理由は README）
+  ["from '/vendor/trystero-0.25.4-p9.mjs'", `from '../vendor/${TRYSTERO}'`, 1],
   ["import('https://esm.sh/@noble/curves@1.4.0/secp256k1')", "import('../vendor/noble-curves-1.4.0-secp256k1.mjs')", 1],
   ["import('https://esm.sh/qrcode-generator@1.4.4')", "import('../vendor/qrcode-generator-1.4.4.mjs')", 1],
   // TURN の資格情報は本体と同じ Worker から（ぽちっと通話の /api/turn はこのドメインに無い）
