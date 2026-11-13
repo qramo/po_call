@@ -3019,6 +3019,35 @@ def T94(r, room):
         click_leave(t)
 
 
+def T95(r, room):
+    """入室の行（v0.16.27・利用者 2026-11-13）：雑談部屋でも、後から入った人は「〇〇さんが入室しました」とひとことに出る。
+    自分の入室も、参加した時点（一人目でも）に自分の画面に出る（配信部屋も同じ。配信の聞き役は T27i）。
+    ①一人目の A に自分の行が出る ②A に B の入室が出る（B の名前・1 行だけ・ミュートの切り替えで届き直しても増えない）
+    ③B には自分の行だけ（A は先にいた人なので出ない）
+    """
+    x = room + 'ENT2'
+    SYS = "[...document.querySelectorAll('#chatLog .cl-sys .cl-text')].filter(e => e.textContent.endsWith('さんが入室しました')).map(e => e.textContent)"
+    NAME = "(JSON.parse(localStorage.getItem('pot-call-profile')||'{}').name)||'ゲスト'"
+    a = r.open_tab(); r.join(a, x)
+    assert a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER), 'A が参加できない'
+    aname = a.eval(NAME)
+    solo = a.eval(SYS) == [aname + ' さんが入室しました']
+    time.sleep(5)
+    b = r.open_tab(); r.join(b, x)
+    bname = b.eval(NAME)
+    got = a.wait_for(SYS + ".includes(%s + ' さんが入室しました')" % js_str(bname), timeout=DISCOVER + 5)
+    b.eval("document.getElementById('mute').click()"); time.sleep(1.5)
+    b.eval("document.getElementById('mute').click()"); time.sleep(2)
+    alog, blog = a.eval(SYS), b.eval(SYS)
+    once = alog == [aname + ' さんが入室しました', bname + ' さんが入室しました']
+    bonly = blog == [bname + ' さんが入室しました']
+    ok = solo and got and once and bonly
+    r.check('T95', '入室の行：自分の入室は一人目でも出る・雑談部屋でも後から来た人の入室が出る（先にいた人の分は出ない・増えない）', ok, 'pass',
+            'A に自分の行=%s / A に B の入室=%s / A のひとこと=%s / B のひとこと=%s' % (solo, got, alog, blog))
+    for t in (a, b):
+        click_leave(t)
+
+
 def T88(r, room):
     """主タブで「ひとこと」を開くと、最新の行が見える位置へ送る（2026-11-07 β 実機）。
     ひとことの欄は下詰めでスクロールしないので、最新の行は欄の下端にある。スマホで縦が狭いと
@@ -3032,7 +3061,7 @@ def T88(r, room):
     r.join(a, room + 'LOG')
     joined = a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER)
     a.eval("(() => { const t = document.getElementById('chatText'); t.value = '最新の行'; document.getElementById('chatSend').click() })()")
-    posted = a.wait_for("document.getElementById('chatLog').children.length > 0", timeout=SHORT)
+    posted = a.wait_for("document.getElementById('chatLog').textContent.includes('最新の行')", timeout=SHORT)   # 入室の行が先にある（v0.16.27）
     a.eval("document.activeElement && document.activeElement.blur()"); time.sleep(0.5)
     seen = []
     for start in ('window.scrollTo(0, 0)', 'window.scrollTo(0, document.body.scrollHeight)'):
@@ -4302,6 +4331,8 @@ def main():
             T93(r, room)
         if run('T94'):
             T94(r, room)
+        if run('T95'):
+            T95(r, room)
         if run('T89'):
             T89(r, room)
         if run('T90'):
