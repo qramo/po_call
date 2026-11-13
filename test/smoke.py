@@ -330,7 +330,7 @@ def T1b(r):
     t = r.open_tab()
     # ★hidden 属性ではなく**実際に描かれているか**を見る。CSS で display を指定していると
     #   [hidden] を打ち消してしまい、属性は付いているのに画面には出る（2026-08-15 に踏んだ）。
-    st = t.eval("JSON.stringify(['eq','connLegend','reactions','bcNote','speak','chatLog','tabs','mailNow'].reduce((o,id) => {"
+    st = t.eval("JSON.stringify(['eq','connLegend','reactions','speak','chatLog','tabs','mailNow'].reduce((o,id) => {"
                 " const el = document.getElementById(id);"
                 " o[id] = !el.offsetParent && getComputedStyle(el).display === 'none'; return o }, {}))")
     d = json.loads(st)
@@ -1633,7 +1633,8 @@ def make_bcast(r, tab, room):
 # 配信部屋まわりで繰り返し見る値
 SPEAK_SHOWN = "getComputedStyle(document.getElementById('speak')).display !== 'none'"
 MUTE_SHOWN = "getComputedStyle(document.getElementById('mute')).display !== 'none'"
-BC_NOTE = "((document.getElementById('bcNoteText')||{}).textContent || document.getElementById('bcNote').textContent || '')"
+# 配信部屋の説明は v0.16.29 から知らせのカード（key 'bc'）。閉じて ⏱️ に入っていても文は読める
+BC_NOTE = "((window.__potToasts().find(t => t.key === 'bc') || {}).text || '')"
 LIVE_TRACKS = "__T.streams.flatMap(s => s.getTracks()).filter(t => t.readyState === 'live').length"
 
 
@@ -3086,6 +3087,39 @@ def T96(r, room):
             % (three, open2, hist, flat, reopened, xed, swiped, gone))
 
 
+def T97(r, room):
+    """状態から出す知らせ（人数・配信部屋の説明・音が届かない・v0.16.29）は**中身が変わったときだけ**出し直す。
+    ①同じ中身で文だけ変わる（配信終了の秒読み）は同じカードのまま書き換わる ②× で消したら同じ中身の間は出ない
+    ③中身が変われば出る ④当てはまらなくなったら消える ⑤配信部屋の説明・音が届かないの「つなぎ直す」がカードに出る
+    """
+    a = r.open_tab(); r.join(a, room + 'NST')
+    assert a.wait_for("document.body.classList.contains('in-call')", timeout=DISCOVER), '参加できない'
+    time.sleep(1)
+    T = "window.__potToasts()"
+    one = "(%s.find(x => x.key === 't') || {})" % T
+    a.eval("window.__potNotifyState('t', '秒読み 9', { sig: 'cd', keep: true, warn: true })"); time.sleep(0.5)
+    a.eval("window.__c0 = document.querySelector('#toasts .toast')")
+    a.eval("window.__potNotifyState('t', '秒読み 8', { sig: 'cd', keep: true, warn: true })"); time.sleep(0.2)
+    inplace = a.eval("document.querySelector('#toasts .toast') === window.__c0 && window.__c0.textContent.includes('秒読み 8') && %s.text === '秒読み 8'" % one)
+    a.eval("document.querySelector('#toasts .toast .toast-x').click()"); time.sleep(0.4)
+    a.eval("window.__potNotifyState('t', '秒読み 7', { sig: 'cd' })"); time.sleep(0.3)
+    stays = a.eval("!%s.some(x => x.key === 't')" % T)
+    a.eval("window.__potNotifyState('t', '終わりました', { sig: 'end' })"); time.sleep(0.4)
+    back = a.eval("%s.text === '終わりました' && %s.open" % (one, one))
+    a.eval("window.__potNotifyState('t', '')"); time.sleep(0.4)
+    gone = a.eval("!%s.some(x => x.key === 't')" % T)
+    click_leave(a)
+    # 配信部屋：配信者には「あなたの配信」のカード
+    o = r.open_tab()
+    made = make_bcast(r, o, room + 'NSB')
+    bc = o.wait_for("%s.includes('あなたの配信')" % BC_NOTE, timeout=DISCOVER)
+    click_leave(o)
+    ok = inplace and stays and back and gone and made and bc
+    r.check('T97', '状態の知らせは中身が変わったときだけ出す（秒読みは同じカードで書き換え・× の後は同じ中身なら出ない・配信の説明もカード）', ok, 'pass',
+            '同じカードで書き換え=%s / × の後は出ない=%s / 中身が変われば出る=%s / 当てはまらなければ消える=%s / 配信の説明=%s'
+            % (inplace, stays, back, gone, bool(made and bc)))
+
+
 def T88(r, room):
     """主タブで「ひとこと」を開くと、最新の行が見える位置へ送る（2026-11-07 β 実機）。
     ひとことの欄は下詰めでスクロールしないので、最新の行は欄の下端にある。スマホで縦が狭いと
@@ -3791,7 +3825,7 @@ def T29(r, room):
         r.check('T29', '満員の部屋に9人目が入れない', False, 'pass',
                 '前提が作れなかった（8人が揃わない）: %s人' % tabs[0].eval(MEMBERS))
         return
-    warned = tabs[0].eval("!document.getElementById('crowdNote').hidden")
+    warned = tabs[0].eval("window.__potToasts().some(t => t.key === 'crowd')")
     # 9人目
     late = r.open_tab()
     r.join(late, name)
@@ -3934,10 +3968,10 @@ def T13(r, a, b):
     「壊れていないのに壊れたと言う」ことになり、無音を知らせる価値そのものを損なう。
     催促が一巡する時間（6 + 6×3 = 24秒）より長く待って、それでも出ないことを見る。
     """
-    WARN_SHOWN = "!document.getElementById('audioWarn').hidden"
+    WARN_SHOWN = "window.__potToasts().some(t => t.key === 'audio')"
     appeared = a.wait_for(WARN_SHOWN, timeout=32) or b.wait_for(WARN_SHOWN, timeout=1)
     r.check('T13', '正常な通話で誤警告を出さない', not appeared, 'pass',
-            '' if not appeared else a.eval("document.getElementById('audioWarn').textContent"))
+            '' if not appeared else a.eval("JSON.stringify(window.__potToasts())"))
 
 
 def T12(r, a):
@@ -4373,6 +4407,8 @@ def main():
             T95(r, room)
         if run('T96'):
             T96(r, room)
+        if run('T97'):
+            T97(r, room)
         if run('T89'):
             T89(r, room)
         if run('T90'):
