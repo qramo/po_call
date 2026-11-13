@@ -862,13 +862,20 @@
   .toast-x{ flex:none; width:26px; height:26px; margin:-2px 0 0; padding:0; border:0; border-radius:8px;
     background:none; color:var(--sub); font-size:16px; line-height:1; cursor:pointer }
   .toast-x:hover{ background:rgba(127,127,127,.15) }
-  .toast-pills{ position:fixed; right:12px; bottom:calc(var(--dock-h, 0px) + 12px); z-index:60; display:flex; flex-direction:column-reverse; gap:8px }
-  body:not(.in-call) .toast-pills{ bottom:12px }
-  .toast-pill{ width:40px; height:40px; margin:0; padding:0; border-radius:50%; font-size:19px; line-height:1;
-    background:var(--chip-hover); border:1px solid var(--warn-border); box-shadow:0 6px 18px rgba(0,0,0,.3);
+  /* ⏱️ 履歴の丸。閉じた知らせ（時間で消えたもの・払ったもの）はここに残り、押すとまとめて開き直す。
+     置き場所は **通知の 2 枚目の右下**（利用者 11-13）：カードの積みの下端にくっつき（top は JS の placeHist）、
+     カードが 1 枚以下でも 2 枚ぶんの目安（--hist-min）より上には来ない＝タブの行に被りにくい。右端はカードの右端に揃える。まだ片づいていない知らせ（大音量・音が止まっている など）があるときは黄色の数字 */
+  .toast-hist{ position:fixed; top:var(--hist-top, calc(env(safe-area-inset-top, 0px) + var(--vv-top, 0px) + 136px));
+    right:max(12px, calc((100vw - 460px) / 2)); z-index:60; width:auto; height:36px; margin:0; padding:0 10px 0 8px;
+    display:inline-flex; align-items:center; gap:4px; border-radius:18px; font-size:17px; line-height:1;
+    background:var(--chip-hover); color:var(--text); border:1px solid var(--border-soft); box-shadow:0 6px 18px rgba(0,0,0,.3);
     animation:pill-in .28s ease-out }
+  .toast-hist b{ font-size:12px; font-weight:700; min-width:18px; height:18px; padding:0 5px; box-sizing:border-box; border-radius:9px;
+    display:inline-flex; align-items:center; justify-content:center; background:var(--chip); color:var(--sub) }
+  .toast-hist.active{ border-color:var(--warn-border) }
+  .toast-hist.active b{ background:var(--warn); color:var(--panel) }   /* 夜は黄に濃い字・昼は茶に白い字 */
   @keyframes pill-in{ from{ transform:scale(.4); opacity:0 } to{ transform:scale(1); opacity:1 } }
-  @media (prefers-reduced-motion:reduce){ .toast{ transition:none } .toast-pill{ animation:none } }
+  @media (prefers-reduced-motion:reduce){ .toast{ transition:none } .toast-hist{ animation:none } }
   /* 試し用（?noticedemo=1・本番 potalk.app では出ない） */
   .toast-demo{ position:fixed; left:12px; bottom:calc(var(--dock-h, 0px) + 12px); z-index:60; width:auto; margin:0;
     padding:8px 12px; font-size:13px; border-radius:20px; background:var(--chip); color:var(--text); opacity:.85 }
@@ -6996,27 +7003,37 @@ chatText.addEventListener('keydown', e => {
 // 本物の回線障害でも出るが、それも含めて「何かおかしい」と分かるほうがよい。
 // ── 知らせのカード（ui-notice 試作）──
 // notify(text, { key, keep, ms, warn, action }) で出す。同じ key は差し替え（同じ相手の大音量が続いても 1 枚）。
-//   keep＝残す知らせ：TOAST_SHRINK_MS で右下の丸に縮み、押すと開き直す。× か unnotify(key) で消える
-//   それ以外：ms で消える。上へ払う＝閉じる（keep は丸に縮める）
-const TOAST_MAX = 2, TOAST_SHRINK_MS = 6000
-const toasts = new Map()   // key → { text, keep, warn, ms, action, card, pill, timer, at }
-const toastIcon = text => (text.match(/^\p{Extended_Pictographic}\uFE0F?/u) || ['🔔'])[0]
-const toastDrop = (t, then) => {
+// カードは時間で閉じ（keep＝片づくまで残す知らせは TOAST_SHRINK_MS、ほかは ms）、上へ払っても閉じる。
+// **閉じた知らせは ⏱️（履歴）に残り**、押すとまとめて開き直す＝見逃しても後で読める（利用者 11-13）。
+// × は履歴からも消す。unnotify(key) は「もう要らない」（音が鳴った・読み上げが済んだ など）
+const TOAST_MAX = 2, TOAST_SHRINK_MS = 6000, TOAST_HIST = 5
+const toasts = new Map()   // key → { text, keep, warn, ms, action, card, timer, at }
+// ⏱️ の位置：積んだカードの下端の 6px 下。カードが 2 枚より少ないときは「2 枚ぶん」の目安（1 行のカード 2 枚＝約 128px）
+const placeHist = () => {
+  const box = $('toasts'), r = box.getBoundingClientRect()
+  const top = r.top, bottom = box.children.length ? r.bottom : top
+  document.documentElement.style.setProperty('--hist-top', Math.round(Math.max(top + 128, bottom + 6)) + 'px')
+}
+try { new ResizeObserver(placeHist).observe($('toasts')) } catch {}
+const renderHist = () => {
+  placeHist()
+  const closed = [...toasts.values()].filter(t => !t.card)
+  const b = $('toastHist')
+  b.hidden = !closed.length
+  $('toastHistN').textContent = closed.length
+  b.classList.toggle('active', closed.some(t => t.keep))
+  b.setAttribute('aria-label', '閉じた知らせ ' + closed.length + ' 件（押すと開きます）')
+}
+const toastClose = key => {
+  const t = toasts.get(key); if (!t) return
   clearTimeout(t.timer); t.timer = null
   const c = t.card; t.card = null
-  if (!c) { then && then(); return }
-  c.classList.add('off')
-  setTimeout(() => { c.remove(); then && then() }, 300)
-}
-const toastShrink = (key) => {
-  const t = toasts.get(key); if (!t) return
-  if (!t.keep) { toastDrop(t); toasts.delete(key); return }
-  toastDrop(t)
-  if (t.pill) return
-  const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-pill'
-  b.textContent = toastIcon(t.text); b.title = t.text; b.setAttribute('aria-label', t.text + '（押すと開きます）')
-  b.onclick = () => toastOpen(key)
-  t.pill = b; $('toastPills').append(b)
+  if (c) { c.classList.add('off'); setTimeout(() => c.remove(), 300) }
+  // 履歴は TOAST_HIST 件まで：片づいた（keep でない）古いものから捨てる
+  const old = [...toasts].filter(([, v]) => !v.card && !v.keep).sort((a, b) => a[1].at - b[1].at)
+  const over = [...toasts.values()].filter(v => !v.card).length - TOAST_HIST
+  old.slice(0, Math.max(0, over)).forEach(([k]) => toasts.delete(k))
+  renderHist()
 }
 const toastCard = (key, t) => {
   const c = document.createElement('div'); c.className = 'toast off' + (t.warn ? ' warn' : '')
@@ -7027,23 +7044,23 @@ const toastCard = (key, t) => {
     a.onclick = () => { t.action.fn(); unnotify(key) }
     c.append(a)
   }
-  const x = document.createElement('button'); x.type = 'button'; x.className = 'toast-x'; x.textContent = '×'; x.setAttribute('aria-label', 'この知らせを閉じる')
+  const x = document.createElement('button'); x.type = 'button'; x.className = 'toast-x'; x.textContent = '×'; x.setAttribute('aria-label', 'この知らせを消す')
   x.onclick = () => unnotify(key)
   c.append(x)
-  // 上へ払うと閉じる（keep は丸へ）。ボタンの上から始めた操作は払いにしない
+  // 上へ払うと閉じる（履歴に残る）。ボタンの上から始めた操作は払いにしない
   let y0 = null
   c.onpointerdown = e => { if (e.target.closest('button')) return; y0 = e.clientY; c.setPointerCapture(e.pointerId); c.style.transition = 'none' }
   c.onpointermove = e => { if (y0 === null) return; const d = Math.min(0, e.clientY - y0); c.style.transform = 'translateY(' + d + 'px)'; c.style.opacity = String(1 + d / 120) }
   c.onpointerup = c.onpointercancel = e => {
     if (y0 === null) return
     const d = e.clientY - y0; y0 = null; c.style.transition = ''; c.style.transform = ''; c.style.opacity = ''
-    if (d < -30) t.keep ? toastShrink(key) : unnotify(key)
+    if (d < -30) toastClose(key)
   }
   return c
 }
-const toastOpen = (key) => {
+// max＝同時に開く上限（履歴から開くときは全部）
+const toastOpen = (key, max = TOAST_MAX) => {
   const t = toasts.get(key); if (!t) return
-  if (t.pill) { t.pill.remove(); t.pill = null }
   clearTimeout(t.timer)
   if (!t.card) {
     t.card = toastCard(key, t)
@@ -7051,10 +7068,14 @@ const toastOpen = (key) => {
     requestAnimationFrame(() => requestAnimationFrame(() => t.card && t.card.classList.remove('off')))
   }
   t.at = Date.now()
-  t.timer = setTimeout(() => toastShrink(key), t.keep ? TOAST_SHRINK_MS : t.ms)
-  // 開いているのは TOAST_MAX 枚まで：古いものから縮める（keep は丸・ほかは消す）
+  t.timer = setTimeout(() => toastClose(key), t.keep ? TOAST_SHRINK_MS : t.ms)
   const open = [...toasts].filter(([, v]) => v.card).sort((a, b) => b[1].at - a[1].at)
-  open.slice(TOAST_MAX).forEach(([k]) => toastShrink(k))
+  open.slice(max).forEach(([k]) => toastClose(k))
+  renderHist()
+}
+$('toastHist').onclick = () => {
+  const closed = [...toasts].filter(([, v]) => !v.card).sort((a, b) => a[1].at - b[1].at)   // 古い順に積む＝新しいものが上
+  closed.forEach(([k]) => toastOpen(k, Infinity))
 }
 const notify = (text, { key = text, keep = false, ms = 8000, warn = false, action = null } = {}) => {
   if (!text) return
@@ -7062,19 +7083,17 @@ const notify = (text, { key = text, keep = false, ms = 8000, warn = false, actio
   if (t) {
     Object.assign(t, { text, keep, ms, warn, action })
     if (t.card) { t.card.remove(); t.card = null }   // 文が変わったら作り直す（同じ位置＝いちばん上へ）
-  } else toasts.set(key, { text, keep, ms, warn, action, card: null, pill: null, timer: null, at: 0 })
+  } else toasts.set(key, { text, keep, ms, warn, action, card: null, timer: null, at: 0 })
   toastOpen(key)
 }
 const unnotify = key => {
   const t = toasts.get(key); if (!t) return
-  toasts.delete(key)
-  if (t.pill) { t.pill.remove(); t.pill = null }
-  toastDrop(t)
+  toastClose(key); toasts.delete(key); renderHist()
 }
 const clearToasts = () => [...toasts.keys()].forEach(unnotify)
 // iPhone でキーボードが出ると見えている範囲が下へずれる＝上から出すカードを見えている上端に合わせる
 if (window.visualViewport) {
-  const vvTop = () => document.documentElement.style.setProperty('--vv-top', Math.max(0, visualViewport.offsetTop) + 'px')
+  const vvTop = () => { document.documentElement.style.setProperty('--vv-top', Math.max(0, visualViewport.offsetTop) + 'px'); placeHist() }
   visualViewport.addEventListener('resize', vvTop); visualViewport.addEventListener('scroll', vvTop)
 }
 // 以前の呼び口（1 件だけ・時間で消える）。空文字は「もう要らない」
@@ -7095,7 +7114,7 @@ if (location.hostname !== 'potalk.app' && /[?&]noticedemo=1(&|$)/.test(location.
   b.onclick = () => { demo[i++ % demo.length]() }
   document.body.append(b)
 }
-window.__potToasts = () => [...toasts].map(([k, t]) => ({ key: k, text: t.text, open: !!t.card, pill: !!t.pill }))
+window.__potToasts = () => [...toasts].map(([k, t]) => ({ key: k, text: t.text, open: !!t.card }))
 
 // ───────── 配信部屋（誰の音を鳴らすかを、署名で決める） ─────────
 // 受信側の既定＝「承認された人以外の音声は再生しない」。各自が自分の出力を決めるだけなので
@@ -9491,8 +9510,8 @@ addEventListener('online', () => initLobby(true, true))
 // （syncShare は joinedId を参照するため、宣言前に呼ぶと TDZ で落ちる）
 syncShare()
 </script>
-<!-- 知らせのカード（ui-notice 試作）。読み上げにも届くよう status（polite）。丸は縮めた知らせ -->
+<!-- 知らせのカード（ui-notice 試作）。読み上げにも届くよう status（polite）。⏱️ は閉じた知らせの履歴 -->
 <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
-<div id="toastPills" class="toast-pills"></div>
+<button id="toastHist" class="toast-hist" type="button" hidden>⏱️<b id="toastHistN">0</b></button>
 </body>
 </html>
