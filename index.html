@@ -5946,6 +5946,8 @@ const syncTtsRow = () => {
 }
 // 配信者：いまの募集状態を配る（target 省略＝全員・grantAction はオーナー検証済みの経路）。
 const sendReqOpen = target => { if (call.ownerKey && call.grantAction) sendTo(call.grantAction, { k: 'reqopen', on: !!call.reqOpen }, target) }
+// 雑談部屋の入室通知：届いたプロフィールの「入って何秒」がこれ未満なら、いま入ってきた人とみなす（v0.16.27）
+const ENTER_NEW_S = 20
 // 次の入室を「静かに」するか（🤫 チェック・ロビーのタップ確認から持ち込む・v0.15.11）。
 let joinQuiet = false
 // 聞き役の入室通知を全員へ 1 回だけ。普通＝名前つき、静かに＝匿名。使ったら普通に戻す（リンク入室などが静かにならないように）。
@@ -5953,12 +5955,14 @@ const sendEnterNotice = () => {
   if (!call.chatAction || !call.bcast || call.ownerKey) return
   const q = !!joinQuiet, n = q ? '' : profile.name
   sendTo(call.chatAction, { sys: 'enter', q, n })
-  // 自分の画面にも同じ行を出す（v0.15.29）。Trystero は自分の送信を自分に配らないので、送り手だけ
-  // 通知を見られなかった。ほかの人に見えているのと同じ文面（受け手側 chatAction の組み立てと揃える）。
-  // 自分の分は読み上げず、未読の点も付けない。
-  logSystem(q ? '誰かが静かに入室しました' : (capText(n, 20) || 'ゲスト') + ' さんが入室しました')
+  // 自分の画面の行は armJoined（selfEnterLine）で参加した時点に出している（v0.16.27。それまではここ＝配信者が分かった時点）
   joinQuiet = false
 }
+// 自分の入室の行（v0.15.29 は配信部屋の聞き役だけ → v0.16.27 で全員・利用者）。参加が成立した時点＝一人目でも出す。
+// ほかの人に見えているのと同じ文面（受け手側 chatAction／雑談の profile の組み立てと揃える）。読み上げず、未読の点も付けない。
+// 🤫 で入った聞き役は「誰かが静かに」（joinQuiet は sendEnterNotice が使い終えるまで残っている）
+const selfEnterLine = bcast => logSystem(bcast && !call.ownerKey && joinQuiet
+  ? '誰かが静かに入室しました' : (capText(profile.name, 20) || 'ゲスト') + ' さんが入室しました')
 {
   const box = $('reqOpen')
   box.onchange = () => {
@@ -7527,6 +7531,7 @@ const wireRoom = () => {
   // onMessage は最初のピア接続イベントより前（この同期ブロック内）に必ず代入しておく。
   call.profileAction = call.room.makeAction('profile')
   call.profileAction.onMessage = (data, { peerId }) => {
+    const first = !call.profiles.has(peerId)
     const prev = call.profiles.get(peerId) || {}
     call.profiles.set(peerId, {
       name: capText(data?.name ?? prev.name, 20),
@@ -7546,6 +7551,14 @@ const wireRoom = () => {
       bgm: ['off', 'tune', 'amb', 'fire'].includes(data?.bgm) ? data.bgm : prev.bgm
     })
     maybeAdoptBgm()   // 新入りが「場の BGM」を初期値にもらう（源＝配信者／最古の人・v0.15.16）
+    // 雑談部屋の入室通知（v0.16.27・利用者）：相手のプロフィールが**初めて**届き、相手が入ったばかり（since が小さい）で
+    //   自分のほうが先にいた＝後から来た人なら「〇〇さんが入室しました」。新しい合図は足さない（旧版の人が来ても出る）。
+    //   自分が入ったときに先にいた人の分は出さない（since が自分より大きい）。退室は出さない（元から無い・利用者）。
+    //   配信部屋は聞き役が送る enter の合図のほう（v0.15.11）
+    if (first && !call.bcast && Number.isFinite(data?.since) && data.since < ENTER_NEW_S && mySeconds() > data.since + 3) {
+      logSystem((capText(data?.name, 20) || 'ゲスト') + ' さんが入室しました')
+      if (call.tab !== 'chat') $('tabChat').classList.add('unread')
+    }
     // 名前・絵文字が分かった／変わった → 「つながっている人」の知らせも送り直す（入った瞬間はまだ名前が無い）
     { const p = call.profiles.get(peerId); if (p.name !== prev.name || p.emoji !== prev.emoji) sendPeers() }
     // 後処理（全行の DOM 再構築＋満室判定）は発信者ごとに間引く。中身は上で必ず取り込んでいる
@@ -8011,6 +8024,7 @@ const armJoined = (roomId, name, bcast) => {
     //   後から同じく名前なしのリンクで来た人（-1）にこちらの名前を渡せるようにする
     if (weak) setTimeout(() => { if (call.joinedId === roomId && call.meta.nameAt === -1) call.meta.nameAt = 0 }, 15000) }
   render(); renderMembers(); renderBcNote()
+  selfEnterLine(bcast)
   if (bcast && !call.ownerKey) startBcEndWatch()   // 聞き役：配信者が居なくなったら 60 秒待って終わる
   // 配信部屋のオーナー：自分を載せた名簿をまず配る。以後は grant/revoke のたびと、
   // 取りこぼしの自己修復として定期的に配り直す（署名は1回1ms程度なので負荷にはならない）。
