@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.16.27
+  ぽっと通話〈実験版〉 v0.16.28
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -2035,7 +2035,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.16.27'
+const APP_VERSION = 'v0.16.28'
 
 // ─── 節マニフェスト（目次・出現順） ───────────────────────────────────────
 // このファイルは下のバナーコメントで探せる。バナーは実務の目録としてそのまま保つ。
@@ -7114,6 +7114,7 @@ if (location.hostname !== 'potalk.app' && /[?&]noticedemo=1(&|$)/.test(location.
   b.onclick = () => { demo[i++ % demo.length]() }
   document.body.append(b)
 }
+window.__potNotify = notify   // テスト用（smoke T96）
 window.__potToasts = () => [...toasts].map(([k, t]) => ({ key: k, text: t.text, open: !!t.card }))
 
 // ───────── 配信部屋（誰の音を鳴らすかを、署名で決める） ─────────

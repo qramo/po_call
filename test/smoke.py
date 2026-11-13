@@ -2727,9 +2727,11 @@ def T84(r, room):
     st = a.eval("JSON.stringify(window.__potLoud())")
     rows = json.loads(st)
     loud_n = sum(1 for x in rows if x['loud']); normal = [x for x in rows if not x['loud']]
-    notice = a.eval("document.getElementById('peerNotice').textContent")
-    # 知らせが画面の上で見えていること（文字が入っただけでなく）・抑えている相手の行に 🔉
-    visible = a.eval("(() => { const n = document.getElementById('peerNotice'); return !n.hidden && !!n.offsetParent && n.getBoundingClientRect().height > 0 })()")
+    notice = a.eval("window.__potToasts().map(t => t.text).join(' / ')")
+    # 知らせが画面で見えていること（文字が入っただけでなく）：上のカードが出ているか、6 秒で閉じたあとは
+    # ⏱️（履歴）が黄色の数字で残っている（v0.16.28 で知らせを上からのカードに）・抑えている相手の行に 🔉
+    visible = a.eval("""(() => { const c = document.querySelector('#toasts .toast:not(.off)'); if (c && c.getBoundingClientRect().height > 0) return true
+      const h = document.getElementById('toastHist'); return !h.hidden && h.classList.contains('active') && h.getBoundingClientRect().height > 0 })()""")
     badge = a.eval("[...document.querySelectorAll('#members .member')].filter(el => el.querySelector('.m-loud')).length")
     # 素の再生（<audio>）は、抑えた相手のぶんだけ止まり、ふつうの相手は鳴ったまま
     els = json.loads(a.eval("JSON.stringify([...document.querySelectorAll('audio:not(#appAudio)')].filter(e => e.srcObject).map(e => e.muted))"))
@@ -3046,6 +3048,42 @@ def T95(r, room):
             'A に自分の行=%s / A に B の入室=%s / A のひとこと=%s / B のひとこと=%s' % (solo, got, alog, blog))
     for t in (a, b):
         click_leave(t)
+
+
+def T96(r, room):
+    """知らせは画面の上から重ねて出すカード（v0.16.28・利用者 2026-11-13）。
+    ①重ねて出る（上書きで消えない）・同時に開くのは 2 枚まで ②閉じた知らせは ⏱️（履歴）に残り、押すと開き直す
+    ③片づいていない知らせ（keep）があると ⏱️ が黄色 ④× は履歴からも消す ⑤上へ払うと閉じる ⑥退出で全部消える
+    ⑦カードはページの高さを変えない（重ねて出す）
+    """
+    a = r.open_tab(); r.join(a, room + 'NTC')
+    assert a.wait_for("document.body.classList.contains('in-call')", timeout=DISCOVER), '参加できない'
+    time.sleep(1)
+    T = "window.__potToasts()"
+    h0 = a.eval("document.documentElement.scrollHeight")
+    a.eval("window.__potNotify('🔉 大きい音', { key: 'loud:x', keep: true, warn: true }); window.__potNotify('🔌 切れた'); window.__potNotify('🎙 許可')")
+    time.sleep(0.6)
+    st = json.loads(a.eval("JSON.stringify(%s)" % T))
+    three = len(st) == 3
+    open2 = sorted(x['text'] for x in st if x['open']) == ['🎙 許可', '🔌 切れた']
+    hist = a.eval("(() => { const h = document.getElementById('toastHist'); return !h.hidden && h.classList.contains('active') && document.getElementById('toastHistN').textContent === '1' })()")
+    flat = a.eval("document.documentElement.scrollHeight") == h0
+    a.eval("document.getElementById('toastHist').click()"); time.sleep(0.6)
+    reopened = a.eval("%s.every(x => x.open)" % T)
+    a.eval("[...document.querySelectorAll('#toasts .toast')].find(c => c.textContent.includes('切れた')).querySelector('.toast-x').click()"); time.sleep(0.5)
+    xed = a.eval("!%s.some(x => x.text === '🔌 切れた')" % T)
+    # 上へ払う（ポインタの合成イベント）
+    a.eval("""(() => { const c = [...document.querySelectorAll('#toasts .toast')].find(c => c.textContent.includes('許可'))
+      const r = c.getBoundingClientRect(), x = r.left + 30, y = r.top + 20, o = { bubbles: true, pointerId: 7, clientX: x }
+      c.dispatchEvent(new PointerEvent('pointerdown', { ...o, clientY: y })); c.dispatchEvent(new PointerEvent('pointermove', { ...o, clientY: y - 50 }))
+      c.dispatchEvent(new PointerEvent('pointerup', { ...o, clientY: y - 50 })) })()"""); time.sleep(0.5)
+    swiped = a.eval("%s.some(x => x.text === '🎙 許可' && !x.open)" % T)
+    click_leave(a); time.sleep(0.5)
+    gone = a.eval("%s.length === 0 && document.getElementById('toastHist').hidden && !document.querySelector('#toasts .toast')" % T)
+    ok = three and open2 and hist and flat and reopened and xed and swiped and gone
+    r.check('T96', '知らせは上からのカード（重ねる・2 枚まで・⏱️ に残る・× で消える・払うと閉じる・退出で消える・ページを伸ばさない）', ok, 'pass',
+            '3 件=%s / 開くのは新しい 2 枚=%s / ⏱️ 黄色 1=%s / 高さ不変=%s / ⏱️ で開き直す=%s / × で消える=%s / 払うと閉じる=%s / 退出で消える=%s'
+            % (three, open2, hist, flat, reopened, xed, swiped, gone))
 
 
 def T88(r, room):
@@ -4333,6 +4371,8 @@ def main():
             T94(r, room)
         if run('T95'):
             T95(r, room)
+        if run('T96'):
+            T96(r, room)
         if run('T89'):
             T89(r, room)
         if run('T90'):
