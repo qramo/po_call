@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.16.28
+  ぽっと通話〈実験版〉 v0.16.29
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -880,19 +880,6 @@
   .toast-demo{ position:fixed; left:12px; bottom:calc(var(--dock-h, 0px) + 12px); z-index:60; width:auto; margin:0;
     padding:8px 12px; font-size:13px; border-radius:20px; background:var(--chip); color:var(--text); opacity:.85 }
   body:not(.in-call) .toast-demo{ bottom:12px }
-  /* 配信部屋の説明。注意ではなく状態なので、警告の黄ではなくティール（＝通話中の色）で置く。
-     「いま自分は話せるのか」が一番の関心なので、参加者リストより上に出す */
-  .bc-note{ margin-top:10px; padding:9px 11px; border-radius:10px; font-size:13px; line-height:1.5;
-    background:rgba(0,229,204,.09); border:1px solid rgba(0,229,204,.30); color:var(--accent-soft);
-    display:flex; align-items:flex-start; gap:8px;
-    /* ふわっと縮んで消える（× で閉じる・v0.15.15）。閉じる時は .closing を付けてから hidden にする */
-    overflow:hidden; transform-origin:top;
-    transition:opacity .24s ease, transform .24s ease, max-height .24s ease, margin .24s ease, padding .24s ease }
-  .bc-note #bcNoteText{ flex:1; min-width:0 }
-  .bc-note-x{ flex:none; width:22px; height:22px; padding:0; margin:0; border:0; background:none; cursor:pointer;
-    color:var(--accent-soft); opacity:.7; font-size:18px; line-height:1; border-radius:6px }
-  .bc-note-x:hover{ opacity:1; background:rgba(0,229,204,.14) }
-  .bc-note.closing{ opacity:0; transform:scaleY(.55); max-height:0; margin-top:0; padding-top:0; padding-bottom:0 }
   /* 部屋の種類（部屋名の下の2択）。通知音トグルと同じ控えめな見た目に揃え、行間だけ詰める。 */
   .kind{ display:grid; gap:2px; margin-top:8px }
   .kind .snd-opt{ margin-top:0 }
@@ -1468,9 +1455,6 @@
              inputmode="text" enterkeyhint="done" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="false">
       <button id="tagSend" type="button">確定</button>
     </div>
-    <div id="crowdNote" class="audio-warn" hidden></div>
-    <!-- 配信部屋のときだけ出る説明（自分がいま話せるのかを一言で言う） -->
-    <div id="bcNote" class="bc-note" hidden><span id="bcNoteText"></span><button id="bcNoteClose" class="bc-note-x" type="button" aria-label="この案内を閉じる">×</button></div>
     <!-- いま枠主が読んでいるお便り。**タブの外**に置く＝どのタブを見ていても、
          いま何が読まれているかが分かる（ラジオで読み上げられているハガキ） -->
     <div id="mailNow" class="mail-now" hidden></div>
@@ -1556,8 +1540,6 @@
       <p class="vol-note" id="sndTtsProg" hidden></p>
       <p class="vol-note" id="sndTtsCrash" hidden></p>
     </div>
-    <!-- 音が届かない相手がいるときだけ出る。頼んでも直らなかった＝本人の操作が要る場合の最終手段 -->
-    <div id="audioWarn" class="audio-warn" hidden></div>
     <!-- 「退出した」のか「接続が切れた」のかを書き分けて出す。切れたときだけ表示する。
          本物の回線障害でも出るが、**集団で無視されたときに「自分の回線のせい」と
          思い込まされないため**でもある（HANDOFF「無視」の項の"秘密の部屋"参照） -->
@@ -2035,7 +2017,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.16.28'
+const APP_VERSION = 'v0.16.29'
 
 // ─── 節マニフェスト（目次・出現順） ───────────────────────────────────────
 // このファイルは下のバナーコメントで探せる。バナーは実務の目録としてそのまま保つ。
@@ -2294,7 +2276,6 @@ const CALL_INIT = () => ({
   authAction: null,     // 配信者の本人確認（チャレンジ&レスポンス）のデータチャネル（v0.15.28）
   authAskAt: new Map(), // 配信者：peerId → 最後に本人確認の署名に応じた時刻（連打で署名を走らされない）
   bcEnd: null,          // 聞き役側の「配信の終わり」の状態 { phase:'grace'|'ending', since, endAt }（v0.14.0）
-  bcNoteDismissed: '',  // × で閉じた案内の文面（同じ内容の間は閉じたまま・内容が変われば出し直す・v0.15.15）
   bcEndTimer: null,     // 上を1秒ごとに見直すタイマー
   roster: null,         // 最後に受け取った（署名済みの）名簿。新しい人にそのまま転送するために持つ
   rosterT: 0,           // 自分が署名した名簿の時刻（必ず増やす）
@@ -6209,13 +6190,12 @@ const olderThanMe = () => {
 }
 
 const renderCrowd = () => {
-  const el = $('crowdNote')
+  if (!call.joinedId) return   // 未参加では出さない（退出時は clearToasts で消える）
   const n = call.peers.size + 1
-  el.hidden = !call.joinedId || n < roomWarn()
-  if (el.hidden) return
-  el.textContent = n >= roomCap()
-    ? '👥 ' + n + '人です。この部屋の上限（' + roomCap() + '人）に達しました'
-    : '👥 あと ' + (roomCap() - n) + '人まで（多いと途切れやすくなります）'
+  notifyState('crowd', n < roomWarn() ? ''
+    : n >= roomCap()
+      ? '👥 ' + n + '人です。この部屋の上限（' + roomCap() + '人）に達しました'
+      : '👥 あと ' + (roomCap() - n) + '人まで（多いと途切れやすくなります）')
 }
 // 入ってきた自分が定員を超えていたら、自分から抜ける。**一瞬入って出る**ことになるが、
 // 満室のまま全員の通話が重くなるより、入れなかったと分かるほうがよい。
@@ -6463,11 +6443,10 @@ $('unlock').onclick = unlockNow
 // それでも来なければ本人に知らせる。無音のまま本人が理由に気づけないのが一番まずいので、
 // 直せるうちは黙って直し、直せない時だけ言う、の二段にしてある。
 const renderAudioWarn = ids => {
-  const el = $('audioWarn')
-  el.hidden = !ids.length
-  if (!ids.length) return
+  if (!call.joinedId) return
   const who = ids.map(id => (call.profiles.get(id) || {}).name || '相手').join('、')
-  el.textContent = '🔈 ' + who + 'さんの音が届いていません。「つなぎ直す」を試してください'
+  notifyState('audio', ids.length ? '🔈 ' + who + 'さんの音が届いていません' : '',
+    { keep: true, warn: true, action: { label: 'つなぎ直す', fn: () => doReconnect() } })
 }
 const checkAudioArrival = () => {
   if (!call.room) return
@@ -7008,6 +6987,7 @@ chatText.addEventListener('keydown', e => {
 // × は履歴からも消す。unnotify(key) は「もう要らない」（音が鳴った・読み上げが済んだ など）
 const TOAST_MAX = 2, TOAST_SHRINK_MS = 6000, TOAST_HIST = 5
 const toasts = new Map()   // key → { text, keep, warn, ms, action, card, timer, at }
+let toastSeq = 0           // at は開いた順の通し番号（同じミリ秒に続けて出しても順が決まる）
 // ⏱️ の位置：積んだカードの下端の 6px 下。カードが 2 枚より少ないときは「2 枚ぶん」の目安（1 行のカード 2 枚＝約 128px）
 const placeHist = () => {
   const box = $('toasts'), r = box.getBoundingClientRect()
@@ -7067,7 +7047,7 @@ const toastOpen = (key, max = TOAST_MAX) => {
     $('toasts').prepend(t.card)
     requestAnimationFrame(() => requestAnimationFrame(() => t.card && t.card.classList.remove('off')))
   }
-  t.at = Date.now()
+  t.at = ++toastSeq
   t.timer = setTimeout(() => toastClose(key), t.keep ? TOAST_SHRINK_MS : t.ms)
   const open = [...toasts].filter(([, v]) => v.card).sort((a, b) => b[1].at - a[1].at)
   open.slice(max).forEach(([k]) => toastClose(k))
@@ -7090,7 +7070,22 @@ const unnotify = key => {
   const t = toasts.get(key); if (!t) return
   toastClose(key); toasts.delete(key); renderHist()
 }
-const clearToasts = () => [...toasts.keys()].forEach(unnotify)
+// 状態から出す知らせ（人数・配信部屋の説明・音が届かない）。描き直しのたびに呼ばれるので、
+// **中身（sig）が変わったときだけ**出し直す。中身が同じで文だけ変わる（秒読み）は、開き直さずに書き換える。
+// 時間で閉じた・× で消したものも、同じ中身の間は出し直さない（内容が変われば出す・v0.15.15 の配信の案内と同じ）。
+// 空文字は「もう当てはまらない」
+const noticeSig = new Map()   // key → いま出している中身
+const notifyState = (key, text, { sig = text, ...opt } = {}) => {
+  if (!text) { noticeSig.delete(key); unnotify(key); return }
+  if (noticeSig.get(key) === sig) {
+    const t = toasts.get(key)
+    if (t && t.text !== text) { t.text = text; if (t.card) t.card.querySelector('.toast-text').textContent = text }
+    return
+  }
+  noticeSig.set(key, sig)
+  notify(text, { key, ...opt })
+}
+const clearToasts = () => { noticeSig.clear(); [...toasts.keys()].forEach(unnotify) }
 // iPhone でキーボードが出ると見えている範囲が下へずれる＝上から出すカードを見えている上端に合わせる
 if (window.visualViewport) {
   const vvTop = () => { document.documentElement.style.setProperty('--vv-top', Math.max(0, visualViewport.offsetTop) + 'px'); placeHist() }
@@ -7115,6 +7110,7 @@ if (location.hostname !== 'potalk.app' && /[?&]noticedemo=1(&|$)/.test(location.
   document.body.append(b)
 }
 window.__potNotify = notify   // テスト用（smoke T96）
+window.__potNotifyState = notifyState   // テスト用（smoke T97）
 window.__potToasts = () => [...toasts].map(([k, t]) => ({ key: k, text: t.text, open: !!t.card }))
 
 // ───────── 配信部屋（誰の音を鳴らすかを、署名で決める） ─────────
@@ -7357,9 +7353,9 @@ const bcEndTick = () => {
 }
 const startBcEndWatch = () => { clearInterval(call.bcEndTimer); call.bcEnd = null; call.bcEndTimer = setInterval(bcEndTick, 1000) }
 const renderBcNote = () => {
-  const el = $('bcNote')
-  if (!call.joinedId || !call.bcast) { el.hidden = true; return }
-  let txt
+  if (!call.joinedId) return
+  if (!call.bcast) { notifyState('bc', ''); return }
+  let txt, sig, opt = {}
   const e = call.bcEnd
   if (e && !call.ownerKey) {
     const left = Math.max(0, Math.ceil((e.phase === 'grace' ? e.since + BC_GRACE_MS - Date.now() : e.endAt - Date.now()) / 1000))
@@ -7370,6 +7366,9 @@ const renderBcNote = () => {
         ? '📣 配信者の本人確認ができません。配信者のページが古いか、配信者を名乗る別の人かもしれません（あと ' + left + ' 秒で終了）'
         : '📣 配信者の接続が切れました。戻るのを待っています（あと ' + left + ' 秒）')
       : '📣 配信が終了しました。' + left + ' 秒後に「通話中の部屋」へ戻ります'
+    // 秒読みは 1 秒ごとに文が変わる。中身は段階で見る＝カードは開き直さず数字だけ書き換わる
+    sig = e.phase + (unverified ? ':unverified' : '')
+    opt = { keep: true, warn: true }
   } else {
     txt = call.ownerKey
       ? '📣 あなたの配信です。ほかの人の声は流れません（🎙 を押すとその人も話せます）'
@@ -7379,17 +7378,7 @@ const renderBcNote = () => {
           ? '📣 配信者の声だけが流れます（あなたのマイクは使いません）'
           : '📣 配信部屋です。まだ配信者が来ていません'
   }
-  // × で閉じた案内は、**同じ内容の間だけ**閉じたまま（登壇許可・配信終了など内容が変われば出し直す・v0.15.15）。
-  if (call.bcNoteDismissed === txt) { el.hidden = true; return }
-  el.classList.remove('closing')
-  $('bcNoteText').textContent = txt
-  el.hidden = false
-}
-$('bcNoteClose').onclick = () => {
-  const el = $('bcNote')
-  call.bcNoteDismissed = $('bcNoteText').textContent   // この内容は閉じたまま
-  el.classList.add('closing')                          // ふわっと縮む
-  setTimeout(() => { el.hidden = true; el.classList.remove('closing') }, 260)
+  notifyState('bc', txt, { sig, ...opt })
 }
 
 // 登壇を許された人がマイクを取る。**押されるまで getUserMedia を呼ばない**のが要点で、
