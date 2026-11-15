@@ -3135,6 +3135,32 @@ def T98(r, room):
             '既定で隠れる=%s / 長押しで出る=%s / もう一度で消える=%s / ?noticedemo=1 で最初から=%s' % (hidden0, on, off, opt))
 
 
+def T99(r, room):
+    """β：裏にいた間の記録（利用者 11-15・Android のロックで何が止まるかを切り分ける）。
+    ①読み込みと状態の見本が残る ②凍結（freeze）／再開が残る ③再読み込みをまたいで残り、読み込みの行が増える
+    ④裏のまま終わったページの次の読み込みは「★裏にいる間に終わっていた」とカードで知らせる ⑤記録の窓に出る
+    """
+    a = r.open_tab(); r.join(a, room + 'BGL')
+    assert a.wait_for("document.body.classList.contains('in-call')", timeout=DISCOVER), '参加できない'
+    TXT = "window.__potBglog.text()"
+    sampled = bool(a.wait_for("%s.includes('参加 あり')" % TXT, timeout=8))
+    a.call('Page.setWebLifecycleState', state='frozen'); time.sleep(1); a.call('Page.setWebLifecycleState', state='active'); time.sleep(0.5)
+    froze = a.eval("%s.includes('凍結（freeze）') && %s.includes('凍結から再開')" % (TXT, TXT))
+    # 裏のまま終わった印を立てて再読み込み（ヘッドレスでは本当に裏へ回せないので印を直接置く）
+    a.eval("(() => { const o = JSON.parse(localStorage.getItem('pot-call-bglog')); o.hidden = Date.now() - 5000; localStorage.setItem('pot-call-bglog', JSON.stringify(o)) })()")
+    a.eval("location.reload()"); time.sleep(1)
+    a.wait_for(BOOTED, timeout=SHORT)
+    kept = a.eval("%s.includes('凍結（freeze）') && %s.split('── 読み込み').length - 1 >= 2 && %s.includes('読み込み（reload）')" % (TXT, TXT, TXT))
+    marked = a.eval("%s.includes('★裏にいる間に終わっていた')" % TXT)
+    card = bool(a.wait_for("window.__potToasts().some(t => t.key === 'bglog' && t.open)", timeout=5))
+    a.eval("window.__potBglog.open()"); time.sleep(0.3)
+    shown = a.eval("document.getElementById('bglogDlg').open && document.getElementById('bglogText').textContent.includes('読み込み')")
+    a.eval("document.getElementById('bglogClear').click(); document.getElementById('bglogClose').click()")
+    ok = sampled and froze and kept and marked and card and shown
+    r.check('T99', 'β の裏にいた間の記録（見本・凍結・再読み込みをまたぐ・裏で終わった印とカード・記録の窓）', ok, 'pass',
+            '見本=%s / 凍結と再開=%s / 再読み込みをまたぐ=%s / 裏で終わった印=%s / カード=%s / 窓=%s' % (sampled, froze, kept, marked, card, shown))
+
+
 def T88(r, room):
     """主タブで「ひとこと」を開くと、最新の行が見える位置へ送る（2026-11-07 β 実機）。
     ひとことの欄は下詰めでスクロールしないので、最新の行は欄の下端にある。スマホで縦が狭いと
@@ -4426,6 +4452,8 @@ def main():
             T97(r, room)
         if run('T98'):
             T98(r, room)
+        if run('T99'):
+            T99(r, room)
         if run('T89'):
             T89(r, room)
         if run('T90'):
