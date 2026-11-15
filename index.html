@@ -4212,6 +4212,7 @@ const openBglog = () => { $('bglogText').textContent = bgText(); try { $('bglogD
 // 読み込み直後はカードの仕組み（notify）がまだ評価されていないので、少し待ってから出す
 const bgCard = text => setTimeout(() => { try { notify(text, { key: 'bglog', ms: 20000, action: { label: '見る', fn: openBglog } }) } catch {} }, 1500)
 let bgSig = ''
+let bgZeroSince = 0   // マイクの中身が全部 0 になり始めた時刻（下の見本）
 const bgSample = () => {
   try {
     const tr = call.stream ? call.stream.getAudioTracks()[0] : null
@@ -4219,18 +4220,21 @@ const bgSample = () => {
     const r = window.__potRelays()
     const out = $('appAudio')
     // マイクの音が**実際に 0** か。Android は裏でトラックを生のまま中身だけ無音（全サンプル 0）にすることがある＝
-    // 「マイク 生」だけでは見抜けない（11-15 の記録）。本物のマイクは静かな部屋でも完全な 0 にはならない
+    // 「マイク 生」だけでは見抜けない（11-15 の記録）。ただし Android は表でも、黙っている間は雑音抑制が
+    // 完全な 0 を出す（11-15 の 2 回目の記録で 2〜4 秒ごとに入れ替わった）ので、**10 秒以上続いたときだけ**「音ゼロ」
     const an = analysers.get('self')
     let lvl = ''
     if (an && tr && tr.enabled) {
       const f = new Float32Array(an.analyser.fftSize); an.analyser.getFloatTimeDomainData(f)
-      lvl = f.some(v => v !== 0) ? '・音あり' : '・音ゼロ'
-    }
+      if (f.some(v => v !== 0)) bgZeroSince = 0
+      else if (!bgZeroSince) bgZeroSince = Date.now()
+      lvl = bgZeroSince && Date.now() - bgZeroSince >= 10000 ? '・音ゼロが続く' : '・音あり'
+    } else bgZeroSince = 0
     return '参加 ' + (call.joinedId ? 'あり' : 'なし') + ' / 人 ' + call.peers.size + ' / 届く声 ' + [...call.peers].filter(audioFlowing).length + '/' + [...call.peers].filter(canHear).length
       + ' / マイク ' + mic + lvl + ' / リレー ' + (r ? r.open + '/' + r.total : '-') + ' / 音の出口 ' + (audioCtx ? audioCtx.state : 'なし') + (out.srcObject ? (out.paused ? '・停止' : '・再生') : '')
   } catch (e) { return '見本でエラー ' + e.message }
 }
-let bgTrack = null, bgTick = Date.now()
+let bgTrack = null, bgTick = Date.now(), bgLeaving = false
 // 部屋の相手との接続（ICE）の変わり目。どちらの側で途切れたか・裏の何秒目かを見るため（ロビーの接続は出さない）
 if (BGLOG) window.__potIce = pc => {
   if (!call.room) return
@@ -4250,7 +4254,8 @@ if (BGLOG) {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       bglog('画面が裏へ' + (call.joinedId ? '（通話中）' : ''))
-      if (call.joinedId) { bgState.hidden = Date.now(); bgSave() }
+      // 再読み込み・タブを閉じるときも pagehide のあとで裏になる＝その裏は印にしない（11-15：普通の再読み込みで「★裏にいる間に終わっていた」が出た）
+      if (call.joinedId && !bgLeaving) { bgState.hidden = Date.now(); bgSave() }
     } else {
       const was = bgState.hidden
       bglog('画面に戻った' + (was ? '（裏に ' + Math.round((Date.now() - was) / 1000) + ' 秒）' : ''))
@@ -4260,7 +4265,7 @@ if (BGLOG) {
   })
   document.addEventListener('freeze', () => bglog('凍結（freeze）'))
   document.addEventListener('resume', () => bglog('凍結から再開（resume）'))
-  addEventListener('pagehide', e => bglog('ページを離れる（pagehide' + (e.persisted ? '・保存' : '') + '）'))
+  addEventListener('pagehide', e => { bgLeaving = !e.persisted; bglog('ページを離れる（pagehide' + (e.persisted ? '・保存' : '') + '）') })
   addEventListener('pageshow', e => { if (e.persisted) bglog('保存から戻った（pageshow）') })
   addEventListener('online', () => bglog('ネット：つながった（online）'))
   addEventListener('offline', () => bglog('ネット：切れた（offline）'))
