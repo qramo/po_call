@@ -2180,6 +2180,7 @@ $('chatText').addEventListener('blur', () => setTimeout(() => { if (document.act
 // getItem/setItem が例外を投げ、握らないとハンドラごと止まる（2026-09-20 のレビューで 11 か所が無防備だった）
 const lsGet = (k, d = null) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
 const lsSet = (k, v) => { try { localStorage.setItem(k, v) } catch {} }
+const lsDel = k => { try { localStorage.removeItem(k) } catch {} }
 dockOpen(lsGet(DOCK_OPEN_KEY) === '1', false)   // 盤の開け閉めの記憶（既定はしまう）
 // sessionStorage（登壇引き継ぎトークン等）も同様に例外を握る
 const ssGet = (k, d = null) => { try { return sessionStorage.getItem(k) ?? d } catch { return d } }
@@ -2254,6 +2255,7 @@ const CALL_INIT = () => ({
   profileFlush: { t: null }, // 間引いた描き直しをまとめて走らせるタイマー（throttleBy の holder）
   metaSeen: new Map(),  // peerId → 最後に後処理（描画・hash・heartbeat）を走らせた時刻（同上）
   metaFlush: { t: null },
+  hiddenLost: false,    // 裏にいる間に相手が bye なしで切れたか（戻ったときの小窓の案内）
   recoverHeld: false,   // 自動復帰を裏なので待っているか（記録を一度だけ出すため）
   lostPeer: false,      // 予告なく（'bye' 無しで）相手を失ったか。自動復帰の判定に使う
   lostAt: 0,            // 壊れた状態が続き始めた時刻（0＝壊れていない）
@@ -2420,13 +2422,32 @@ const rejoin = (() => {
   } catch { return null }
 })()
 
+// 裏で閉じられた通話の控え（v0.16.30）。Android は裏に置いたタブを 10 分ほどで閉じる（11-15 の記録：
+// pagehide も出ずに消え、戻ると読み込み直し＝部屋の外）。通話中に裏へ回るときに控えを置き、表に戻る・退出・
+// 普通に離れる（pagehide）で消す＝**読み込んだときに残っていれば、裏にいる間に閉じられた**ということ。
+// 戻ったら黙ってマイクが入ると驚くので、自動では入らない（カードの「部屋に戻る」で入る・下の rejoin の隣）。
+// localStorage なのはタブの復元で sessionStorage が残るか当てにならないため。古すぎる控え（30 分）は捨てる。
+const LIVE_KEY = 'pot-call-live'
+const liveSaved = (() => {
+  try {
+    // 閉じられたタブは「戻る」と同じ扱い（back_forward）で、同じ URL のまま読み込み直される（11-15 の記録）。
+    // それ以外の読み込み（普通に開く・再読み込み・別のタブ）と、別の部屋の控えには触らない
+    const nav = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]) || {}
+    if (!document.wasDiscarded && nav.type !== 'back_forward') return null
+    const r = JSON.parse(lsGet(LIVE_KEY) || 'null')
+    if (!r || !r.room || !location.hash.includes(String(r.room).split('~')[0])) return null
+    lsDel(LIVE_KEY)
+    return !rejoin && Date.now() - (r.at || 0) < 30 * 60 * 1000 ? r : null
+  } catch { return null }
+})()
+
 // 助言は**初回だけ**自動で開く（v0.16.17・PLAN-ui-text 原則 2）。一度閉じたら記録し、2 回目からは「これはなに？」で開く。
 // 鍵の名前は「今後表示しない」チェック（〜v0.16.16）のものをそのまま使う＝すでに外していた人はそのまま出ない。
 // ただし**つなぎ直しの最中は出さない**：通話を復旧している最中に説明を被せても邪魔なだけで、
 // しかも本人はページが再読込されたことを知らないので「なぜ今？」になる。
 const HELP_HIDE_KEY = 'pot-call-hide-help'
 helpDialog.addEventListener('close', () => lsSet(HELP_HIDE_KEY, '1'))
-if (!rejoin && lsGet(HELP_HIDE_KEY) !== '1') openHelp()
+if (!rejoin && !liveSaved && lsGet(HELP_HIDE_KEY) !== '1') openHelp()
 
 // 招待リンクの QR コード（カードの裏・drawBack）。ライブラリは必要時だけ vendor/ から
 // 読み込み、生成はクライアント側＝リンクを外部に送らない。
@@ -7729,6 +7750,27 @@ const wake = async () => { try { call.wakeLock = await navigator.wakeLock.reques
 document.addEventListener('visibilitychange', () => {
   if (call.wantWake && document.visibilityState === 'visible') wake()
 })
+// 裏で閉じられたときの控え（上の LIVE_KEY）と、裏で相手が切れたときの小窓の案内（v0.16.30）。
+// 小窓なら別アプリ中も「見えている」扱いで切れない（11-15 の記録：小窓なしだと別アプリ 2〜5 分で切れる・
+// BGM が鳴っていても切れる）。案内は**実際に裏で切れたときだけ**、タブにつき一度（何度も言われると邪魔）。
+// 消すのは**このタブが置いた控えだけ**（同じブラウザの別のタブが開く・閉じるたびに消えると、閉じられた方の控えが残らない）
+let liveLeaving = false, liveMine = false
+const liveClear = () => { if (liveMine) { liveMine = false; lsDel(LIVE_KEY) } }
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (call.joinedId && !liveLeaving) { liveMine = true; lsSet(LIVE_KEY, JSON.stringify({ room: call.joinedId, name: call.meta.name || '', at: Date.now() })) }
+    return
+  }
+  liveClear()
+  if (call.hiddenLost && call.joinedId && pipCan() && !pipOn() && !ssGet('pot-call-pip-tip')) {
+    ssSet('pot-call-pip-tip', '1')
+    notify('📌 裏に置いている間に接続が切れました。別のアプリを使うときは「小窓」にしておくと切れにくくなります', { key: 'piptip', keep: true, action: { label: '小窓にする', fn: () => $('pip').onclick() } })
+  }
+  call.hiddenLost = false
+})
+// 再読み込み・タブを閉じるときも pagehide のあとで裏になる＝その裏は控えにしない
+addEventListener('pagehide', e => { if (!e.persisted) { liveLeaving = true; liveClear() } })
+addEventListener('pageshow', e => { if (e.persisted) liveLeaving = false })
 
 // 参加・退出・ミュートは、ボタン以外に「つなぎ直す」とロビーからの入室からも呼ばれる。
 // ハンドラ同士が `$('leave').onclick()` のように呼び合うと、UIイベントと処理が癒着して
@@ -8195,6 +8237,7 @@ const wireRoom = () => {
       showPeerNotice('🔌 ' + who + ' との接続が切れました（退出ではありません）')
       bglog('🔌 ' + who + ' との接続が切れた（bye なし）' + (document.hidden ? '・裏' : ''))
       call.lostPeer = true        // 自動復帰の判定材料（普通の退出と区別する）
+      if (document.hidden) call.hiddenLost = true   // 戻ったら小窓を案内する（v0.16.30）
     }
     call.peers.delete(id); call.profiles.delete(id); call.peerSince.delete(id); sendPeers()
     call.nudges.delete(id); call.nudgeSeen.delete(id); call.byeSeen.delete(id); call.requests.delete(id)
@@ -8688,6 +8731,7 @@ const leaveCall = () => {
   // つなぎ直しの失敗で一度手動で入り直した場合や、枠主が一時退出から戻った場合でも復元できるようにするため。
   // （明示的な登壇解除時は toggleGrant が双方で即時破棄する）
   clearToasts()                                                 // 前の知らせを残さない
+  liveClear()                                                   // 自分で出た＝閉じられたのではない
   try { $('cardDlg').close(); $('cardEditDlg').close(); $('cardWarnDlg').close(); $('cardAuthDlg').close(); $('cropDlg').close() } catch {}
   if (call.stream) call.stream.getTracks().forEach(t => t.stop())
   ;[...call.audios.keys()].forEach(dropAudios)                 // **reset で Map ごと捨てる前に** DOM を消す
@@ -8752,15 +8796,24 @@ $('leaveNo').onclick = hideLeaveConfirm
 
 // つなぎ直しの後半：リロード後に自分で入り直す（予約は上の rejoin で読み取り済み）。
 // マイク許可が要求される場面なので、失敗しても普通の参加エラーとして見えればよい（部屋名は残る）。
-if (rejoin) {
-  // **指紋ごと戻す**。名前だけ戻すと、つなぎ直した瞬間に配信部屋から普通の部屋へ移ってしまう
-  // （＝オーナーは自分だけの部屋に取り残され、リスナーには誰も来なくなる）。
-  roomInput.value = capRoom(rejoin.name || roomBase(rejoin.room)); pendingHash = roomBase(rejoin.room); pendingPk = roomPk(rejoin.room)
+// **指紋ごと戻す**。名前だけ戻すと、つなぎ直した瞬間に配信部屋から普通の部屋へ移ってしまう
+// （＝オーナーは自分だけの部屋に取り残され、リスナーには誰も来なくなる）。
+const enterSaved = r => {
+  roomInput.value = capRoom(r.name || roomBase(r.room)); pendingHash = roomBase(r.room); pendingPk = roomPk(r.room)
   boundRoomName = roomInput.value.trim()
   if (pendingPk && ownerKeyByFp(pendingPk)) kindBc.checked = true
   syncRoomCount(); syncShare(); syncKindRow()
-  joinCall().then(() => { if (rejoin.muted && !call.muted && call.joinedId) toggleMute() })
+  return joinCall()
 }
+if (rejoin) enterSaved(rejoin).then(() => { if (rejoin.muted && !call.muted && call.joinedId) toggleMute() })
+// 裏にいる間に閉じられた通話（上の LIVE_KEY）：1 タップで同じ部屋へ戻れるカード。入口の確認は畳む（自分がいた部屋）
+if (liveSaved) setTimeout(() => {
+  if (call.joinedId || joining) return
+  notify('📵 裏に置いている間に、通話が閉じられました（スマホが裏のページを閉じることがあります）', {
+    key: 'restore', keep: true, warn: true,
+    action: { label: '「' + capRoom(liveSaved.name || '前の部屋') + '」に戻る', fn: () => { entryCancel(); enterSaved(liveSaved) } }
+  })
+}, 800)
 
 // ───────── ロビー（通話中の部屋の死活監視・一覧） ─────────
 // 仕組み：Nostr には部屋一覧APIが無いので、固定の隠し部屋 __lobby__ に全員が入り、
