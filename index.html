@@ -4216,8 +4216,16 @@ const bgSample = () => {
     const mic = !tr ? 'なし' : tr.readyState === 'ended' ? '終了' : (tr.muted ? '無音' : '生') + (tr.enabled ? '' : '・ミュート')
     const r = window.__potRelays()
     const out = $('appAudio')
+    // マイクの音が**実際に 0** か。Android は裏でトラックを生のまま中身だけ無音（全サンプル 0）にすることがある＝
+    // 「マイク 生」だけでは見抜けない（11-15 の記録）。本物のマイクは静かな部屋でも完全な 0 にはならない
+    const an = analysers.get('self')
+    let lvl = ''
+    if (an && tr && tr.enabled) {
+      const f = new Float32Array(an.analyser.fftSize); an.analyser.getFloatTimeDomainData(f)
+      lvl = f.some(v => v !== 0) ? '・音あり' : '・音ゼロ'
+    }
     return '参加 ' + (call.joinedId ? 'あり' : 'なし') + ' / 人 ' + call.peers.size + ' / 届く声 ' + [...call.peers].filter(audioFlowing).length + '/' + [...call.peers].filter(canHear).length
-      + ' / マイク ' + mic + ' / リレー ' + (r ? r.open + '/' + r.total : '-') + ' / 音の出口 ' + (audioCtx ? audioCtx.state : 'なし') + (out.srcObject ? (out.paused ? '・停止' : '・再生') : '')
+      + ' / マイク ' + mic + lvl + ' / リレー ' + (r ? r.open + '/' + r.total : '-') + ' / 音の出口 ' + (audioCtx ? audioCtx.state : 'なし') + (out.srcObject ? (out.paused ? '・停止' : '・再生') : '')
   } catch (e) { return '見本でエラー ' + e.message }
 }
 let bgTrack = null, bgTick = Date.now()

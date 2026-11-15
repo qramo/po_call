@@ -3148,7 +3148,7 @@ def T99(r, room):
     a = r.open_tab(); r.join(a, room + 'BGL')
     assert a.wait_for("document.body.classList.contains('in-call')", timeout=DISCOVER), '参加できない'
     TXT = "window.__potBglog.text()"
-    sampled = bool(a.wait_for("%s.includes('参加 あり')" % TXT, timeout=8))
+    sampled = bool(a.wait_for("%s.includes('参加 あり') && %s.includes('音あり')" % (TXT, TXT), timeout=8))
     a.call('Page.setWebLifecycleState', state='frozen'); time.sleep(1); a.call('Page.setWebLifecycleState', state='active'); time.sleep(0.5)
     froze = a.eval("%s.includes('凍結（freeze）') && %s.includes('凍結から再開')" % (TXT, TXT))
     # 裏のまま終わった印を立てて再読み込み（ヘッドレスでは本当に裏へ回せないので印を直接置く）
