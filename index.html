@@ -223,6 +223,12 @@
   .ignore-dialog h2{ font-size:16px }
   .ignore-actions{ display:flex; gap:10px; margin-top:6px }
   .ignore-actions button{ flex:1; width:auto; margin:0; padding:11px; font-size:14px; border-radius:10px }
+  /* β：裏にいた間の記録（#bglogDlg） */
+  .bglog-pre{ max-height:55vh; overflow:auto; margin:8px 0 12px; padding:10px; border-radius:10px; background:var(--panel);
+    font-size:11.5px; line-height:1.55; white-space:pre-wrap; word-break:break-all; user-select:text; -webkit-user-select:text }
+  .bglog-btn{ position:fixed; left:12px; bottom:calc(var(--dock-h, 0px) + 56px); z-index:60; width:auto; margin:0;
+    padding:8px 12px; font-size:13px; border-radius:20px; background:var(--chip); color:var(--text); opacity:.85 }
+  body:not(.in-call) .bglog-btn{ bottom:56px }
   #ignoreYes{ background:var(--red); color:#fff }
   #ignoreNo{ background:var(--mute); color:var(--text) }
   /* 名刺（プロフィールカード・v0.16.0） */
@@ -1743,6 +1749,16 @@
 
   <button id="helpClose" class="help-close" type="button">閉じる</button>
 </dialog>
+<!-- β：裏にいた間の記録（診断窓の「📜 記録」・画面に戻ったときのカードから開く） -->
+<dialog id="bglogDlg" class="help-dialog" aria-labelledby="bglogTitle">
+  <h2 id="bglogTitle">📜 裏にいた間の記録</h2>
+  <pre id="bglogText" class="bglog-pre"></pre>
+  <div class="ignore-actions">
+    <button id="bglogCopy" type="button">コピー</button>
+    <button id="bglogClear" type="button">消す</button>
+    <button id="bglogClose" type="button">閉じる</button>
+  </div>
+</dialog>
 <!-- 無視の初回説明（v0.14.6）。★confirm() 不可の理由は #leaveConfirm のコメント。<dialog>.showModal() は
      操作を止めても JS は止めない。初回だけ出す（ignoreSeen） -->
 <dialog id="ignoreDlg" class="help-dialog ignore-dialog" aria-labelledby="ignoreTitle">
@@ -2390,11 +2406,13 @@ helpDialog.addEventListener('click', e => { if (e.target === helpDialog) helpDia
 // リロード後の自分がそれを引き取る。**ここで読んで消す**＝一度きり。以後この値を見る側は
 // 「つなぎ直しの最中か」を判断できる。sessionStorage なのでタブごとに独立している。
 const REJOIN_KEY = 'pot-call-rejoin'
+let rejoinStaleS = 0   // 予約はあったが時間切れだった＝何秒前の予約か（β の記録用）
 const rejoin = (() => {
   try {
     const raw = sessionStorage.getItem(REJOIN_KEY)
     sessionStorage.removeItem(REJOIN_KEY)
     const r = raw ? JSON.parse(raw) : null
+    if (r && r.room && Date.now() - (r.at || 0) >= 60000) rejoinStaleS = Math.round((Date.now() - (r.at || 0)) / 1000)
     // 時間切れは、タブ復元などで大昔の予約が生き返るのを防ぐため
     return r && r.room && Date.now() - (r.at || 0) < 60000 ? r : null
   } catch { return null }
@@ -4168,12 +4186,98 @@ window.__potRelays = () => {
   return { open: list.filter(v => v === 'open').length, total: list.length, relays }
 }
 
+// ───────── β：裏にいた間の記録 ─────────
+// Android でロックすると声が届かなくなる・戻ると退室していることがある（利用者 11-15）。何が・何秒後に止まったか、
+// 退室したなら誰が退出させたのか（自動のつなぎ直し・配信終了・タブの破棄）を、**再読み込みや破棄をまたいで**残す。
+// localStorage に最大 BGLOG_MAX 行。出来事（画面の出入り・凍結・読み込み・状態の文・退出のきっかけ）と、
+// 2 秒ごとの見本（参加・人数・届いている声・マイク・リレー・音の出口）の**変わった時だけ**を書く。
+// 画面に戻ったとき（通話中に 15 秒以上裏にいた）と、裏のまま再読み込み・破棄されたあとの読み込みでカードを出す。
+// 本番（potalk.app）では何もしない
+const BGLOG = location.hostname !== 'potalk.app'
+const BGLOG_KEY = 'pot-call-bglog', BGLOG_MAX = 400
+const bgRead = () => { try { const o = JSON.parse(localStorage.getItem(BGLOG_KEY) || '{}'); return { list: o.list || [], hidden: o.hidden || 0 } } catch { return { list: [], hidden: 0 } } }
+let bgState = BGLOG ? bgRead() : { list: [], hidden: 0 }   // hidden＝通話中に裏へ回った時刻（戻ったら 0）
+const bgSave = () => { try { localStorage.setItem(BGLOG_KEY, JSON.stringify(bgState)) } catch {} }
+const bglog = text => {
+  if (!BGLOG) return
+  bgState.list.push([Date.now(), String(text)])
+  if (bgState.list.length > BGLOG_MAX) bgState.list.splice(0, bgState.list.length - BGLOG_MAX)
+  bgSave()
+}
+const bgClock = t => { const d = new Date(t); return [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':') }
+const bgText = () => bgState.list.map(([t, x]) => bgClock(t) + '  ' + x).join('\n') || '（まだ記録はありません）'
+const openBglog = () => { $('bglogText').textContent = bgText(); try { $('bglogDlg').showModal() } catch {} ; const pre = $('bglogText'); pre.scrollTop = pre.scrollHeight }
+// 読み込み直後はカードの仕組み（notify）がまだ評価されていないので、少し待ってから出す
+const bgCard = text => setTimeout(() => { try { notify(text, { key: 'bglog', ms: 20000, action: { label: '見る', fn: openBglog } }) } catch {} }, 1500)
+let bgSig = ''
+const bgSample = () => {
+  try {
+    const tr = call.stream ? call.stream.getAudioTracks()[0] : null
+    const mic = !tr ? 'なし' : tr.readyState === 'ended' ? '終了' : (tr.muted ? '無音' : '生') + (tr.enabled ? '' : '・ミュート')
+    const r = window.__potRelays()
+    const out = $('appAudio')
+    return '参加 ' + (call.joinedId ? 'あり' : 'なし') + ' / 人 ' + call.peers.size + ' / 届く声 ' + [...call.peers].filter(audioFlowing).length + '/' + [...call.peers].filter(canHear).length
+      + ' / マイク ' + mic + ' / リレー ' + (r ? r.open + '/' + r.total : '-') + ' / 音の出口 ' + (audioCtx ? audioCtx.state : 'なし') + (out.srcObject ? (out.paused ? '・停止' : '・再生') : '')
+  } catch (e) { return '見本でエラー ' + e.message }
+}
+let bgTrack = null, bgTick = Date.now()
+if (BGLOG) {
+  const nav = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]) || {}
+  const prevHidden = bgState.hidden
+  bglog('── 読み込み（' + (nav.type || '?') + '）' + (document.wasDiscarded ? ' ★タブが破棄されていた' : '')
+    + (prevHidden ? ' ★裏にいる間に終わっていた（' + bgClock(prevHidden) + ' から裏）' : '')
+    + (rejoin ? ' つなぎ直しの予約で入り直す' : rejoinStaleS ? ' ★つなぎ直しの予約が時間切れ（' + rejoinStaleS + ' 秒前）' : ''))
+  if (document.wasDiscarded || prevHidden || rejoinStaleS) bgCard('🔬 前のページは裏にいる間に終わっていました。記録を見られます')
+  bgState.hidden = 0; bgSave()
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      bglog('画面が裏へ' + (call.joinedId ? '（通話中）' : ''))
+      if (call.joinedId) { bgState.hidden = Date.now(); bgSave() }
+    } else {
+      const was = bgState.hidden
+      bglog('画面に戻った' + (was ? '（裏に ' + Math.round((Date.now() - was) / 1000) + ' 秒）' : ''))
+      bgState.hidden = 0; bgSave()
+      if (was && Date.now() - was >= 15000) bgCard('🔬 裏にいた ' + Math.round((Date.now() - was) / 1000) + ' 秒の記録があります')
+    }
+  })
+  document.addEventListener('freeze', () => bglog('凍結（freeze）'))
+  document.addEventListener('resume', () => bglog('凍結から再開（resume）'))
+  addEventListener('pagehide', e => bglog('ページを離れる（pagehide' + (e.persisted ? '・保存' : '') + '）'))
+  addEventListener('pageshow', e => { if (e.persisted) bglog('保存から戻った（pageshow）') })
+  addEventListener('online', () => bglog('ネット：つながった（online）'))
+  addEventListener('offline', () => bglog('ネット：切れた（offline）'))
+  setInterval(() => {
+    const now = Date.now()
+    if (now - bgTick > 10000) bglog('⏸ 止まっていた ' + Math.round((now - bgTick) / 1000) + ' 秒（タイマーが動かなかった）')
+    bgTick = now
+    // マイクのトラックは出来事でも拾う（見本は裏では間引かれるので、止まった瞬間はこちらで分かる）
+    const tr = call.stream ? call.stream.getAudioTracks()[0] : null
+    if (tr && tr !== bgTrack) {
+      bgTrack = tr
+      tr.addEventListener('mute', () => bglog('🎙 マイクが無音に（mute）' + (document.hidden ? '・裏' : '')))
+      tr.addEventListener('unmute', () => bglog('🎙 マイクが戻った（unmute）'))
+      tr.addEventListener('ended', () => bglog('🎙 マイクが終了（ended）'))
+    }
+    const sig = bgSample()
+    if (sig !== bgSig) { bgSig = sig; bglog(sig + (document.hidden ? '  ［裏］' : '')) }
+  }, 2000)
+  $('bglogClose').onclick = () => $('bglogDlg').close()
+  $('bglogClear').onclick = () => { bgState.list = []; bgSave(); $('bglogText').textContent = bgText() }
+  $('bglogCopy').onclick = () => {
+    const b = $('bglogCopy')
+    navigator.clipboard.writeText(bgText()).then(() => { b.textContent = 'コピーしました' }, () => { b.textContent = 'コピーできませんでした' })
+    setTimeout(() => { b.textContent = 'コピー' }, 2000)
+  }
+}
+window.__potBglog = { log: bglog, text: bgText, open: openBglog }   // テスト用（smoke T99）
+
 // 状態表示。kind は 'idle'|'busy'|'ok'|'warn'|'error' でドットの色に対応する（文字側に絵文字は置かない）
 // いまの状態の種類を覚えておく。**文言ではなく kind で見る**こと（文言は変わりうる）。
 // 'idle' ＝ 未参加／退出しました の2つだけ。それ以外（busy/warn/error/ok）は
 // 「いま何か起きている」なので、状態カードを必ず出す。
-let stateKind = 'idle'
+let stateKind = 'idle', bgLastState = ''
 const setState = (t, kind = 'idle') => {
+  if (t !== bgLastState) { bgLastState = t; bglog('状態：' + t + '（' + kind + '）') }
   $('state').textContent = t; $('dot').className = 'dot' + (kind === 'idle' ? '' : ' ' + kind)
   $('state').parentElement.classList.remove('heading')
   stateKind = kind
@@ -6205,6 +6309,7 @@ const checkCapacity = () => {
   if (call.peers.size + 1 <= cap) return
   if (performance.now() - call.joinedAt > CAP_PROBE_MS) return   // ② 長く居た人は抜けない
   if (olderThanMe() < cap) return                                // ① 定員の内側に入れている＝抜けない
+  bglog('🚪 満員なので自分から退出')
   leaveCall()
   setState('この部屋は満員です（最大 ' + cap + '人）。しばらくしてから入り直してください', 'warn')
 }
@@ -7349,6 +7454,7 @@ const bcEndTick = () => {
   const e = call.bcEnd
   if (e.phase === 'grace' && now - e.since >= BC_GRACE_MS) { e.phase = 'ending'; e.endAt = now + BC_BYE_MS }
   if (e.phase === 'ending' && now >= e.endAt) {
+    bglog('🚪 配信者が戻らないので配信終了として退出')
     leaveCall()
     setState('📣 配信は終了しました。下の「通話中の部屋」から次を選べます', 'idle')
     const l = document.querySelector('.lobby'); if (l) l.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -8064,6 +8170,7 @@ const wireRoom = () => {
     if (!call.byeSeen.has(id)) {
       const who = (call.profiles.get(id) || {}).name || '相手'
       showPeerNotice('🔌 ' + who + ' との接続が切れました（退出ではありません）')
+      bglog('🔌 ' + who + ' との接続が切れた（bye なし）' + (document.hidden ? '・裏' : ''))
       call.lostPeer = true        // 自動復帰の判定材料（普通の退出と区別する）
     }
     call.peers.delete(id); call.profiles.delete(id); call.peerSince.delete(id); sendPeers()
@@ -8097,6 +8204,12 @@ const wireRoom = () => {
 // 取れないことがある）か、版数「v0.xx.x」の 1.5 秒長押し（PC やタッチ 4 点が取れない端末の逃げ道）。もう一度で消える。
 // 出ている間は 2 秒おきに更新。本番（potalk.app）では操作しても何も起きない
 let diagTimer = null, diagSince = 0
+let bglogBtn = null
+if (BGLOG) {
+  bglogBtn = document.createElement('button'); bglogBtn.type = 'button'; bglogBtn.className = 'bglog-btn'; bglogBtn.textContent = '📜 記録'
+  bglogBtn.hidden = true; bglogBtn.onclick = openBglog
+  document.body.append(bglogBtn)
+}
 const diagAudio = () => {
   try {
     const els = [...document.querySelectorAll('audio:not(#appAudio)')]
@@ -8122,6 +8235,7 @@ const toggleDiag = () => {
   const on = $('diag').hidden
   $('diag').hidden = !on
   if (toastDemo) toastDemo.hidden = !on && !NOTICE_DEMO   // 🧪 知らせ も一緒に（?noticedemo=1 のときは出たまま）
+  if (bglogBtn) bglogBtn.hidden = !on                      // 📜 裏にいた間の記録
   clearInterval(diagTimer); diagTimer = null
   if (on) { diagAudio(); diagTimer = setInterval(diagAudio, 2000) }
 }
@@ -8449,6 +8563,7 @@ const doReconnect = async ({ auto = false } = {}) => {
   $('retry').disabled = true
   setState(auto ? 'つながりが切れたので、つなぎ直しています…' : 'つなぎ直しています…', 'busy')
   saveOwnerGrants()
+  bglog('🔄 つなぎ直す（' + (auto ? '自動' : '手動') + '）' + (document.hidden ? '・裏' : '') + '＝ページを再読み込み')
   try { sessionStorage.setItem(REJOIN_KEY, JSON.stringify({ room: call.joinedId, name: call.meta.name, nameAt: call.meta.nameAt, nameBy: call.meta.nameBy, muted: call.muted, tts: sndTts, at: Date.now() })) } catch {}   // tts＝読み上げのオンを引き継ぐ（v0.14.54）
   // 先に退出を伝えてからリロードする。相手がこちらの離脱を早く知るほど、戻ったときに
   // すんなり繋ぎ直してもらえる。ただし完了を待ち続けない（届かなくてもリロードは進める）。
@@ -8515,6 +8630,7 @@ const checkRecover = (now, stuck, expect) => {
     return
   }
   spendAuto()
+  bglog('自動復帰の判定：' + (call.lostPeer && call.peers.size === 0 ? '相手を失って 0 人' : '誰の声も届かない') + 'が 25 秒続いた')
   doReconnect({ auto: true })
 }
 window.__potBroken = () => lastBroken   // 診断・テスト用（自動復帰の判定結果。配信者は cut 枝で真にならない）
@@ -8594,7 +8710,7 @@ $('leave').onclick = () => {
   box.hidden = false
   clearTimeout(leaveConfirmTimer); leaveConfirmTimer = setTimeout(hideLeaveConfirm, 8000)
 }
-$('leaveYes').onclick = () => { hideLeaveConfirm(); leaveCall() }
+$('leaveYes').onclick = () => { hideLeaveConfirm(); bglog('🚪 退出ボタン'); leaveCall() }
 $('leaveNo').onclick = hideLeaveConfirm
 
 // つなぎ直しの後半：リロード後に自分で入り直す（予約は上の rejoin で読み取り済み）。
