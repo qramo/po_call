@@ -3120,6 +3120,21 @@ def T97(r, room):
             % (inplace, stays, back, gone, bool(made and bc)))
 
 
+def T98(r, room):
+    """β の「🧪 知らせ」ボタンは ?noticedemo=1 を付け忘れても、診断窓と同じ操作（版数の長押し／4本指タップ）で出し入れできる（利用者 11-15）"""
+    a = r.open_tab()
+    SHOWN = "(() => { const b = document.querySelector('.toast-demo'); return !!b && getComputedStyle(b).display !== 'none' })()"
+    hold = "document.getElementById('ver').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 1, clientY: 1 }))"
+    hidden0 = a.eval("!!document.querySelector('.toast-demo')") and not a.eval(SHOWN)
+    a.eval(hold); on = bool(a.wait_for(SHOWN, timeout=5))
+    a.eval(hold); off = bool(a.wait_for("!" + SHOWN, timeout=5))
+    a.eval("location.href = location.pathname + '?noticedemo=1'"); time.sleep(2)
+    opt = bool(a.wait_for(SHOWN, timeout=SHORT))
+    ok = hidden0 and on and off and opt
+    r.check('T98', '🧪 知らせ は診断窓の操作でも出し入れできる（オプションなしでは隠れている）', ok, 'pass',
+            '既定で隠れる=%s / 長押しで出る=%s / もう一度で消える=%s / ?noticedemo=1 で最初から=%s' % (hidden0, on, off, opt))
+
+
 def T88(r, room):
     """主タブで「ひとこと」を開くと、最新の行が見える位置へ送る（2026-11-07 β 実機）。
     ひとことの欄は下詰めでスクロールしないので、最新の行は欄の下端にある。スマホで縦が狭いと
@@ -4409,6 +4424,8 @@ def main():
             T96(r, room)
         if run('T97'):
             T97(r, room)
+        if run('T98'):
+            T98(r, room)
         if run('T89'):
             T89(r, room)
         if run('T90'):
