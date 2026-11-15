@@ -3143,7 +3143,7 @@ def T98(r, room):
 def T99(r, room):
     """β：裏にいた間の記録（利用者 11-15・Android のロックで何が止まるかを切り分ける）。
     ①読み込みと状態の見本が残る ②凍結（freeze）／再開が残る ③再読み込みをまたいで残り、読み込みの行が増える
-    ④裏のまま終わったページの次の読み込みは「★裏にいる間に終わっていた」とカードで知らせる ⑤記録の窓に出る
+    ④裏のまま終わったページの次の読み込みは「★裏にいる間に終わっていた」と残す（カードは診断窓を開いているときだけ＝ここでは出ない） ⑤記録の窓に出る
     """
     a = r.open_tab(); r.join(a, room + 'BGL')
     assert a.wait_for("document.body.classList.contains('in-call')", timeout=DISCOVER), '参加できない'
@@ -3157,13 +3157,15 @@ def T99(r, room):
     a.wait_for(BOOTED, timeout=SHORT)
     kept = a.eval("%s.includes('凍結（freeze）') && %s.split('── 読み込み').length - 1 >= 2 && %s.includes('読み込み（reload）')" % (TXT, TXT, TXT))
     marked = a.eval("%s.includes('★裏にいる間に終わっていた')" % TXT)
-    card = bool(a.wait_for("window.__potToasts().some(t => t.key === 'bglog' && t.open)", timeout=5))
+    # カードは診断窓を開いているときだけ（利用者 11-15）。読み込み直した直後は閉じている＝出ない
+    time.sleep(2.5)
+    card = not a.eval("window.__potToasts().some(t => t.key === 'bglog')")
     a.eval("window.__potBglog.open()"); time.sleep(0.3)
     shown = a.eval("document.getElementById('bglogDlg').open && document.getElementById('bglogText').textContent.includes('読み込み')")
     a.eval("document.getElementById('bglogClear').click(); document.getElementById('bglogClose').click()")
     ok = sampled and froze and kept and marked and card and shown
-    r.check('T99', 'β の裏にいた間の記録（見本・凍結・再読み込みをまたぐ・裏で終わった印とカード・記録の窓）', ok, 'pass',
-            '見本=%s / 凍結と再開=%s / 再読み込みをまたぐ=%s / 裏で終わった印=%s / カード=%s / 窓=%s' % (sampled, froze, kept, marked, card, shown))
+    r.check('T99', 'β の裏にいた間の記録（見本・凍結・再読み込みをまたぐ・裏で終わった印・診断窓なしではカードを出さない・記録の窓）', ok, 'pass',
+            '見本=%s / 凍結と再開=%s / 再読み込みをまたぐ=%s / 裏で終わった印=%s / 診断窓なしでカードなし=%s / 窓=%s' % (sampled, froze, kept, marked, card, shown))
 
 
 def T100(r, room):

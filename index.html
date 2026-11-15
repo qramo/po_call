@@ -4231,7 +4231,8 @@ const bgClock = t => { const d = new Date(t); return [d.getHours(), d.getMinutes
 const bgText = () => bgState.list.map(([t, x]) => bgClock(t) + '  ' + x).join('\n') || '（まだ記録はありません）'
 const openBglog = () => { $('bglogText').textContent = bgText(); try { $('bglogDlg').showModal() } catch {} ; const pre = $('bglogText'); pre.scrollTop = pre.scrollHeight }
 // 読み込み直後はカードの仕組み（notify）がまだ評価されていないので、少し待ってから出す
-const bgCard = text => setTimeout(() => { try { notify(text, { key: 'bglog', ms: 20000, action: { label: '見る', fn: openBglog } }) } catch {} }, 1500)
+// 知らせるのは**診断窓を開いているときだけ**（利用者 11-15：β でも、4本指タップで出したときだけでよい）。記録そのものは常に取る
+const bgCard = text => setTimeout(() => { try { if ($('diag').hidden) return; notify(text, { key: 'bglog', ms: 20000, action: { label: '見る', fn: openBglog } }) } catch {} }, 1500)
 let bgSig = ''
 let bgZeroSince = 0   // マイクの中身が全部 0 になり始めた時刻（下の見本）
 const bgSample = () => {
