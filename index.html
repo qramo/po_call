@@ -5442,7 +5442,7 @@ $('pipVideo').addEventListener('play', wakeAudio)
 // ★役割は**「通話中だと分かる」＋「タップで一発で戻れる」だけ**。音とは無関係（出口は appAudio）。
 //   マイクを守る手でも音の盾でもない（理由が2回変わった経緯は HANDOFF「小窓：理由が2回変わった」）。
 //   ※ iPhone は MediaStream の映像を PiP に描けない（4条件で実測）→ 録った動画（Blob）を渡す。
-//   ※ PWA では小窓自体を出せない（NotSupportedError）。
+//   ※ iPhone のホーム追加（PWA）では小窓自体を出せない（NotSupportedError）。Android の PWA は出せる（利用者 11-16）。
 // ★**Document PiP（任意のDOMを小窓にする）はスマホでは使えない**（Chrome Android も
 //   iOS Safari も非対応）。使えるのは `<video>` の従来型 PiP だけなので、
 //   canvas に描いた絵を映像トラックにして流し込む。「筋が悪い」どころか唯一の道。
