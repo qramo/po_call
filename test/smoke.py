@@ -3166,6 +3166,34 @@ def T99(r, room):
             '見本=%s / 凍結と再開=%s / 再読み込みをまたぐ=%s / 裏で終わった印=%s / カード=%s / 窓=%s' % (sampled, froze, kept, marked, card, shown))
 
 
+def T100(r, room):
+    """自動復帰は裏では動かない（利用者 11-15・Android のロック 23 秒で相手が bye なしで切れた）。
+    ロック中に再読み込みすると画面を点けるまで遅れ、つなぎ直しの予約（60 秒）が切れて退室したように見える。
+    ①相手が予告なく消えて 0 人のまま 25 秒を越えても、裏なら再読み込みしない（記録に「裏なので待つ」）
+    ②戻ってから 8 秒ほどで、まだ壊れていれば動く（ヘッドレスでは本当に裏へ回せないので document.hidden を差し替える）
+    """
+    a = r.open_tab(); r.join(a, room + 'HID')
+    b = r.open_tab(); r.join(b, room + 'HID')
+    two = bool(a.wait_for("%s === 2" % MEMBERS, timeout=DISCOVER))
+    a.eval("window.__fakeHidden = true; window.__mark = 1;"
+           " Object.defineProperty(document, 'hidden', { get: () => window.__fakeHidden, configurable: true })")
+    try:
+        b.call('Page.crash')   # bye を送らずに消える（タブを閉じると pagehide で bye が出る）
+    except Exception:
+        pass
+    gone = bool(a.wait_for("%s === 1" % MEMBERS, timeout=40))
+    held = bool(a.wait_for("window.__potBglog.text().includes('裏なので待つ')", timeout=40))
+    time.sleep(6)
+    stayed = a.eval("window.__mark === 1 && document.body.classList.contains('in-call')")
+    t0 = time.time()
+    a.eval("window.__fakeHidden = false")
+    fired = bool(a.wait_for("window.__mark !== 1 || window.__potBglog.text().includes('つなぎ直す（自動）')", timeout=20))
+    took = round(time.time() - t0)
+    ok = two and gone and held and stayed and fired and took >= 5
+    r.check('T100', '自動復帰は裏では動かず、戻ってから動く（ロック中の再読み込みで退室に見えない）', ok, 'pass',
+            '2人=%s / 相手が消えた=%s / 裏なので待つ=%s / 裏の間は再読み込みしない=%s / 戻って動いた=%s（%s 秒）' % (two, gone, held, stayed, fired, took))
+
+
 def T88(r, room):
     """主タブで「ひとこと」を開くと、最新の行が見える位置へ送る（2026-11-07 β 実機）。
     ひとことの欄は下詰めでスクロールしないので、最新の行は欄の下端にある。スマホで縦が狭いと
@@ -4460,6 +4488,8 @@ def main():
             T98(r, room)
         if run('T99'):
             T99(r, room)
+        if run('T100'):
+            T100(r, room)
         if run('T89'):
             T89(r, room)
         if run('T90'):
