@@ -3194,6 +3194,52 @@ def T100(r, room):
             '2人=%s / 相手が消えた=%s / 裏なので待つ=%s / 裏の間は再読み込みしない=%s / 戻って動いた=%s（%s 秒）' % (two, gone, held, stayed, fired, took))
 
 
+def T101(r, room):
+    """裏で切れた・閉じられたときの案内（利用者 11-15・Android は小窓なしだと別アプリ 2〜5 分で切れ、約 10 分でタブごと閉じる）。
+    ①裏で相手が bye なしで切れたら、戻ったときに小窓の案内（小窓が使える環境だけ）
+    ②通話中に裏へ回ると控えが残り、そのまま閉じられた（pagehide なし）次の読み込みで「部屋に戻る」カード→押すと同じ部屋へ
+    （ヘッドレスでは本当に裏へ回せないので document.hidden を差し替えて visibilitychange を送る）
+    """
+    HIDE = ("window.__fakeHidden = %s; if (!window.__hidOv) { window.__hidOv = 1;"
+            " Object.defineProperty(document, 'hidden', { get: () => !!window.__fakeHidden, configurable: true }) }"
+            " document.dispatchEvent(new Event('visibilitychange'))")
+    a = r.open_tab(); r.join(a, room + 'LIV')
+    b = r.open_tab(); r.join(b, room + 'LIV')
+    two = bool(a.wait_for("%s === 2" % MEMBERS, timeout=DISCOVER))
+    a.eval(HIDE % 'true')
+    saved = a.eval("!!localStorage.getItem('pot-call-live')")
+    try:
+        b.call('Page.crash')
+    except Exception:
+        pass
+    gone = bool(a.wait_for("%s === 1" % MEMBERS, timeout=40))
+    a.eval(HIDE % 'false')
+    cleared = a.eval("!localStorage.getItem('pot-call-live')")
+    can = a.eval("!!document.pictureInPictureEnabled")
+    tip = a.eval("window.__potToasts().some(t => t.key === 'piptip' && t.open)")
+    tip_ok = tip if can else not tip
+    room_id = a.eval("location.hash"); url = a.eval("location.href")
+    a.eval(HIDE % 'true')
+    try:
+        a.call('Page.crash')
+    except Exception:
+        pass
+    # 閉じられたタブの読み込み直しは back_forward（実機の記録）。ヘッドレスでは作れないので種類だけ差し替える
+    c = r.open_tab()
+    c.call('Page.addScriptToEvaluateOnNewDocument', source="(() => { const g = performance.getEntriesByType.bind(performance);"
+           " performance.getEntriesByType = t => t === 'navigation' ? [{ type: 'back_forward' }] : g(t) })()")
+    c.call('Page.navigate', url=url); time.sleep(0.3); c.call('Page.reload'); time.sleep(0.5); c.wait_for(BOOTED, timeout=SHORT)   # hash だけでは読み込み直さない
+    card = bool(c.wait_for("window.__potToasts().some(t => t.key === 'restore' && t.open)", timeout=5))
+    once = c.eval("!localStorage.getItem('pot-call-live')")
+    c.eval("document.querySelector('.toast-act') && [...document.querySelectorAll('.toast-act')].find(x => x.textContent.includes('戻る')).click()")
+    back = bool(c.wait_for("document.body.classList.contains('in-call')", timeout=DISCOVER))
+    same = back and c.eval("location.hash") == room_id
+    ok = two and saved and gone and cleared and tip_ok and card and once and back and same
+    r.check('T101', '裏で切れたら小窓の案内・裏のまま閉じられたら「部屋に戻る」カードで同じ部屋へ', ok, 'pass',
+            '2人=%s / 裏で控え=%s / 相手が消えた=%s / 戻って控えを消す=%s / 小窓の案内=%s（小窓可=%s） / カード=%s / 控えは一度きり=%s / 戻れた=%s / 同じ部屋=%s'
+            % (two, saved, gone, cleared, tip, can, card, once, back, same))
+
+
 def T88(r, room):
     """主タブで「ひとこと」を開くと、最新の行が見える位置へ送る（2026-11-07 β 実機）。
     ひとことの欄は下詰めでスクロールしないので、最新の行は欄の下端にある。スマホで縦が狭いと
@@ -4490,6 +4536,8 @@ def main():
             T99(r, room)
         if run('T100'):
             T100(r, room)
+        if run('T101'):
+            T101(r, room)
         if run('T89'):
             T89(r, room)
         if run('T90'):
