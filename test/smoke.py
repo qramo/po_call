@@ -305,8 +305,10 @@ class Runner:
             mark = '🎉 FIXED  ' if ok else '⚠️  KNOWN-FAIL'
         else:
             mark = '✅ PASS  ' if ok else '❌ FAIL  '
-        print('  %s %s %s%s' % (mark, tid, name, ('  — ' + note) if note else ''))
-        self.results.append((tid, name, ok, expect))
+        # 前の判定からの秒数＝おおよそそのテストの所要時間（束の組み替えの材料・11-15）
+        now = time.time(); dt = now - getattr(self, 't_last', now); self.t_last = now
+        print('  %s %s %s%s  [%.0f秒]' % (mark, tid, name, ('  — ' + note) if note else '', dt))
+        self.results.append((tid, name, ok, expect, dt))
 
 
 # ─ テスト本体 ────────────────────────────────────────────────
@@ -459,8 +461,11 @@ def T24(r, a, b):
     観測し、リロードが起きていないことを見る（window に置いた印が消えないこと＝
     ページが読み込み直されていないこと）。
     """
-    a.eval("window.__stay = 1")
-    time.sleep(35)
+    # T13 の直後なら、その待ちに相乗りして残りだけ待つ（T13 が __stay を置いている）。単独なら 35 秒まるごと
+    since = getattr(r, 'calm_since', None)
+    if since is None:
+        a.eval("window.__stay = 1"); since = time.time()
+    time.sleep(max(0, 35 - (time.time() - since)))
     stayed = a.eval("window.__stay === 1")
     joined = a.eval("%s === 2" % MEMBERS)
     audio = a.eval(AUDIOS) == 1
@@ -3143,7 +3148,7 @@ def T99(r, room):
     a = r.open_tab(); r.join(a, room + 'BGL')
     assert a.wait_for("document.body.classList.contains('in-call')", timeout=DISCOVER), '参加できない'
     TXT = "window.__potBglog.text()"
-    sampled = bool(a.wait_for("%s.includes('参加 あり')" % TXT, timeout=8))
+    sampled = bool(a.wait_for("%s.includes('参加 あり') && %s.includes('音あり')" % (TXT, TXT), timeout=8))
     a.call('Page.setWebLifecycleState', state='frozen'); time.sleep(1); a.call('Page.setWebLifecycleState', state='active'); time.sleep(0.5)
     froze = a.eval("%s.includes('凍結（freeze）') && %s.includes('凍結から再開')" % (TXT, TXT))
     # 裏のまま終わった印を立てて再読み込み（ヘッドレスでは本当に裏へ回せないので印を直接置く）
@@ -3955,8 +3960,7 @@ def T6(r, a, b, room):
     got_audio = a.wait_for('%s >= 1' % AUDIOS, timeout=25)
     r.check('T6b', '入り直しで相手の音声が届く', got_audio, 'pass',
             '' if got_audio else '参加者リストには出ているのに <audio> が無い＝音が来ていない')
-    r.check('T6c', '入り直しで「音声を有効化」が残らない', not a.eval(UNLOCK_SHOWN), 'pass',
-            '' if not a.eval(UNLOCK_SHOWN) else 'joinCall が unlock を隠していない')
+    # T6c（「音声を有効化」が残らない）は T12 と同じ確認なので外した（11-15）
 
 
 def T7(r, room):
@@ -4010,6 +4014,7 @@ def T13(r, a, b):
     催促が一巡する時間（6 + 6×3 = 24秒）より長く待って、それでも出ないことを見る。
     """
     WARN_SHOWN = "window.__potToasts().some(t => t.key === 'audio')"
+    a.eval("window.__stay = 1"); r.calm_since = time.time()   # T24 がこの待ちに相乗りする（11-15）
     appeared = a.wait_for(WARN_SHOWN, timeout=32) or b.wait_for(WARN_SHOWN, timeout=1)
     r.check('T13', '正常な通話で誤警告を出さない', not appeared, 'pass',
             '' if not appeared else a.eval("JSON.stringify(window.__potToasts())"))
@@ -4265,6 +4270,7 @@ def main():
 
     try:
         r.start_chrome()
+        r.t_last = time.time()
         print('  部屋名 %s\n' % room)
         if run('T1'):
             T1(r, room)
@@ -4333,6 +4339,8 @@ def main():
                 T35(r, a_tab, b_tab)
             if run('T13'):
                 T13(r, a_tab, b_tab)
+            if run('T24'):
+                T24(r, a_tab, b_tab)   # ★T13 の待ちに相乗りするので直後に置く（間に何か挟むと待ちが重ならない）
             if run('T16'):
                 T16(r, a_tab)
             if run('T11'):
@@ -4347,8 +4355,6 @@ def main():
                     T49(r, a_tab, b_tab)
                 if run('T57'):
                     T57(r, a_tab, b_tab)
-            if run('T24'):
-                T24(r, a_tab, b_tab)
             if run('T23'):
                 T23(r, a_tab, b_tab)
             if run('T22'):
