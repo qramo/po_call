@@ -3221,6 +3221,7 @@ def T101(r, room):
     tip = a.eval("window.__potToasts().some(t => t.key === 'piptip' && t.open)")
     tip_ok = tip if can else not tip
     room_id = a.eval("location.hash"); url = a.eval("location.href")
+    a.eval("document.getElementById('mute').click()"); time.sleep(0.5)   # ミュートで裏へ＝戻ってもミュートのまま
     a.eval(HIDE % 'true')
     try:
         a.call('Page.crash')
@@ -3236,10 +3237,11 @@ def T101(r, room):
     c.eval("document.querySelector('.toast-act') && [...document.querySelectorAll('.toast-act')].find(x => x.textContent.includes('戻る')).click()")
     back = bool(c.wait_for("document.body.classList.contains('in-call')", timeout=DISCOVER))
     same = back and c.eval("location.hash") == room_id
-    ok = two and saved and gone and cleared and tip_ok and card and once and back and same
+    muted = back and bool(c.wait_for("document.getElementById('mute').classList.contains('muted')", timeout=5))
+    ok = two and saved and gone and cleared and tip_ok and card and once and back and same and muted
     r.check('T101', '裏で切れたら小窓の案内・裏のまま閉じられたら「部屋に戻る」カードで同じ部屋へ', ok, 'pass',
-            '2人=%s / 裏で控え=%s / 相手が消えた=%s / 戻って控えを消す=%s / 小窓の案内=%s（小窓可=%s） / カード=%s / 控えは一度きり=%s / 戻れた=%s / 同じ部屋=%s'
-            % (two, saved, gone, cleared, tip, can, card, once, back, same))
+            '2人=%s / 裏で控え=%s / 相手が消えた=%s / 戻って控えを消す=%s / 小窓の案内=%s（小窓可=%s） / カード=%s / 控えは一度きり=%s / 戻れた=%s / 同じ部屋=%s / ミュートのまま=%s'
+            % (two, saved, gone, cleared, tip, can, card, once, back, same, muted))
 
 
 def T88(r, room):
