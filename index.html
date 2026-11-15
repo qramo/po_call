@@ -7759,7 +7759,7 @@ let liveLeaving = false, liveMine = false
 const liveClear = () => { if (liveMine) { liveMine = false; lsDel(LIVE_KEY) } }
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    if (call.joinedId && !liveLeaving) { liveMine = true; lsSet(LIVE_KEY, JSON.stringify({ room: call.joinedId, name: call.meta.name || '', at: Date.now() })) }
+    if (call.joinedId && !liveLeaving) { liveMine = true; lsSet(LIVE_KEY, JSON.stringify({ room: call.joinedId, name: call.meta.name || '', muted: call.muted, at: Date.now() })) }
     return
   }
   liveClear()
@@ -8812,7 +8812,7 @@ if (liveSaved) setTimeout(() => {
   if (call.joinedId || joining) return
   notify('📵 裏に置いている間に、通話が閉じられました（スマホが裏のページを閉じることがあります）', {
     key: 'restore', keep: true, warn: true,
-    action: { label: '「' + capRoom(liveSaved.name || '前の部屋') + '」に戻る', fn: () => { entryCancel(); enterSaved(liveSaved) } }
+    action: { label: '「' + capRoom(liveSaved.name || '前の部屋') + '」に戻る', fn: () => { entryCancel(); joinMuted = !!liveSaved.muted; enterSaved(liveSaved) } }   // ミュートしていたならミュートのまま入る（11-15 実機：ミュートで放置→戻ったらマイクが生きていた）
   })
 }, 800)
 
