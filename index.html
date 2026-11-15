@@ -876,7 +876,7 @@
   .toast-hist.active b{ background:var(--warn); color:var(--panel) }   /* 夜は黄に濃い字・昼は茶に白い字 */
   @keyframes pill-in{ from{ transform:scale(.4); opacity:0 } to{ transform:scale(1); opacity:1 } }
   @media (prefers-reduced-motion:reduce){ .toast{ transition:none } .toast-hist{ animation:none } }
-  /* 試し用（?noticedemo=1・本番 potalk.app では出ない） */
+  /* 試し用（?noticedemo=1 か、β の 4本指タップ／版数の長押し・本番 potalk.app では出ない） */
   .toast-demo{ position:fixed; left:12px; bottom:calc(var(--dock-h, 0px) + 12px); z-index:60; width:auto; margin:0;
     padding:8px 12px; font-size:13px; border-radius:20px; background:var(--chip); color:var(--text); opacity:.85 }
   body:not(.in-call) .toast-demo{ bottom:12px }
@@ -7093,8 +7093,11 @@ if (window.visualViewport) {
 }
 // 以前の呼び口（1 件だけ・時間で消える）。空文字は「もう要らない」
 const showPeerNotice = (text, ms = 12000) => { if (text) notify(text, { ms }) }
-// 試し用：?noticedemo=1（本番 potalk.app では出ない）。押すたびに種類を変えて出す
-if (location.hostname !== 'potalk.app' && /[?&]noticedemo=1(&|$)/.test(location.search)) {
+// 試し用：?noticedemo=1（本番 potalk.app では出ない）。押すたびに種類を変えて出す。
+// 付け忘れても、β の診断窓と同じ **4本指タップ／版数の長押し**で出し入れできる（利用者 11-15・下の toggleDiag）
+const NOTICE_DEMO = /[?&]noticedemo=1(&|$)/.test(location.search)
+let toastDemo = null
+if (location.hostname !== 'potalk.app') {
   const demo = [
     () => notify('🔉 いつものレモンバーム さんの音が大きすぎたので、小さくしました（続くなら ❤️ で無視できます）', { key: 'loud:demo', keep: true, warn: true }),
     () => notify('🔌 ほうじ茶 さんとの接続が切れました（退出ではありません）'),
@@ -7107,7 +7110,9 @@ if (location.hostname !== 'potalk.app' && /[?&]noticedemo=1(&|$)/.test(location.
   let i = 0
   const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-demo'; b.textContent = '🧪 知らせ'
   b.onclick = () => { demo[i++ % demo.length]() }
+  b.hidden = !NOTICE_DEMO
   document.body.append(b)
+  toastDemo = b
 }
 window.__potNotify = notify   // テスト用（smoke T96）
 window.__potNotifyState = notifyState   // テスト用（smoke T97）
@@ -8116,6 +8121,7 @@ const diagAudio = () => {
 const toggleDiag = () => {
   const on = $('diag').hidden
   $('diag').hidden = !on
+  if (toastDemo) toastDemo.hidden = !on && !NOTICE_DEMO   // 🧪 知らせ も一緒に（?noticedemo=1 のときは出たまま）
   clearInterval(diagTimer); diagTimer = null
   if (on) { diagAudio(); diagTimer = setInterval(diagAudio, 2000) }
 }
