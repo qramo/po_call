@@ -3244,6 +3244,38 @@ def T101(r, room):
             % (two, saved, gone, cleared, tip, can, card, once, back, same, muted))
 
 
+def T102(r, room):
+    """Android では裏で切れたときに小窓ではなく「ホーム画面に追加＋バックグラウンド許可」を案内する（11-16 実機：
+    小窓では守れず、PWA＋バックグラウンド許可で裏 30 分保てた）。「やり方」で手順の窓が開く（タブなので 1・2 も出る）
+    """
+    HIDE = ("window.__fakeHidden = %s; if (!window.__hidOv) { window.__hidOv = 1;"
+            " Object.defineProperty(document, 'hidden', { get: () => !!window.__fakeHidden, configurable: true }) }"
+            " document.dispatchEvent(new Event('visibilitychange'))")
+    a = r.open_tab()
+    a.call('Emulation.setUserAgentOverride', userAgent='Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36')
+    a.call('Page.reload'); time.sleep(0.5); a.wait_for(BOOTED, timeout=SHORT)
+    r.join(a, room + 'AND')
+    b = r.open_tab(); r.join(b, room + 'AND')
+    two = bool(a.wait_for("%s === 2" % MEMBERS, timeout=DISCOVER))
+    a.eval(HIDE % 'true')
+    try:
+        b.call('Page.crash')
+    except Exception:
+        pass
+    gone = bool(a.wait_for("%s === 1" % MEMBERS, timeout=40))
+    a.eval(HIDE % 'false')
+    tip = a.eval("(window.__potToasts().find(t => t.key === 'piptip') || {}).text || ''")
+    android = 'ホーム画面に追加' in tip and '小窓' not in tip
+    a.eval("[...document.querySelectorAll('.toast-act')].find(x => x.textContent === 'やり方').click()"); time.sleep(0.3)
+    dlg = a.eval("document.getElementById('bgTipDlg').open && !document.getElementById('bgTipStep1').hidden"
+                 " && document.getElementById('bgTipDlg').textContent.includes('バックグラウンドでの使用を許可')")
+    a.eval("document.getElementById('bgTipClose').click()")
+    closed = a.eval("!document.getElementById('bgTipDlg').open")
+    ok = two and gone and android and dlg and closed
+    r.check('T102', 'Android は裏で切れたら「ホーム画面に追加＋バックグラウンド許可」を案内し、やり方の窓が開く', ok, 'pass',
+            '2人=%s / 相手が消えた=%s / 案内=%r / 窓=%s / 閉じる=%s' % (two, gone, tip[:40], dlg, closed))
+
+
 def T88(r, room):
     """主タブで「ひとこと」を開くと、最新の行が見える位置へ送る（2026-11-07 β 実機）。
     ひとことの欄は下詰めでスクロールしないので、最新の行は欄の下端にある。スマホで縦が狭いと
@@ -4542,6 +4574,8 @@ def main():
             T100(r, room)
         if run('T101'):
             T101(r, room)
+        if run('T102'):
+            T102(r, room)
         if run('T89'):
             T89(r, room)
         if run('T90'):

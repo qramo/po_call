@@ -230,6 +230,10 @@
     padding:8px 12px; font-size:13px; border-radius:20px; background:var(--chip); color:var(--text); opacity:.85 }
   body:not(.in-call) .bglog-btn{ bottom:56px }
   #ignoreYes{ background:var(--red); color:#fff }
+  /* Android：裏に置いても切れにくくする手順（#bgTipDlg・v0.16.30） */
+  .bgtip-steps{ margin:8px 0 10px; padding-left:1.4em; font-size:14px; line-height:1.65 }
+  .bgtip-steps li{ margin:4px 0 }
+  .bgtip-note{ margin:0 0 12px; font-size:12.5px; line-height:1.6; color:var(--sub) }
   #ignoreNo{ background:var(--mute); color:var(--text) }
   /* 名刺（プロフィールカード・v0.16.0） */
   .card-dialog{ max-width:400px }
@@ -1757,6 +1761,21 @@
     <button id="bglogCopy" type="button">コピー</button>
     <button id="bglogClear" type="button">消す</button>
     <button id="bglogClose" type="button">閉じる</button>
+  </div>
+</dialog>
+<!-- Android：裏に置いても切れにくくする手順（v0.16.30）。タブのままだと数分で通信を止められ、10 分ほどで
+     閉じられるが、ホーム追加（PWA）＋電池の「バックグラウンドでの使用を許可」なら裏で 30 分保てた（11-16 実機） -->
+<dialog id="bgTipDlg" class="help-dialog ignore-dialog" aria-labelledby="bgTipTitle">
+  <h2 id="bgTipTitle">📲 裏に置いても切れにくくする</h2>
+  <ol class="bgtip-steps">
+    <li id="bgTipStep1">ホーム画面に追加する（Chrome の︙メニュー →「ホーム画面に追加」または「アプリをインストール」）</li>
+    <li id="bgTipStep2">ホーム画面の「ぽっと通話」から開く</li>
+    <li>スマホの設定 → アプリ → ぽっと通話 → 電池 で「バックグラウンドでの使用を許可」をオン（選べるなら「制限なし」）</li>
+  </ol>
+  <p class="bgtip-note">Chrome のタブのままだと、スマホは裏のページの通信を数分で止め、10 分ほどでページを閉じることがあります。設定の名前は機種によって少し違います。</p>
+  <div class="ignore-actions">
+    <button id="bgTipInstall" type="button" hidden>ホーム画面に追加</button>
+    <button id="bgTipClose" type="button">閉じる</button>
   </div>
 </dialog>
 <!-- 無視の初回説明（v0.14.6）。★confirm() 不可の理由は #leaveConfirm のコメント。<dialog>.showModal() は
@@ -7763,12 +7782,35 @@ document.addEventListener('visibilitychange', () => {
     return
   }
   liveClear()
-  if (call.hiddenLost && call.joinedId && pipCan() && !pipOn() && !ssGet('pot-call-pip-tip')) {
-    ssSet('pot-call-pip-tip', '1')
-    notify('📌 裏に置いている間に接続が切れました。別のアプリを使うときは「小窓」にしておくと切れにくくなります', { key: 'piptip', keep: true, action: { label: '小窓にする', fn: () => $('pip').onclick() } })
+  // ★Android は小窓では守れない（11-15 実機：小窓ありで画面を点けて他のアプリを使っていても 3 分ごとに切れ、10 分ほどで
+  //   閉じられた）。守れたのはホーム追加（PWA）＋電池の「バックグラウンドでの使用を許可」（11-16 実機：裏 30 分で切断なし）
+  if (call.hiddenLost && call.joinedId && !ssGet('pot-call-pip-tip')) {
+    if (IS_ANDROID) {
+      ssSet('pot-call-pip-tip', '1')
+      notify(IS_PWA
+        ? '📲 裏に置いている間に接続が切れました。スマホの設定で「ぽっと通話」の「バックグラウンドでの使用を許可」をオンにすると切れにくくなります'
+        : '📲 裏に置いている間に接続が切れました。ホーム画面に追加して「バックグラウンドでの使用を許可」をオンにすると切れにくくなります',
+        { key: 'piptip', keep: true, action: { label: 'やり方', fn: openBgTip } })
+    } else if (pipCan() && !pipOn()) {
+      ssSet('pot-call-pip-tip', '1')
+      notify('📌 裏に置いている間に接続が切れました。別のアプリを使うときは「小窓」にしておくと切れにくくなります', { key: 'piptip', keep: true, action: { label: '小窓にする', fn: () => $('pip').onclick() } })
+    }
   }
   call.hiddenLost = false
 })
+// Android の手順の窓。PWA で開いているなら 1・2 は済んでいるので隠す。「ホーム画面に追加」は Chrome が
+// インストールを勧められる状態のとき（beforeinstallprompt を受け取っていれば）だけ出す。ミニバーは止めない
+const IS_ANDROID = /Android/i.test(navigator.userAgent || '')
+const IS_PWA = document.documentElement.classList.contains('pwa')
+let installEvt = null
+addEventListener('beforeinstallprompt', e => { installEvt = e })
+const openBgTip = () => {
+  $('bgTipStep1').hidden = $('bgTipStep2').hidden = IS_PWA
+  $('bgTipInstall').hidden = IS_PWA || !installEvt
+  try { $('bgTipDlg').showModal() } catch {}
+}
+$('bgTipInstall').onclick = () => { const e = installEvt; installEvt = null; $('bgTipInstall').hidden = true; if (e) e.prompt().catch(() => {}) }
+$('bgTipClose').onclick = () => $('bgTipDlg').close()
 // 再読み込み・タブを閉じるときも pagehide のあとで裏になる＝その裏は控えにしない
 addEventListener('pagehide', e => { if (!e.persisted) { liveLeaving = true; liveClear() } })
 addEventListener('pageshow', e => { if (e.persisted) liveLeaving = false })
