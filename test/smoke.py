@@ -1095,6 +1095,41 @@ def T48(r, room):
         click_leave(t)
 
 
+def T103(r, room):
+    """話題タグは時計が遅れた端末から付け直しても届く（11-16）
+
+    tagAt を付けた端末の時計で決めていたので、時計が遅れている端末の付け直しは「古い」と捨てられ、
+    本人にだけ出て、出入りすると前の話題に戻っていた。①A が付ける ②時計が 2 分遅れた B が付け直す →
+    A にも届く ③B が出入りしても B の話題のまま
+    """
+    name = room + 'TAGC'
+    TXT = "document.getElementById('tagText').textContent"
+    SET = ("(() => { document.getElementById('tagEdit').click(); const i = document.getElementById('tagInput');"
+           " i.value = %s; document.getElementById('tagSend').click() })()")
+    a = r.open_tab()
+    a.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    r.join(a, name)
+    assert a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER), 'A が参加できない'
+    b = r.open_tab()
+    r.join(b, name)
+    assert a.wait_for('%s === 2' % MEMBERS, timeout=DISCOVER), 'B が合流できない'
+    a.eval(SET % js_str('まえのわだい'))
+    got = b.wait_for("%s.includes('まえのわだい')" % TXT, timeout=SHORT)
+    b.eval("(() => { const n = Date.now; window.__realNow = n; Date.now = () => n() - 120000 })()")
+    b.eval(SET % js_str('あとのわだい'))
+    reach = a.wait_for("%s.includes('あとのわだい')" % TXT, timeout=SHORT)
+    b.eval("Date.now = window.__realNow")
+    click_leave(b)
+    time.sleep(2)
+    r.join(b, name)
+    kept = b.wait_for("%s.includes('あとのわだい')" % TXT, timeout=DISCOVER)
+    r.check('T103', '話題タグは時計が遅れた端末から付け直しても届く', got and reach and kept, 'pass',
+            '最初の話題=%s / 遅れた時計の付け直しが A に届く=%s / 出入りしても残る=%s（A=%r）'
+            % (got, reach, kept, a.eval(TXT)[:30]))
+    for t in (a, b):
+        click_leave(t)
+
+
 def T49(r, a, b):
     """ひとことの未読の点（v0.13.4）：別のタブを見ている間に届くと 💬 タブに点が出て、開くと消える
 
@@ -4576,6 +4611,8 @@ def main():
             T101(r, room)
         if run('T102'):
             T102(r, room)
+        if run('T103'):
+            T103(r, room)
         if run('T89'):
             T89(r, room)
         if run('T90'):
