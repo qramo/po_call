@@ -6450,7 +6450,8 @@ const renderTag = () => {
 const setTag = text => {
   if (!call.joinedId || !call.metaAction) return
   const m = call.meta
-  m.tag = capText(text, ROOM_MAX); m.tagBy = m.tag ? (profile.name || 'ゲスト') : ''; m.tagAt = Date.now()
+  // 時刻は前のタグより必ず後にする（改名の nameAt と同じ）。端末の時計が遅れていると、付け直しが「古い」と捨てられていた（11-16）
+  m.tag = capText(text, ROOM_MAX); m.tagBy = m.tag ? (profile.name || 'ゲスト') : ''; m.tagAt = Math.max(Date.now(), (m.tagAt || 0) + 1)
   sendTo(call.metaAction, m)   // 全員へ（tagAt が新しいので採用される）
   renderTag(); sendHeartbeat()              // ロビーにもすぐ出す
 }
