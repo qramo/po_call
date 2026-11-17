@@ -1130,6 +1130,35 @@ def T103(r, room):
         click_leave(t)
 
 
+def T104(r, room):
+    """部屋名が長い部屋のタップの2択が一覧の幅に収まり、ボタンが押せる（11-17 利用者）
+
+    2択はカードに重ねるため升目（.room-wrap）に入れる。升目の列が内容の幅（1 行のままの部屋名）まで広がり、
+    2択ごと右にはみ出して「移る」「やめる」が見えなかった
+    """
+    x = room + '走って転んで下駄箱で右目上を強打して耳がキーン'
+    a = r.open_tab(); r.join(a, x)
+    assert a.wait_for("!document.getElementById('tabs').hidden", timeout=DISCOVER), 'A が参加できない'
+    c = r.open_tab()
+    c.eval("localStorage.setItem('pot-call-hide-help','1'); document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+    ROOM_BTN = "[...document.querySelectorAll('#lobbyList .room')].find(b => b.textContent.includes(%s))" % js_str(room + '走って')
+    assert c.wait_for("!!" + ROOM_BTN, timeout=DISCOVER), 'ロビーに出ない'
+    c.eval(ROOM_BTN + ".click()", await_promise=False)
+    shown = c.wait_for("!!document.getElementById('roomAskYes')", timeout=SHORT)
+    time.sleep(0.5)   # 下から出る動き（.24 秒）が終わってから測る
+    fit = c.eval("(() => { const l = document.getElementById('lobbyList').getBoundingClientRect();"
+                 " const w = document.getElementById('roomAsk').getBoundingClientRect();"
+                 " const y = document.getElementById('roomAskYes').getBoundingClientRect(), n = document.getElementById('roomAskNo').getBoundingClientRect();"
+                 " return [Math.round(l.right), Math.round(w.right), Math.round(y.right), Math.round(n.right)] })()")
+    ok = shown and fit[1] <= fit[0] + 1 and fit[3] <= fit[0] + 1
+    hit = ok and c.eval("(() => { const n = document.getElementById('roomAskNo').getBoundingClientRect();"
+                        " return document.elementFromPoint(n.left + n.width / 2, n.top + n.height / 2) === document.getElementById('roomAskNo') })()")
+    r.check('T104', '部屋名が長い部屋の2択が一覧の幅に収まる', ok and hit, 'pass',
+            '2択=%s / 右端（一覧・2択・移る・やめる）=%s / やめるが押せる=%s' % (shown, fit, hit))
+    c.eval("(document.getElementById('roomAskNo') || {click(){}}).click()", await_promise=False)
+    click_leave(a)
+
+
 def T49(r, a, b):
     """ひとことの未読の点（v0.13.4）：別のタブを見ている間に届くと 💬 タブに点が出て、開くと消える
 
@@ -4613,6 +4642,8 @@ def main():
             T102(r, room)
         if run('T103'):
             T103(r, room)
+        if run('T104'):
+            T104(r, room)
         if run('T89'):
             T89(r, room)
         if run('T90'):

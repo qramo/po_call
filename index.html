@@ -390,8 +390,10 @@
   /* ロビーの部屋の2択は、その部屋のカードに重ねる（下からするっと出る）。画面の下端の部屋を押しても
      はみ出さない（利用者 2026-11-09）。カードと2択を同じ升目に置くので、2択が背の高いときは枠ごと伸びる。
      注意色は半透明なので、カードの色の上に重ねて塗る（下の文字が透けない） */
-  .room-wrap{ display:grid }
-  .room-wrap > *{ grid-area:1 / 1 }
+  /* ★列は一覧の幅に固定（minmax(0,1fr)・min-width:0）。既定の auto だと 1 行のままの長い部屋名の幅まで列が広がり、
+     2択ごと右にはみ出して「移る」が押せなかった（利用者 11-17・T104） */
+  .room-wrap{ display:grid; grid-template-columns:minmax(0,1fr) }
+  .room-wrap > *{ grid-area:1 / 1; min-width:0 }
   .room-wrap > .room-ask{ align-self:end; z-index:1; margin:0; border-radius:12px;
     background:linear-gradient(var(--warn-bg), var(--warn-bg)), var(--panel); box-shadow:0 -6px 14px -8px rgba(0,0,0,.3) }
   .room-ask.slide{ animation:askUp .24s cubic-bezier(.2,.8,.2,1) }
