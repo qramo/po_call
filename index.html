@@ -5749,7 +5749,9 @@ addEventListener('focus', clearTabFresh)
 // ★crossOriginIsolated＝複数スレッド（v0.16.31）：wasm を複数スレッドで回すには SharedArrayBuffer が要り、それはページが
 //   cross-origin isolated（COOP: same-origin ＋ COEP: require-corp）のときだけ使える。GitHub Pages はヘッダを付けられないので、
 //   同じドメインの Service Worker（coi-sw.js）が「/」「/index.html」の**文書の応答にだけ** 2 つのヘッダを足す。
-//   ・初めて開いたとき（SW がまだ効いていない）は 1 スレッド＝遅いだけで動く。次に開き直したときから複数スレッド。開き直しは強制しない
+//   ・**登録は読み上げを読み込むときだけ**（＝配信者がオンにしたとき・coiRegister）。聞くだけの人・読み上げを使わない人のブラウザには
+//     SW を残さない（ドメイン全体の通信が SW を通るようになるので、要る人だけに負わせる・利用者 11-21）
+//   ・初めてオンにしたとき（SW がまだ効いていない）は 1 スレッド＝遅いだけで動く。次に開き直したときから複数スレッド。開き直しは強制しない
 //   ・スレッド数＝min(4, ceil(コア数/2))（ORT の既定と同じ式・TTS_THREADS）。iPhone なら 2〜3
 //   ・session.intra_op.allow_spinning = '0'（TTS_ORT_OPTS.extra）：これが無いと ORT のスレッドプールは仕事が無い間も空回りして
 //     待機中に CPU を食い続ける（実測 18% → 3%）
@@ -5805,8 +5807,9 @@ const TTS_ORT_DIST = new URL('vendor/onnxruntime-web-1.30.0/dist/', location.hre
 const TTS_LENGTH_SCALE = 1.4   // 実機で聞き取りやすかった速さ（1.0 は早口）
 const TTS_NOISE_SCALE = 0.667
 const ttsOk = typeof WebAssembly === 'object'
-// cross-origin isolation 用の Service Worker（上の★crossOriginIsolated）。https か localhost 以外は register が蹴るので握りつぶす
-if (ttsOk && 'serviceWorker' in navigator) navigator.serviceWorker.register('./coi-sw.js', { updateViaCache: 'none' }).catch(() => {})
+// cross-origin isolation 用の Service Worker（上の★crossOriginIsolated）。**読み上げを読み込むときだけ**呼ぶ（loadTts）。
+// https か localhost 以外は register が蹴るので握りつぶす
+const coiRegister = () => { try { navigator.serviceWorker?.register('./coi-sw.js', { updateViaCache: 'none' }).catch(() => {}) } catch {} }
 const TTS_THREADS = self.crossOriginIsolated ? Math.min(4, Math.max(1, Math.ceil((navigator.hardwareConcurrency || 2) / 2))) : 1
 let ttsThreads = 0   // 実際に ORT が使っているスレッド数（準備できたら入る・診断窓用）
 // ★「つなぎ直す」はページごと再読み込みするので（doReconnect）、読み上げのオンだけは rejoin の予約に乗せて引き継ぐ（v0.14.54・
@@ -5949,6 +5952,7 @@ const ttsErrText = raw => {
 const loadTts = () => {
   if (ttsEngine) return Promise.resolve(ttsEngine)
   if (ttsLoading) return ttsLoading
+  coiRegister()   // 読み上げを使う人にだけ SW を入れる（次に開いたときから複数スレッド）
   ttsLoading = (async () => {
     try {
       if (window.__potTts) { ttsEngine = window.__potTts; ttsStage(''); return ttsEngine }   // テストの差し替え口

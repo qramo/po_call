@@ -1,5 +1,6 @@
 // coi-sw.js — ぽっと通話：ページを cross-origin isolated にするための Service Worker（v0.16.31）
-// 役目は 1 つだけ：このドメインの「/」「/index.html」（と test/ の計測ページ）の**文書の応答**に
+// 登録するのは本体が読み上げを読み込むときだけ（index.html の coiRegister）＝読み上げを使う人のブラウザにだけ入る
+// 役目は 1 つだけ：置き場所の「/」「/index.html」（と test/ の計測ページ）の**文書の応答**に
 //   Cross-Origin-Opener-Policy: same-origin ＋ Cross-Origin-Embedder-Policy: require-corp
 // を足す。読み上げ（onnxruntime の wasm）を複数スレッドで回すのに要る SharedArrayBuffer は、この 2 つが
 // 揃ったページでしか使えず、GitHub Pages はヘッダを付けられないため。
@@ -7,7 +8,9 @@
 // 理由と影響の整理は index.html の読み上げの節「★crossOriginIsolated」。
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()))
-const isolate = p => p === '/' || p === '/index.html' || p.startsWith('/test/')
+// パスは SW の置き場所（scope）から数える：potalk.app では「/」、旧 β（qramo.github.io/po_call/）では「/po_call/」
+const BASE = new URL('./', self.registration.scope).pathname
+const isolate = p => p === BASE || p === BASE + 'index.html' || p.startsWith(BASE + 'test/')
 self.addEventListener('fetch', e => {
   const req = e.request
   if (req.method !== 'GET') return
