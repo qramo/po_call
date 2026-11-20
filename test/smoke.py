@@ -1200,9 +1200,14 @@ def T55(r, a, b):
     show_tab(a, 'settings'); show_tab(b, 'settings')
     row_owner = a.wait_for("!document.getElementById('sndTtsRow').hidden && !!document.getElementById('sndTtsRow').offsetParent", timeout=SHORT)
     row_listener = b.eval("document.getElementById('sndTtsRow').hidden")
+    # cross-origin isolation の SW（coi-sw.js・v0.16.31）は読み上げを読み込むときだけ入る（利用者 11-21）。
+    # ここまで（T26・T27 で入室・聞き役）では入っていない → 配信者がオンにすると入る。SW は同じオリジンで共有なので a で見る
+    REG = "navigator.serviceWorker.getRegistrations().then(rs => rs.map(r => (r.active || r.installing || r.waiting || {}).scriptURL || '').join(' '))"
+    sw_before = a.eval(REG) or ''
     n0 = a.eval("window.__T.ttsTexts.length")
     a.eval("document.getElementById('sndTts').click()")
     sample = a.wait_for("window.__T.ttsTexts.length > %d" % n0, timeout=SHORT)   # オンにした操作で見本を1回読む
+    sw_on = a.wait_for(REG + ".then(s => s.includes('coi-sw.js'))", timeout=SHORT)
     saved = a.eval("localStorage.getItem('pot-call-snd-tts2') === null && localStorage.getItem('pot-call-snd-tts') === null")   # v0.14.50：保存しない
     note = a.eval("!document.getElementById('sndTtsNote').hidden")
     # 段階②：聞き役に案内が届き（{ok} を返し）2 本目のトラックが載って仮想行 🗣 が出る。配信者の行も残っている
@@ -1265,10 +1270,10 @@ def T55(r, a, b):
     show_tab(a, 'members'); show_tab(b, 'members')
     ok = (row_owner and row_listener and sample and saved and note and vrow_b and two and vrow_a and face and arrived and shape and lit
           and noname and noname2 and kana and listener_quiet and off_quiet and off_saved and vrow_gone
-          and lobby_chip and lobby_chip_a and lobby_count and chip_gone)
+          and lobby_chip and lobby_chip_a and lobby_count and chip_gone and 'coi-sw' not in sw_before and sw_on)
     r.check('T55', '読み上げ v2：配信者だけに設定・オンで読む・2本目のトラックと仮想行・ロビーの印・URL省略・名前付き・聞き役は合成しない・オフで消える', ok, 'pass',
-            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存しない=%s / 注記=%s / 聞き役に仮想行=%s / 音声2本=%s / 配信者に仮想行=%s / 顔=%s / 届いた=%s / 文面=%r / 投稿者の行が光る=%s / 連続なら名前なし=%s / 名前を読まないスイッチ=%s / カタカナ辞書=%s(%r) / 聞き役は合成しない=%s / オフで読まない=%s / オフでも保存しない=%s / オフで仮想行が消える=%s / ロビーの印(聞き役)=%s / ロビーの印(配信者)=%s / 人数に数えない=%s / オフでロビーの印も消える=%s'
-            % (row_owner, row_listener, sample, saved, note, vrow_b, two, vrow_a, face, arrived, text, lit, noname, noname2, kana, kana_text, listener_quiet, off_quiet, off_saved, vrow_gone, lobby_chip, lobby_chip_a, lobby_count, chip_gone))
+            '配信者に行=%s / 聞き役に行なし=%s / 見本=%s / 保存しない=%s / 注記=%s / 聞き役に仮想行=%s / 音声2本=%s / 配信者に仮想行=%s / 顔=%s / 届いた=%s / 文面=%r / 投稿者の行が光る=%s / 連続なら名前なし=%s / 名前を読まないスイッチ=%s / カタカナ辞書=%s(%r) / 聞き役は合成しない=%s / オフで読まない=%s / オフでも保存しない=%s / オフで仮想行が消える=%s / ロビーの印(聞き役)=%s / ロビーの印(配信者)=%s / 人数に数えない=%s / オフでロビーの印も消える=%s / SW はオンにするまで無し=%s・オンで入る=%s'
+            % (row_owner, row_listener, sample, saved, note, vrow_b, two, vrow_a, face, arrived, text, lit, noname, noname2, kana, kana_text, listener_quiet, off_quiet, off_saved, vrow_gone, lobby_chip, lobby_chip_a, lobby_count, chip_gone, 'coi-sw' not in sw_before, sw_on))
 
 
 def T55b(r, a, b):
