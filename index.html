@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.16.29
+  ぽっと通話〈実験版〉 v0.16.30
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -69,10 +69,14 @@
      設定キー名が変わると黙って既定リレーへ落ちるが、それはここでブロックされて全滅する
      （静かな設定ドリフトが派手な失敗に変わる）。上げたら必ず2台で疎通確認すること。
      ★読み上げ（v0.14.42）：'wasm-unsafe-eval' は wasm のコンパイルに要る。声のモデルは v0.14.52 から repo 同梱（models/）、
-     エンジン（piper-plus・onnxruntime-web）は v0.16.14 から vendor/ に同梱＝'self' で足りる（jsDelivr／unpkg の許可は外した）。 -->
+     エンジン（piper-plus・onnxruntime-web）は v0.16.14 から vendor/ に同梱＝'self' で足りる（jsDelivr／unpkg の許可は外した）。
+     ★worker-src 'self' は v0.16.30 から：onnxruntime の推論を Worker で回す（ort.env.wasm.proxy）。同じドメインの
+     ort.wasm.min.mjs を module Worker にするので 'self' で足りる（blob: は要らない）。無くても script-src へ fallback して通るが、
+     fallback だと cloudflareinsights も Worker の出どころに含まれてしまうので明示して絞る（T21 で違反 0 件を確認・2026-11-20）。 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'none';
   script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://static.cloudflareinsights.com;
+  worker-src 'self';
   style-src 'self' 'unsafe-inline';
   img-src 'self' data: blob:;
   media-src 'self' blob:;
@@ -2017,7 +2021,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.16.29'
+const APP_VERSION = 'v0.16.30'
 
 // ─── 節マニフェスト（目次・出現順） ───────────────────────────────────────
 // このファイルは下のバナーコメントで探せる。バナーは実務の目録としてそのまま保つ。
@@ -5567,6 +5571,12 @@ addEventListener('focus', clearTabFresh)
 // なぜ OS の合成（Web Speech API）をやめたか：iOS はマイク使用中に OS の合成音声を鳴らすと、読んだ後に通話の出力が
 // 受話口側へ戻ったままになる（v0.14.37〜40 で復帰処理・マイク取り直しを試して全滅）。消音スイッチでも消える。AEC の参照に
 // 入らないのでスピーカーだと読み上げが相手へ素通しになる。PCM を自分の出口に流せばこの 3 つが同時に消える。
+// ★推論は Worker で（v0.16.30・ort.env.wasm.proxy）：onnxruntime-web が同じドメインの ort.wasm.min.mjs を module Worker として立て、
+//   セッション作成と run をそこへ送る。合成（1 回 0.3〜0.5 秒）の間もメインスレッドが止まらない＝配信者の画面・WebRTC・ひとことの
+//   処理が固まらない（2026-11-20・Let's note で合成のたびレンダラが 1 コア張り付き・画面がつっかえる）。wasm のメモリ（約 570MB）は
+//   Worker 側へ移るだけで総量は同じ。numThreads は 1 のまま（複数スレッドは crossOriginIsolated＝COOP/COEP ヘッダが要り、
+//   GitHub Pages では付けられない）。CSP は worker-src 'self'（同じドメインの URL で作るので blob: は不要）。patchOrt は
+//   Worker の手前（InferenceSession の公開 API）に掛かるのでそのまま効く。実測は internal/HANDOFF 2026-11-20。
 // エンジンは段階読み込み（Trystero と同じ作法）：①piper-plus ②onnxruntime-web ③initialize（wasm 60MB＝gzip 19MB・ORT 約 14MB・
 // モデルは models/ の 26MB で IndexedDB に残る）。**オンにしたときだけ**読み込む（メモリ約 200MB を他の人に負わせない）。
 // 一度読み込んだら退出しても捨てない（再入室で 15 秒待たせない）。
@@ -5761,7 +5771,7 @@ const loadTts = () => {
       let Piper; try { Piper = (await import('piper-plus')).PiperPlus } catch (e) { throw new Error('ライブラリ（piper-plus）を読み込めませんでした') }
       ttsStage('読み上げの準備 ②/③ 推論エンジン…')
       let ort; try { ort = await import('onnxruntime-web') } catch (e) { throw new Error('推論エンジン（onnxruntime）を読み込めませんでした') }
-      try { ort.env.wasm.wasmPaths = TTS_ORT_DIST; ort.env.wasm.numThreads = 1 } catch {}   // 1 スレッド＝Worker を作らない（CSP・iOS）
+      try { ort.env.wasm.wasmPaths = TTS_ORT_DIST; ort.env.wasm.numThreads = 1; ort.env.wasm.proxy = true } catch {}   // 1 スレッド（SharedArrayBuffer 不要・iOS）／proxy＝推論を ORT 自前の Worker で（上の★）
       patchOrt(ort)
       ttsStage('読み上げの準備 ③/③ 声のモデル…')
       const label = { model: '声のモデル', phonemizer: '辞書', ready: '準備完了' }
