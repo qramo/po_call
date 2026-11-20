@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  ぽっと通話〈実験版〉 v0.16.30
+  ぽっと通話〈実験版〉 v0.16.31
   同じ部屋名を開いた人どうしが、ブラウザだけで声でつながるミニ通話アプリ。
   サーバは持たない（相手発見＝公開Nostrリレー／音声＝WebRTC・Cloudflare TURN経由）。
   ビルドもパッケージも無く、この1ファイルで完結する。GitHub Pages で配信。
@@ -2021,7 +2021,7 @@ window.__potPending = () => { try { return pendingPeers().map(p => p.name || p.i
 // ───────────────────────────────────────────────────────────────────────────
 // 版。**ここが唯一の定義**（画面表示もここから入れる）。ファイル冒頭のコメントにも同じ番号が
 // 書いてあるので、上げるときは両方直すこと（食い違いは test/smoke.py の T15 が検出する）。
-const APP_VERSION = 'v0.16.30'
+const APP_VERSION = 'v0.16.31'
 
 // ─── 節マニフェスト（目次・出現順） ───────────────────────────────────────
 // このファイルは下のバナーコメントで探せる。バナーは実務の目録としてそのまま保つ。
@@ -5574,9 +5574,19 @@ addEventListener('focus', clearTabFresh)
 // ★推論は Worker で（v0.16.30・ort.env.wasm.proxy）：onnxruntime-web が同じドメインの ort.wasm.min.mjs を module Worker として立て、
 //   セッション作成と run をそこへ送る。合成（1 回 0.3〜0.5 秒）の間もメインスレッドが止まらない＝配信者の画面・WebRTC・ひとことの
 //   処理が固まらない（2026-11-20・Let's note で合成のたびレンダラが 1 コア張り付き・画面がつっかえる）。wasm のメモリ（約 570MB）は
-//   Worker 側へ移るだけで総量は同じ。numThreads は 1 のまま（複数スレッドは crossOriginIsolated＝COOP/COEP ヘッダが要り、
-//   GitHub Pages では付けられない）。CSP は worker-src 'self'（同じドメインの URL で作るので blob: は不要）。patchOrt は
+//   Worker 側へ移るだけで総量は同じ。CSP は worker-src 'self'（同じドメインの URL で作るので blob: は不要）。patchOrt は
 //   Worker の手前（InferenceSession の公開 API）に掛かるのでそのまま効く。実測は internal/HANDOFF 2026-11-20。
+// ★crossOriginIsolated＝複数スレッド（v0.16.31）：wasm を複数スレッドで回すには SharedArrayBuffer が要り、それはページが
+//   cross-origin isolated（COOP: same-origin ＋ COEP: require-corp）のときだけ使える。GitHub Pages はヘッダを付けられないので、
+//   同じドメインの Service Worker（coi-sw.js）が「/」「/index.html」の**文書の応答にだけ** 2 つのヘッダを足す。
+//   ・初めて開いたとき（SW がまだ効いていない）は 1 スレッド＝遅いだけで動く。次に開き直したときから複数スレッド。開き直しは強制しない
+//   ・スレッド数＝min(4, ceil(コア数/2))（ORT の既定と同じ式・TTS_THREADS）。iPhone なら 2〜3
+//   ・session.intra_op.allow_spinning = '0'（TTS_ORT_OPTS.extra）：これが無いと ORT のスレッドプールは仕事が無い間も空回りして
+//     待機中に CPU を食い続ける（実測 18% → 3%）
+//   ・COEP の影響：別ドメインの読み込みは CORS か CORP が要る。いまあるのは cloudflareinsights の beacon（CORP: cross-origin 付き）、
+//     fetch（TURN Worker・GitHub API・X の oEmbed＝全部 CORS）、wss（対象外）、画像は data:/blob: だけ＝塞がれるものは無い（T21）。
+//     COOP の影響：window.open は noopener だけなので無し。manual/ などほかのページには足さない（埋め込みを壊さないため）
+//   ・実測（Let's note・headless Chromium 155・RTF）：1 スレッド 0.95 → 2 スレッド 0.57 → 4 スレッド 0.45（internal/HANDOFF 2026-11-21）
 // エンジンは段階読み込み（Trystero と同じ作法）：①piper-plus ②onnxruntime-web ③initialize（wasm 60MB＝gzip 19MB・ORT 約 14MB・
 // モデルは models/ の 26MB で IndexedDB に残る）。**オンにしたときだけ**読み込む（メモリ約 200MB を他の人に負わせない）。
 // 一度読み込んだら退出しても捨てない（再入室で 15 秒待たせない）。
@@ -5625,6 +5635,10 @@ const TTS_ORT_DIST = new URL('vendor/onnxruntime-web-1.30.0/dist/', location.hre
 const TTS_LENGTH_SCALE = 1.4   // 実機で聞き取りやすかった速さ（1.0 は早口）
 const TTS_NOISE_SCALE = 0.667
 const ttsOk = typeof WebAssembly === 'object'
+// cross-origin isolation 用の Service Worker（上の★crossOriginIsolated）。https か localhost 以外は register が蹴るので握りつぶす
+if (ttsOk && 'serviceWorker' in navigator) navigator.serviceWorker.register('./coi-sw.js', { updateViaCache: 'none' }).catch(() => {})
+const TTS_THREADS = self.crossOriginIsolated ? Math.min(4, Math.max(1, Math.ceil((navigator.hardwareConcurrency || 2) / 2))) : 1
+let ttsThreads = 0   // 実際に ORT が使っているスレッド数（準備できたら入る・診断窓用）
 // ★「つなぎ直す」はページごと再読み込みするので（doReconnect）、読み上げのオンだけは rejoin の予約に乗せて引き継ぐ（v0.14.54・
 //   実機：つなぎ直すとチェックが外れていた）。同じ部屋へ戻るときの一度きり。別の部屋・次回はオフから（上の★）
 let sndTts = !!(rejoin && rejoin.tts)
@@ -5711,7 +5725,8 @@ const ttsWatch = () => {
 //   ・グラフ最適化を 'disabled' に → セッション作成が +650MB → +370MB（合計 +770 → +570MB）。速さは変わらない（RTF 0.08〜0.11 のまま）
 //   ・実行は wasm 固定（piper-plus も int64 の都合で wasm に倒しているが、明示して WebGPU の GPU メモリを使わせない）
 //   まだ重い分＝fp16→fp32 の重み複製（int8 量子化で減る見込み）と辞書（wasm の作り直しが要る）。
-const TTS_ORT_OPTS = { executionProviders: ['wasm'], graphOptimizationLevel: 'disabled', enableMemPattern: false, enableCpuMemArena: false }
+const TTS_ORT_OPTS = { executionProviders: ['wasm'], graphOptimizationLevel: 'disabled', enableMemPattern: false, enableCpuMemArena: false,
+  extra: { session: { intra_op: { allow_spinning: '0' } } } }   // 待機中の空回りを止める（上の★crossOriginIsolated）
 // 測定用の差し替え口 window.__potOrtOpts が優先
 const patchOrt = ort => {
   if (!ort || !ort.InferenceSession || ort.InferenceSession.prototype.__potPatched) return
@@ -5771,7 +5786,7 @@ const loadTts = () => {
       let Piper; try { Piper = (await import('piper-plus')).PiperPlus } catch (e) { throw new Error('ライブラリ（piper-plus）を読み込めませんでした') }
       ttsStage('読み上げの準備 ②/③ 推論エンジン…')
       let ort; try { ort = await import('onnxruntime-web') } catch (e) { throw new Error('推論エンジン（onnxruntime）を読み込めませんでした') }
-      try { ort.env.wasm.wasmPaths = TTS_ORT_DIST; ort.env.wasm.numThreads = 1; ort.env.wasm.proxy = true } catch {}   // 1 スレッド（SharedArrayBuffer 不要・iOS）／proxy＝推論を ORT 自前の Worker で（上の★）
+      try { ort.env.wasm.wasmPaths = TTS_ORT_DIST; ort.env.wasm.numThreads = TTS_THREADS; ort.env.wasm.proxy = true } catch {}   // スレッド数は isolated のときだけ >1／proxy＝推論を ORT 自前の Worker で（上の★）
       patchOrt(ort)
       ttsStage('読み上げの準備 ③/③ 声のモデル…')
       const label = { model: '声のモデル', phonemizer: '辞書', ready: '準備完了' }
@@ -5783,6 +5798,7 @@ const loadTts = () => {
         const r = await eng.synthesize(text, { language: 'ja', lengthScale: TTS_LENGTH_SCALE, noiseScale: TTS_NOISE_SCALE })
         return { samples: r.samples, sampleRate: r.sampleRate || 22050 }
       } }
+      ttsThreads = (ort.env.wasm.numThreads | 0) || 1
       ttsStage('')
       ssSet(TTS_LIVE_KEY, '1')   // 落ちた印（上）。pagehide と自前の再読み込みで消す
       return ttsEngine
@@ -8118,7 +8134,7 @@ const diagAudio = () => {
       e ? (e.paused ? '停止' : '再生中') + ' t=' + e.currentTime.toFixed(1) + ' rs=' + e.readyState + (e.muted ? ' muted' : '') + ' vol=' + e.volume : '',
       tr ? 'track:' + tr.readyState + (tr.muted ? '/muted' + (e.mutedSince ? Math.round((Date.now() - e.mutedSince) / 1000) + 's' : '') : '/live') + (tr.enabled ? '' : '/disabled') : 'track:なし', 'flow=' + [...call.peers].filter(audioFlowing).length,
       'ctx=' + ctx, 'out=' + ($('appAudio').srcObject ? ($('appAudio').paused ? '停止' : '再生中') : 'なし'), '音量=' + Math.round(masterVol * 100) + '%', 'peers=' + call.peers.size, 'hear=' + [...call.peers].filter(canHear).length,
-      'tts=' + (!ttsOk ? 'なし' : ttsEngine ? 'ready' : ttsLoading ? 'loading' : 'none') + (sndTts ? ' on' : ' off') + ' q' + ttsQueue.length + (ttsSpeaking ? ' spk' : '') + (ttsLast ? ' ' + ttsLast : '') + (ttsProg ? ' [' + ttsProg + ']' : '') + ' crash' + ttsCrashes() + ' oom' + ttsOoms()
+      'tts=' + (!ttsOk ? 'なし' : ttsEngine ? 'ready' : ttsLoading ? 'loading' : 'none') + (sndTts ? ' on' : ' off') + ' q' + ttsQueue.length + (ttsThreads ? ' t' + ttsThreads : '') + (self.crossOriginIsolated ? ' coi' : '') + (ttsSpeaking ? ' spk' : '') + (ttsLast ? ' ' + ttsLast : '') + (ttsProg ? ' [' + ttsProg + ']' : '') + ' crash' + ttsCrashes() + ' oom' + ttsOoms()
         + (call.ownerKey ? ' sent' + call.ttsSent.size : ' ann:' + (call.ttsAnn ? (call.ttsAnn.on ? 'on' : 'off') + (call.ttsAnn.from === call.ownerPeer ? '/owner' : '/other') : 'none') + ' ack:' + (call.ttsAckedFrom ? 'y' : 'n') + ' ttsEl' + (call.audios.get('tts') || []).length + (ttsFlowing() ? ' flow' : '')),
       navigator.audioSession ? 'as=' + navigator.audioSession.type + '/' + navigator.audioSession.state : '',
       diagSince ? '参加' + Math.round((Date.now() - diagSince) / 1000) + 's' : '未参加',

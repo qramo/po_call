@@ -9,9 +9,13 @@
 <script type="module">
 const R = window.__R = { done: false, csp: [], err: '', init_ms: 0, synth: [], gapMax: [], samples: [] }
 addEventListener('securitypolicyviolation', e => R.csp.push(e.effectiveDirective + ' → ' + (e.blockedURI || '(inline)')))
-const proxy = new URLSearchParams(location.search).get('proxy') === '1'
-R.proxy = proxy
+const q = new URLSearchParams(location.search)
+const proxy = q.get('proxy') === '1'
+const threads = parseInt(q.get('threads') || '1') || 1     // 0 や無効値は 1。crossOriginIsolated でなければ ORT が 1 に落とす
+const spin = q.get('spin')                                  // '0' ＝ スレッドプールの空回り（spin wait）を止める
+R.proxy = proxy; R.threadsWanted = threads; R.coi = !!self.crossOriginIsolated; R.spin = spin
 const TTS_ORT_OPTS = { executionProviders: ['wasm'], graphOptimizationLevel: 'disabled', enableMemPattern: false, enableCpuMemArena: false }
+if (spin === '0') TTS_ORT_OPTS.extra = { session: { intra_op: { allow_spinning: '0' } } }
 const patchOrt = ort => {
   const create = ort.InferenceSession.create
   ort.InferenceSession.create = function (model, opts, ...rest) { return create.call(this, model, Object.assign({}, opts || {}, TTS_ORT_OPTS), ...rest) }
@@ -35,12 +39,13 @@ try {
   const { PiperPlus } = await import('piper-plus')
   const ort = await import('onnxruntime-web')
   ort.env.wasm.wasmPaths = new URL('../vendor/onnxruntime-web-1.30.0/dist/', location.href).href
-  ort.env.wasm.numThreads = 1; ort.env.wasm.proxy = proxy
+  ort.env.wasm.numThreads = threads; ort.env.wasm.proxy = proxy
   patchOrt(ort)
   const t0 = performance.now()
   const eng = await PiperPlus.initialize({ model: new URL('../models/tsukuyomi-chan-6lang-int8-v1.onnx', location.href).href, ort,
     wasmG2pUrl: new URL('../vendor/piper-plus-0.7.0/dist/rust-wasm/piper_plus_wasm.js', location.href).href })
   R.init_ms = Math.round(performance.now() - t0)
+  R.threads = ort.env.wasm.numThreads
   const texts = ['クラモ、こんばんは。今日は読み上げの実験をしています', 'なるほど、それは良い考えですね。ワーカーで動かすと画面が止まらなくなります', '短い文']
   for (const text of texts) {
     const gaps = []; let last = performance.now()
