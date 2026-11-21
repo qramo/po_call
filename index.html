@@ -4813,12 +4813,17 @@ let appOut = null
 //   ・おまけに**他アプリへ切り替えても AudioContext が中断されない**（背面でも鳴り続ける）
 //   小窓（PiP）でも同じ効果が出ていたが、**効いていたのは小窓ではなくメディア要素**だった。
 //   ＝黒い小窓を出さなくても、BGM・効果音・音量調整が背面で生きる。
+// β の切り分け用の切り替え（URL の ?ax=…・説明は addAnalyser の手前）。dest＝音の出口を <audio> にせず ctx.destination から直接鳴らす
+//   （Android で BGM のテンポが揺れる件・11-22：<audio> 経由は通話の音として再生速度の調整を受けている疑い）
+const AX = (/[?&]ax=([^&#]*)/.exec(location.search) || [])[1] || ''
+const axHas = k => AX.split(',').includes(k)
 let outDest = null
 let outKeepAlive = null
 const ensureOut = () => {
   const ctx = ensureAudioCtx()
   if (appOut) return appOut
   appOut = ctx.createGain()
+  if (axHas('dest')) { appOut.connect(ctx.destination); return appOut }
   try {
     outDest = ctx.createMediaStreamDestination()
     appOut.connect(outDest)
@@ -6221,8 +6226,7 @@ const ttsWarm = () => { if (sndTts && ttsAllowed()) ttsSetOn(true) }
 //   経路で自分の耳に返り続ける」（ミュートで止まる・📞 の音量では変わらない・本番 v0.16.29 でも再現）。ページはマイクを出口に
 //   繋いでいないので、どの組み合わせが Chrome の中で漏れを起こすかを実機で 1 つずつ外して確かめる。URL に ?ax=…（カンマで複数）：
 //   noself＝自分のマイクの音量計を作らない ／ selfctx＝自分の音量計を別の AudioContext に置く ／ nosend＝読み上げを 2 本目の音声で送らない
-const AX = (/[?&]ax=([^&#]*)/.exec(location.search) || [])[1] || ''
-const axHas = k => AX.split(',').includes(k)
+//   （AX・axHas の定義は音の出口 ensureOut の手前）
 let micCtx = null   // ax=selfctx のときだけ（stopVad で閉じる）
 const addAnalyser = (uid, stream) => {
   try {
