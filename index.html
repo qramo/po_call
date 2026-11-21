@@ -7995,9 +7995,13 @@ const wireRoom = () => {
   call.nudgeAction = call.room.makeAction('nudge')
   call.nudgeAction.onMessage = (_data, { peerId }) => {
     // 連打への自衛。同じ相手には NUDGE_ACCEPT_MS に1回しか応じない（上の定義参照）。
-    if (tooSoon(call.nudgeSeen, peerId, NUDGE_ACCEPT_MS)) return
+    const who = (call.profiles.get(peerId) || {}).name || '相手'
+    if (tooSoon(call.nudgeSeen, peerId, NUDGE_ACCEPT_MS)) { bglog('📨 ' + who + ' から「送り直して」（間引いて応じない）'); return }
     // 頼まれた側から見て相手が既に切れている（＝こちらは見失っている）ことがある。その時の
     // addStream は失敗するが、頼んだ側の状況は改善しようがないので黙って諦める。
+    // ★記録（β・11-22）：Android の配信者で、音を鳴らせない聞き役（VM の muse AI）がいるとマイクが自分に返る件の切り分け。
+    //   聞き役が「送り直して」を繰り返し、そのたびにマイクを入れ直していないかを見る
+    bglog('📨 ' + who + ' から「送り直して」→ マイクを入れ直す')
     resendStream(peerId)
   }
 
