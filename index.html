@@ -6097,7 +6097,7 @@ const ttsSpeak = async (uid, text) => {
     const src = ctx.createBufferSource(); src.buffer = buf
     const g = ctx.createGain(); g.gain.value = masterVol
     src.connect(g); g.connect(ensureOut())              // 自分の耳（マスター音量に従う）
-    try { src.connect(ttsEnsureDest()) } catch {}         // 相手へ（2 本目のトラック・音量は相手側で調整）
+    if (!axHas('nosend')) try { src.connect(ttsEnsureDest()) } catch {}   // 相手へ（2 本目のトラック・音量は相手側で調整）／ax=nosend は切り分け用
     ttsSource = src; ttsMark(uid, true); ttsMarkV(true); ttsLast = 'play'
     sendTo(call.ttsAction, { now: uid === 'self' ? myPeerId : uid })   // 読んでいる人の行を相手の画面でも光らせる
     await new Promise(res => { src.onended = res; src.start() })
@@ -6217,10 +6217,18 @@ const ttsWarm = () => { if (sndTts && ttsAllowed()) ttsSetOn(true) }
     ttsStart()
   }
 }
+// ★切り分け用の切り替え（β・11-22）：Android の配信者で「リスナーがいて読み上げが鳴ると、自分のマイクの音が ♪（メディア）の
+//   経路で自分の耳に返り続ける」（ミュートで止まる・📞 の音量では変わらない・本番 v0.16.29 でも再現）。ページはマイクを出口に
+//   繋いでいないので、どの組み合わせが Chrome の中で漏れを起こすかを実機で 1 つずつ外して確かめる。URL に ?ax=…（カンマで複数）：
+//   noself＝自分のマイクの音量計を作らない ／ selfctx＝自分の音量計を別の AudioContext に置く ／ nosend＝読み上げを 2 本目の音声で送らない
+const AX = (/[?&]ax=([^&#]*)/.exec(location.search) || [])[1] || ''
+const axHas = k => AX.split(',').includes(k)
+let micCtx = null   // ax=selfctx のときだけ（stopVad で閉じる）
 const addAnalyser = (uid, stream) => {
   try {
+    if (uid === 'self' && axHas('noself')) return
     removeAnalyser(uid)   // 同じ相手のストリーム再取得（再ネゴ）で二重登録・リークしないように
-    const ctx = ensureAudioCtx()
+    const ctx = uid === 'self' && axHas('selfctx') ? (micCtx = micCtx || new (window.AudioContext || window.webkitAudioContext)()) : ensureAudioCtx()
     const src = ctx.createMediaStreamSource(stream)
     const analyser = ctx.createAnalyser()
     analyser.fftSize = 512; analyser.smoothingTimeConstant = 0.6
@@ -6254,6 +6262,7 @@ const stopVad = () => {
   analysers.forEach((_, uid) => removeAnalyser(uid))
   stopOut()   // ★ctx.close() より先（上のコメント）
   if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null }
+  if (micCtx) { micCtx.close().catch(() => {}); micCtx = null }
   masterGain = null   // ctx と寿命を合わせる（閉じた ctx のノードは次の join では使えない）
   appOut = null; outDest = null   // 同上（出口も作り直す）
 }
@@ -8366,6 +8375,7 @@ const diagAudio = () => {
       'tts=' + (!ttsOk ? 'なし' : ttsEngine ? 'ready' : ttsLoading ? 'loading' : 'none') + (sndTts ? ' on' : ' off') + ' q' + ttsQueue.length + (ttsThreads ? ' t' + ttsThreads : '') + (self.crossOriginIsolated ? ' coi' : '') + (ttsSpeaking ? ' spk' : '') + (ttsLast ? ' ' + ttsLast : '') + (ttsProg ? ' [' + ttsProg + ']' : '') + ' crash' + ttsCrashes() + ' oom' + ttsOoms()
         + (call.ownerKey ? ' sent' + call.ttsSent.size : ' ann:' + (call.ttsAnn ? (call.ttsAnn.on ? 'on' : 'off') + (call.ttsAnn.from === call.ownerPeer ? '/owner' : '/other') : 'none') + ' ack:' + (call.ttsAckedFrom ? 'y' : 'n') + ' ttsEl' + (call.audios.get('tts') || []).length + (ttsFlowing() ? ' flow' : '')),
       navigator.audioSession ? 'as=' + navigator.audioSession.type + '/' + navigator.audioSession.state : '',
+      AX ? 'ax=' + AX : '',
       diagSince ? '参加' + Math.round((Date.now() - diagSince) / 1000) + 's' : '未参加',
       call.loudLvl.size ? '届いた音の最大 ' + loudDiag() + '（抑える目安 ' + LOUD_RMS + '・割' + Math.round(LOUD_CLIP * 100) + '%）' : '',
       LOUD_TEST ? '🧪大音量テスト中' : ''
