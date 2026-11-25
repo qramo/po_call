@@ -1,0 +1,101 @@
+<!doctype html>
+<!--
+  旧 β（qramo.github.io/po_call/）の案内ページ（2026-11-25〜）。β は https://beta.potalk.app/ に移った。
+  同じ中身を 404.html にも置く＝/po_call/ の下のどのページを開いてもここに来る（URL の # の後ろは残る）。
+  ・自動では飛ばさない：アドレスが変わるとブラウザの保存が引き継がれないので、何が起きるかを読んでから押してもらう
+  ・「持って移る」：この旧 β の保存（名前・絵文字・成長・名刺・好みの設定）を `#import=`（base64url の JSON）に載せて
+    beta.potalk.app を開く。# の後ろはどこのサーバーにも送られない。受け取り側は中身をカードで見せ、押されたときだけ取り込む
+    （本体 index.html の「旧 β からの引っ越し」・v0.16.33）。鍵の一覧は向こうの IMPORT_KEYS と対
+  ・旧 β が入れた読み上げの Service Worker（coi-sw.js）はここで外す
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>ぽっと通話 β は引っ越しました</title>
+<link rel="icon" href="https://beta.potalk.app/favicon.ico">
+<style>
+  :root{ --bg:#f6f1e7; --card:#fffdf8; --ink:#2b2a27; --sub:#6b665c; --line:#e3dccd; --accent:#2f7d6d; --accent-ink:#fff; --warn:#8a5a12 }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0d1424; --card:#131d30; --ink:#e8ecf3; --sub:#9aa6bb; --line:rgba(255,255,255,.12); --accent:#4fb3a0; --accent-ink:#06201b; --warn:#e2b56b }
+  }
+  *{ box-sizing:border-box }
+  body{ margin:0; background:var(--bg); color:var(--ink); font:15px/1.7 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif }
+  main{ max-width:560px; margin:0 auto; padding:32px 16px 48px }
+  h1{ font-size:21px; line-height:1.4; margin:0 0 12px }
+  p{ margin:0 0 12px }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 16px; margin:18px 0 }
+  .card h2{ font-size:16px; margin:0 0 8px }
+  .who{ font-size:17px; margin:0 0 4px }
+  .sub{ color:var(--sub); font-size:13.5px }
+  a.btn{ display:block; text-align:center; text-decoration:none; padding:12px 14px; border-radius:10px; font-weight:700; margin-top:12px;
+    background:var(--accent); color:var(--accent-ink) }
+  a.btn.ghost{ background:transparent; color:var(--accent); border:1px solid var(--accent) }
+  ul{ margin:6px 0 0; padding-left:1.2em }
+  li{ margin:2px 0 }
+  .warn{ color:var(--warn) }
+  a{ color:var(--accent) }
+</style>
+</head>
+<body>
+<main>
+  <h1>ぽっと通話の β（試験版）は引っ越しました</h1>
+  <p>このアドレス（qramo.github.io/po_call）の β は更新を終えました。これからの β は <a href="https://beta.potalk.app/" id="betaLink">beta.potalk.app</a> です。ふだん使うなら <a href="https://potalk.app/" id="stableLink">potalk.app</a> をどうぞ。</p>
+  <p class="sub" id="roomNote" hidden>部屋のリンクから来た場合は、下のボタンでそのまま同じ部屋を開けます。</p>
+
+  <section class="card" id="carry" hidden>
+    <h2>名前と成長を持って β へ</h2>
+    <p class="who" id="who"></p>
+    <p class="sub" id="what"></p>
+    <a class="btn" id="carryBtn" href="https://beta.potalk.app/">持って β へ移る</a>
+    <p class="sub" style="margin-top:10px">移った先で、取り込むかどうかを聞かれます。「取り込む」を押すまで、向こうの保存は変わりません。</p>
+  </section>
+
+  <section class="card">
+    <h2>持っていけないもの</h2>
+    <ul>
+      <li><b>配信部屋</b>：持ち主の鍵はこのブラウザから取り出せないしくみです。β で配信部屋を作り直してください（部屋のリンクも新しくなります）</li>
+      <li><b>名刺の本人確認</b>：同じ理由で、β でもう一度確かめ直しになります（名刺の文面と画像は持っていけます）</li>
+      <li>読み上げの声のデータ：β で初めて使うときに、もう一度読み込みます</li>
+    </ul>
+  </section>
+
+  <a class="btn ghost" id="plainBtn" href="https://beta.potalk.app/">持たずに β を開く</a>
+  <a class="btn ghost" id="stableBtn" href="https://potalk.app/">ふだん使いの potalk.app を開く</a>
+</main>
+<script>
+(() => {
+  const BETA = 'https://beta.potalk.app/', STABLE = 'https://potalk.app/'
+  // 部屋のリンク（#room=…&name=… や古い #部屋名）はそのまま引き継ぐ
+  const hash = location.hash.slice(1)
+  const tail = hash ? '#' + hash : ''
+  if (hash) document.getElementById('roomNote').hidden = false
+  for (const [id, base] of [['plainBtn', BETA], ['betaLink', BETA], ['stableBtn', STABLE], ['stableLink', STABLE]]) document.getElementById(id).href = base + tail
+
+  // 旧 β の読み上げの Service Worker を外す（このパスの下のものだけ）
+  try { navigator.serviceWorker?.getRegistrations().then(rs => rs.forEach(r => { if (new URL(r.scope).pathname.startsWith('/po_call/')) r.unregister() })).catch(() => {}) } catch {}
+
+  // 持っていく鍵（本体の IMPORT_KEYS＋名前・成長と対）
+  const KEYS = ['pot-call-profile', 'pot-call-stats', 'pot-call-card', 'pot-call-card-noimg', 'pot-call-theme', 'pot-call-vol', 'pot-call-bgm',
+    'pot-call-bgm-vol', 'pot-call-snd-peer', 'pot-call-snd-room', 'pot-call-snd-react', 'pot-call-ntf-room', 'pot-call-tts-noname',
+    'pot-call-hide-help', 'pot-dock-open']
+  const items = {}
+  try { for (const k of KEYS) { const v = localStorage.getItem(k); if (v != null) items[k] = v } } catch {}
+  const obj = k => { try { return JSON.parse(items[k] || 'null') } catch { return null } }
+  const pf = obj('pot-call-profile')
+  if (!pf || !pf.name) return   // この端末で旧 β を使っていない＝持っていくものが無い
+  const st = obj('pot-call-stats') || {}
+  document.getElementById('who').textContent = (pf.emoji || '') + ' ' + pf.name
+  document.getElementById('what').textContent = [st.joins ? '通話 ' + st.joins + ' 回ぶんの成長' : '', items['pot-call-card'] ? '名刺' : '', '好みの設定']
+    .filter(Boolean).join('・') + 'を持っていきます'
+  const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, from: 'po_call', items }))
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192))
+  const raw = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  document.getElementById('carryBtn').href = BETA + '#import=' + raw + (hash ? '&' + hash : '')
+  document.getElementById('carry').hidden = false
+})()
+</script>
+</body>
+</html>

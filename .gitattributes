@@ -1,4 +1,0 @@
-# 同梱ライブラリは 1 バイトも変えてはいけない（vendor/SHA256SUMS と smoke T76 で照合する）。
-# core.autocrlf の環境（Windows の既定）でも LF→CRLF の書き換えが起きないよう、vendor/ はテキスト変換の対象外にする。
-vendor/** -text
-*.wasm -text
