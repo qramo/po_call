@@ -4003,7 +4003,10 @@ def T25c(r, a, b):
     safe = b.eval("!document.querySelector('#chatLog .cl-text *')")   # 生のHTMLとして解釈されていない
     # **下詰め**（新しい行が下に積まれ、溢れた分は上で切れる）。ここが flex-start に戻ると、
     # 古い行だけが見えて**新着が画面の外に出る**＝タイムラインの意味が消える。
-    bottom = b.eval("getComputedStyle(document.getElementById('chatLog')).justifyContent") == 'flex-end'
+    # 計算値の文字では見ない（2026-11 の Chrome は flex-end を 'flow-end' と返すようになり、ここだけ落ちた）。
+    # 位置で見る＝最後の行の下端が欄の下端（内側の余白 6px）に付いている。相手のタブは欄が畳まれて高さ 0 なので自分のタブで
+    bottom = a.eval("(() => { const l = document.getElementById('chatLog'), r = l.lastElementChild;"
+                    " return !!r && Math.abs(l.getBoundingClientRect().bottom - 6 - r.getBoundingClientRect().bottom) <= 3 })()")
     # 高さはパネルが決めているので、行が増えてもページ側は伸びない
     card_after = a.eval("document.querySelector('.status').offsetHeight")
     fits = card_after == card_before
