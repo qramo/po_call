@@ -20,8 +20,11 @@ self.addEventListener('fetch', e => {
   // 文書は上の 3 つだけ。サブリソースは**isolated な文書から読まれるもの全部**に COEP を足す＝Worker のスクリプト
   // （ort.wasm.min.mjs・ort-wasm-simd-threaded.mjs）の応答に COEP が無いと、その Worker は isolated にならず
   // SharedArrayBuffer が使えない（2026-11-21・ヘッダを文書だけに足した版は「no available backend」で失敗した）
+  // ★サブリソースは「referrer があるか」だけで見ている。index.html に referrer の指定（no-referrer など）を入れると
+  // Worker のスクリプトにヘッダが付かなくなり、上と同じ失敗に戻る（#18）
   e.respondWith(fetch(req).then(r => {
     if (r.status === 0 || r.type === 'opaque' || r.redirected) return r   // 作り直せない応答はそのまま（次に開いたときに効く）
+    if (r.status === 204 || r.status === 205 || r.status === 304) return r   // 本文を持てない応答に本文つきで作り直すと TypeError（#18）
     const h = new Headers(r.headers)
     h.set('Cross-Origin-Opener-Policy', 'same-origin')
     h.set('Cross-Origin-Embedder-Policy', 'require-corp')
